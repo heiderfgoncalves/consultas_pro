@@ -1,0 +1,31 @@
+---
+description: Convenções canônicas de banco do Consultas Pró com Prisma
+alwaysApply: false
+---
+# Consultas Pró Database Canonical
+
+## Objetivo
+
+Garantir evolucao segura do banco do projeto usando `Prisma + PostgreSQL`, com foco em schema consistente, indices uteis e baixo risco de drift entre codigo e banco.
+
+## Regras obrigatorias
+
+1. Antes de criar modelo, campo ou relacao, verificar `backend/prisma/schema.prisma` para reaproveitar estruturas existentes.
+2. Neste repo, a fonte principal de modelagem e o schema do Prisma; nao orientar schemas SQL separados como padrao canonico.
+3. Novas entidades devem seguir os padroes ja adotados: `id`, `createdAt`, `updatedAt`, FKs explicitas, enums quando o dominio ja estiver fechado e `Json` apenas quando a estrutura for realmente variavel.
+4. Fluxos de dinheiro devem respeitar a modelagem atual de `Wallet` + `LedgerEntry`; nao orientar alteracao de saldo sem ledger.
+5. Templates e consultas devem reaproveitar o desenho atual com `TemplateItem`, `ConsultationItem` e `ConsultationExecution`, sem substituir relacoes por blobs JSON.
+6. Toda relacao importante deve ter `@relation(...)`, indices e unicidades coerentes com consultas reais.
+7. Se a mudanca exigir persistencia nova, priorizar `prisma migrate` e geracao do client em vez de sugerir migrations SQL artesanais como caminho padrao.
+8. SQL cru so entra quando Prisma nao cobre bem o caso; se isso acontecer, documentar o motivo e manter o uso localizado.
+9. Campos `Json` devem ser usados com parcimonia, principalmente para `branding`, `metadata` e payloads flexiveis.
+10. Antes de concluir mudanca estrutural, validar impacto no backend que consome o schema e lembrar de `npm run prisma:generate` quando necessario.
+
+## Exemplo rapido
+
+- ❌ Sugerir nova tabela apenas em SQL solto e ignorar `schema.prisma`.
+- ✅ Modelar primeiro no Prisma e deixar a migracao refletir esse schema.
+- ❌ Criar `Json` para tudo por conveniencia.
+- ✅ Usar colunas tipadas e relacoes explicitas quando o dominio ja e conhecido.
+- ❌ Debitar `Wallet.balance` e tratar auditoria "depois".
+- ✅ Registrar a movimentacao com `LedgerEntry` na mesma transacao.

@@ -1,0 +1,33 @@
+---
+description: Convenções reais do frontend do Consultas Pró
+globs: frontend/src/**/*.{ts,tsx,css}
+alwaysApply: false
+---
+
+# Consultas Pró Frontend
+
+## Objetivo
+
+Garantir que o agente siga o design system real do frontend: `Vite + React 18 + shadcn/ui + Tailwind 3`, reaproveitando componentes e tokens existentes.
+
+## Tokens e base visual
+
+Usar primeiro os tokens reais definidos em `frontend/src/index.css`, como `--background`, `--foreground`, `--card`, `--primary`, `--border`, `--muted`, `--sidebar-*` e `--radius`.
+
+## Regras obrigatorias
+
+1. Antes de criar componente novo, verificar `frontend/src/components/ui/`, `frontend/src/components/` e `frontend/src/components/shared/`.
+2. Reaproveitar padrões visuais já usados: `bg-card`, `text-foreground`, `border-border`, `text-muted-foreground`, `shadow-card`, `shadow-elevated`, `gradient-primary`.
+3. Não exigir tokens `--sf-*`, `PageShell`, `PageSection` ou `@/lib/api.ts`, porque esses artefatos não existem neste repo.
+4. Preferir utilitários Tailwind e variantes dos componentes shadcn já presentes, especialmente `Button`, `Card`, `Input`, `Dialog`, `Tabs` e afins.
+5. Manter responsividade mobile-first com `sm:`, `md:`, `lg:` e grids simples, seguindo o padrão das páginas atuais.
+6. O tema deve respeitar `frontend/src/components/ThemeProvider.tsx` e os tokens claro/escuro de `index.css`.
+7. Para classes repetidas ou composição complexa, usar `cn()` de `frontend/src/lib/utils.ts`.
+8. Ao alterar navegação, preservar o padrão atual com `react-router-dom`, `AuthenticatedLayout` e páginas em `frontend/src/pages/`.
+
+## Exemplo rapido
+
+- ❌ Criar um token `--sf-card-radius` novo só porque a rule manda.
+- ✅ Usar `rounded-xl`, `border-border`, `bg-card` e utilitários já adotados.
+- ❌ Mandar consumir `api()` de `@/lib/api.ts`.
+- ✅ Seguir o padrão existente do arquivo ou criar abstração só se ela realmente passar a existir no projeto.

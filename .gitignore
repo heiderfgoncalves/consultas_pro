@@ -1,0 +1,27 @@
+# Dependencies
+node_modules/
+
+# Environment (secrets) — use *.example como referência
+.env
+.env.*
+!.env.example
+
+# Build
+dist/
+build/
+*.tsbuildinfo
+
+# Logs & caches
+*.log
+.npm
+.eslintcache
+
+# OS / editor
+.DS_Store
+.idea/
+*.swp
+*.swo
+
+# Python
+__pycache__/
+*.py[cod]

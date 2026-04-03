@@ -1,0 +1,22 @@
+---
+description: Contexto de produto e stack do Consultas Pró
+alwaysApply: true
+---
+# Consultas Pró Contexto
+
+## Produto
+
+O projeto é o **Consultas Pró**, uma plataforma SaaS multi-tenant para emissão de consultas de crédito e restrições em formato self-service, com templates, saldo pré-pago, histórico, integrações com provedores e área administrativa.
+
+## Stack real
+
+- Backend: `Node.js 20+`, `Fastify 5`, `Prisma 6`, `PostgreSQL`, `Redis`, `BullMQ`, `Zod`.
+- Frontend: `Vite 5`, `React 18`, `TypeScript`, `React Router`, `TanStack Query`, `Zustand`, `shadcn/ui`, `Tailwind CSS 3`.
+
+## Prioridades para o agente
+
+1. Seguir o código existente antes de aplicar padrões genéricos de outros projetos.
+2. Preferir nomes, fluxos e decisões alinhados ao domínio de consultas, providers, templates, ledger, company e admin.
+3. Não assumir infraestrutura inexistente no repo, como `Next.js`, `Tailwind v4`, `api.ts` global ou diretório `orchestrator/`, sem validar antes.
+4. Em backend, Prisma é a abstração principal de banco.
+5. Em frontend, reutilizar componentes e tokens já definidos em `frontend/src/index.css` e `frontend/src/components/`.

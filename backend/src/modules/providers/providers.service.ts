@@ -1,0 +1,239 @@
+import type { FastifyInstance } from 'fastify';
+import type { HttpMethod, ProviderAuthType, ProviderProduct } from '@prisma/client';
+import { ConflictError, NotFoundError } from '../../core/errors';
+import { callProviderOperation, callProviderProduct } from './provider-client.service';
+import { normalizeProviderPayload } from './normalization.service';
+import { mergeNormalizedPayloads } from './merge.service';
+import { generateOpaqueToken, sha256 } from '../../lib/hash';
+
+export async function createProvider(app: FastifyInstance, payload: {
+  name: string;
+  slug: string;
+  baseUrl: string;
+  authType?: ProviderAuthType;
+  credentials?: Record<string, unknown>;
+  defaultHeaders?: Record<string, string>;
+}) {
+  const exists = await app.prisma.provider.findUnique({ where: { slug: payload.slug } });
+  if (exists) throw new ConflictError('Já existe um provedor com este slug');
+
+  return app.prisma.provider.create({
+    data: payload,
+  });
+}
+
+function productCallSlice(
+  product: Pick<ProviderProduct, 'endpointPath' | 'method' | 'headersTemplate' | 'queryTemplate' | 'bodyTemplate' | 'timeoutMs'>,
+): ProviderProduct {
+  return product as ProviderProduct;
+}
+
+export async function testProviderProduct(app: FastifyInstance, input: {
+  productId: string;
+  actorUserId?: string;
+  context: Record<string, unknown>;
+  bodyTemplate?: unknown;
+  queryTemplate?: Record<string, unknown>;
+  headersTemplate?: Record<string, unknown>;
+}) {
+  const product = await app.prisma.providerProduct.findUnique({
+    where: { id: input.productId },
+    include: {
+      provider: true,
+      mappings: {
+        include: { canonicalField: true },
+        orderBy: { sortOrder: 'asc' },
+      },
+    },
+  });
+
+  if (!product) throw new NotFoundError('Produto do provedor não encontrado');
+
+  const forCall = productCallSlice({
+    endpointPath: product.endpointPath,
+    method: product.method,
+    headersTemplate: input.headersTemplate !== undefined ? input.headersTemplate as never : product.headersTemplate,
+    queryTemplate: input.queryTemplate !== undefined ? input.queryTemplate as never : product.queryTemplate,
+    bodyTemplate: input.bodyTemplate !== undefined ? input.bodyTemplate as never : product.bodyTemplate,
+    timeoutMs: product.timeoutMs,
+  });
+
+  const execution = await callProviderProduct(app, product.provider, forCall, input.context);
+  const normalized = normalizeProviderPayload(execution.response.payload, product.mappings);
+
+  const log = await app.prisma.providerTestLog.create({
+    data: {
+      providerId: product.providerId,
+      productId: product.id,
+      createdById: input.actorUserId,
+      requestPayload: execution.request as never,
+      responsePayload: execution.response.payload as never,
+      normalizedPayload: normalized as never,
+      statusCode: execution.response.statusCode,
+      success: execution.response.statusCode >= 200 && execution.response.statusCode < 300,
+    },
+  });
+
+  return {
+    testLogId: log.id,
+    request: execution.request,
+    response: execution.response,
+    normalizedPayload: normalized,
+  };
+}
+
+/** Chamada de teste sem produto persistido (ex.: formulário "Nova consulta"). */
+export async function testProviderProductDraft(app: FastifyInstance, input: {
+  providerId: string;
+  endpointPath: string;
+  method: HttpMethod;
+  actorUserId?: string;
+  context: Record<string, unknown>;
+  bodyTemplate?: unknown;
+  queryTemplate?: Record<string, unknown>;
+  headersTemplate?: Record<string, unknown>;
+}) {
+  const provider = await app.prisma.provider.findUnique({
+    where: { id: input.providerId },
+  });
+
+  if (!provider) throw new NotFoundError('Provedor não encontrado');
+
+  const productStub = {
+    endpointPath: input.endpointPath,
+    method: input.method,
+    headersTemplate: input.headersTemplate !== undefined ? input.headersTemplate as never : null,
+    queryTemplate: input.queryTemplate !== undefined ? input.queryTemplate as never : null,
+    bodyTemplate: input.bodyTemplate !== undefined ? input.bodyTemplate as never : null,
+    timeoutMs: null,
+  } as ProviderProduct;
+
+  const execution = await callProviderProduct(app, provider, productStub, input.context);
+
+  const log = await app.prisma.providerTestLog.create({
+    data: {
+      providerId: provider.id,
+      productId: null,
+      createdById: input.actorUserId,
+      requestPayload: execution.request as never,
+      responsePayload: execution.response.payload as never,
+      statusCode: execution.response.statusCode,
+      success: execution.response.statusCode >= 200 && execution.response.statusCode < 300,
+    },
+  });
+
+  return {
+    testLogId: log.id,
+    request: execution.request,
+    response: execution.response,
+    normalizedPayload: null as null,
+  };
+}
+
+export async function testProviderOperation(app: FastifyInstance, input: {
+  operationId: string;
+  actorUserId?: string;
+  context: Record<string, unknown>;
+}) {
+  const operation = await app.prisma.providerOperation.findUnique({
+    where: { id: input.operationId },
+    include: { provider: true },
+  });
+
+  if (!operation) throw new NotFoundError('Operação do provedor não encontrada');
+
+  const execution = await callProviderOperation(app, operation.provider, operation, input.context);
+
+  const log = await app.prisma.providerTestLog.create({
+    data: {
+      providerId: operation.providerId,
+      operationId: operation.id,
+      createdById: input.actorUserId,
+      requestPayload: execution.request as never,
+      responsePayload: execution.response.payload as never,
+      statusCode: execution.response.statusCode,
+      success: execution.response.statusCode >= 200 && execution.response.statusCode < 300,
+    },
+  });
+
+  return {
+    testLogId: log.id,
+    request: execution.request,
+    response: execution.response,
+  };
+}
+
+export async function previewMerge(app: FastifyInstance, input: {
+  executionIds?: string[];
+  testLogIds?: string[];
+  actorUserId?: string;
+}) {
+  const [executions, testLogs] = await Promise.all([
+    input.executionIds?.length
+      ? app.prisma.consultationExecution.findMany({
+          where: { id: { in: input.executionIds } },
+          select: { id: true, normalizedPayload: true },
+        })
+      : Promise.resolve([]),
+    input.testLogIds?.length
+      ? app.prisma.providerTestLog.findMany({
+          where: { id: { in: input.testLogIds } },
+          select: { id: true, normalizedPayload: true },
+        })
+      : Promise.resolve([]),
+  ]);
+
+  const payloads = [
+    ...executions.map((item) => item.normalizedPayload).filter(Boolean),
+    ...testLogs.map((item) => item.normalizedPayload).filter(Boolean),
+  ] as Array<Record<string, unknown>>;
+
+  const mergedPayload = mergeNormalizedPayloads(payloads);
+
+  const log = await app.prisma.mergeLog.create({
+    data: {
+      createdById: input.actorUserId,
+      sourceReferenceIds: [
+        ...executions.map((item) => item.id),
+        ...testLogs.map((item) => item.id),
+      ],
+      mergedPayload: mergedPayload as never,
+      strategy: 'DEEP_MERGE_ARRAY_DEDUP',
+    },
+  });
+
+  return {
+    mergeLogId: log.id,
+    mergedPayload,
+    sourceCount: payloads.length,
+  };
+}
+
+export async function createApiToken(app: FastifyInstance, input: {
+  tenantId?: string;
+  createdById?: string;
+  label: string;
+  scopes?: Record<string, unknown>;
+  expiresAt?: Date | null;
+}) {
+  const rawToken = generateOpaqueToken(24);
+  const tokenHash = sha256(rawToken);
+
+  const apiToken = await app.prisma.apiToken.create({
+    data: {
+      ownerType: input.tenantId ? 'TENANT' : 'INTERNAL',
+      tenantId: input.tenantId,
+      createdById: input.createdById,
+      label: input.label,
+      tokenHash,
+      last4: rawToken.slice(-4),
+      scopes: input.scopes,
+      expiresAt: input.expiresAt ?? null,
+    },
+  });
+
+  return {
+    token: rawToken,
+    apiToken,
+  };
+}
