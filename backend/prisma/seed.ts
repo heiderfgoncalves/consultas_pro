@@ -105,7 +105,7 @@ async function main() {
     where: { slug: 'consultas-pro' },
     update: {},
     create: {
-      name: 'Consultas Pró',
+      name: 'Consultas PRO',
       slug: 'consultas-pro',
       branding: {
         logo: 'consultas-pro',

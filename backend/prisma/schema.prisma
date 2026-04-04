@@ -28,7 +28,14 @@ enum InviteStatus {
 
 enum TokenOwnerType {
   TENANT
+  COMPANY
   INTERNAL
+}
+
+enum UserAccountStatus {
+  ACTIVE
+  SUSPENDED
+  BLOCKED
 }
 
 enum LedgerEntryType {
@@ -103,6 +110,7 @@ model ApiToken {
   id          String         @id @default(cuid())
   ownerType   TokenOwnerType
   tenantId    String?
+  companyId   String?
   label       String
   tokenHash   String         @unique
   last4       String
@@ -114,9 +122,11 @@ model ApiToken {
   createdAt   DateTime       @default(now())
 
   tenant      Tenant?        @relation(fields: [tenantId], references: [id])
+  company     Company?       @relation(fields: [companyId], references: [id])
   createdBy   User?          @relation("api_tokens_created_by_user", fields: [createdById], references: [id])
 
   @@index([tenantId])
+  @@index([companyId])
 }
 
 model Company {
@@ -139,6 +149,7 @@ model Company {
   templates     Template[]
   consultations Consultation[]
   ledgerEntries LedgerEntry[]
+  apiTokens     ApiToken[]
 
   @@index([tenantId])
 }
@@ -153,6 +164,7 @@ model User {
   passwordHash    String
   role            Role        @default(USER)
   isActive        Boolean     @default(true)
+  accountStatus   UserAccountStatus @default(ACTIVE)
   lastLoginAt     DateTime?
   createdAt       DateTime    @default(now())
   updatedAt       DateTime    @updatedAt
@@ -165,8 +177,38 @@ model User {
   providerTestLogs ProviderTestLog[]
   mergeLogs       MergeLog[]
   apiTokensCreated ApiToken[] @relation("api_tokens_created_by_user")
+  adminAuditLogs   AdminAuditLog[] @relation("admin_audit_actor")
 
   @@index([companyId])
+}
+
+model AdminAuditLog {
+  id          String   @id @default(cuid())
+  actorUserId String?
+  action      String
+  entityType  String
+  entityId    String?
+  metadata    Json?
+  createdAt   DateTime @default(now())
+
+  actor       User?    @relation("admin_audit_actor", fields: [actorUserId], references: [id])
+
+  @@index([actorUserId])
+  @@index([entityType, entityId])
+  @@index([createdAt])
+}
+
+/// Política global: qual papel pode chamar cada endpoint externo catalogado (`routeKey`).
+model RoleEndpointPolicy {
+  id        String   @id @default(cuid())
+  role      Role
+  routeKey  String
+  isEnabled Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([role, routeKey])
+  @@index([role])
 }
 
 model Invite {
@@ -245,6 +287,7 @@ model CanonicalFieldCatalog {
   label         String
   dataType      String
   description   String?
+  uiItemFilters Json?
   isActive      Boolean              @default(true)
   createdAt     DateTime             @default(now())
   updatedAt     DateTime             @updatedAt
@@ -328,6 +371,8 @@ model ProviderFieldMapping {
   productId         String
   canonicalFieldId  String
   sourcePath        String
+  uiStartLine       Int?
+  uiEndLine         Int?
   transformName     String?
   fallbackValue     String?
   notes             String?
