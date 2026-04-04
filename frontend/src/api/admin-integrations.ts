@@ -18,6 +18,7 @@ export interface ApiCanonicalField {
   label: string;
   dataType: string;
   description: string | null;
+  uiItemFilters?: unknown;
   isActive: boolean;
 }
 
@@ -34,6 +35,8 @@ export interface ApiFieldMapping {
   productId: string;
   canonicalFieldId: string;
   sourcePath: string;
+  uiStartLine?: number | null;
+  uiEndLine?: number | null;
   transformName: string | null;
   sortOrder: number;
   canonicalField: ApiCanonicalField;
@@ -135,6 +138,7 @@ export function mapCanonicalToFieldTypes(fields: ApiCanonicalField[]): Consultat
         description: f.description ?? '',
         color: meta.color,
         icon: meta.icon,
+        typeItemFilters: Array.isArray(f.uiItemFilters) ? f.uiItemFilters as ConsultationFieldType['typeItemFilters'] : [],
       };
     });
 }
@@ -174,6 +178,8 @@ export function mapApiProduct(p: ApiProduct, providerId: string): ProviderConsul
       fieldTypeKey: m.canonicalField.pathKey,
       label: m.canonicalField.label,
       format: 'object',
+      uiStartLine: m.uiStartLine ?? undefined,
+      uiEndLine: m.uiEndLine ?? undefined,
     };
   });
 
@@ -339,6 +345,8 @@ export async function createMappingApi(
     productId: string;
     canonicalFieldId: string;
     sourcePath: string;
+    uiStartLine?: number;
+    uiEndLine?: number;
     sortOrder?: number;
   },
 ) {
@@ -358,7 +366,7 @@ export async function deleteMappingApi(accessToken: string | null, mappingId: st
 
 export async function createCanonicalFieldApi(
   accessToken: string | null,
-  body: { pathKey: string; label: string; dataType: string; description?: string },
+  body: { pathKey: string; label: string; dataType: string; description?: string; uiItemFilters?: unknown },
 ) {
   return apiRequest<ApiCanonicalField>('/admin/catalog/canonical-fields', {
     method: 'POST',

@@ -41,7 +41,7 @@ function matchesFilter(item: Record<string, unknown>, f: MappingItemFilter): boo
   }
 }
 
-function activeFilters(filters: MappingItemFilter[] | undefined): MappingItemFilter[] {
+export function activeMappingItemFilters(filters: MappingItemFilter[] | undefined): MappingItemFilter[] {
   if (!filters?.length) return [];
   return filters.filter(f => f.field.trim().length > 0);
 }
@@ -51,7 +51,7 @@ export function applyMappingItemFilters(
   value: unknown,
   filters: MappingItemFilter[] | undefined,
 ): unknown {
-  const use = activeFilters(filters);
+  const use = activeMappingItemFilters(filters);
   if (!use.length) return value;
   if (!Array.isArray(value)) return value;
   return value.filter(el => {
@@ -61,19 +61,95 @@ export function applyMappingItemFilters(
   });
 }
 
+export function hasVisiblePreviewValue(value: unknown): boolean {
+  if (value == null) return false;
+  if (Array.isArray(value)) return value.length > 0;
+  if (typeof value === 'string') return value.trim().length > 0;
+  if (typeof value === 'object') return Object.keys(value as Record<string, unknown>).length > 0;
+  return true;
+}
+
+/**
+ * Filtra valores para preview quando o path aponta para objeto pai ou arrays aninhados
+ * (mesma semântica do mapeador JSON na aba Consultas).
+ */
+export function filterValueForPreviewDeep(
+  value: unknown,
+  filters: MappingItemFilter[] | undefined,
+): { value: unknown; hasData: boolean } {
+  const active = activeMappingItemFilters(filters);
+  if (!active.length) {
+    return { value, hasData: hasVisiblePreviewValue(value) };
+  }
+
+  if (Array.isArray(value)) {
+    const directlyFiltered = applyMappingItemFilters(value, active);
+    if (directlyFiltered !== value) {
+      return {
+        value: directlyFiltered,
+        hasData: Array.isArray(directlyFiltered)
+          ? directlyFiltered.length > 0
+          : hasVisiblePreviewValue(directlyFiltered),
+      };
+    }
+
+    const nestedItems: unknown[] = [];
+    for (const item of value) {
+      const nested = filterValueForPreviewDeep(item, active);
+      if (nested.hasData) nestedItems.push(nested.value);
+    }
+    return { value: nestedItems, hasData: nestedItems.length > 0 };
+  }
+
+  if (value && typeof value === 'object') {
+    const nextObject: Record<string, unknown> = {};
+    let matchedNestedChild = false;
+
+    for (const [key, childValue] of Object.entries(value as Record<string, unknown>)) {
+      const nested = filterValueForPreviewDeep(childValue, active);
+      if (nested.hasData) {
+        nextObject[key] = nested.value;
+        matchedNestedChild = true;
+      }
+    }
+
+    if (matchedNestedChild) {
+      return { value: nextObject, hasData: true };
+    }
+
+    return { value: {}, hasData: false };
+  }
+
+  return { value, hasData: false };
+}
+
+export function formatDeepFilteredValueAtPath(
+  rootJson: string,
+  jsonPath: string,
+  filters: MappingItemFilter[] | undefined,
+  lineFallback: string,
+): { text: string; hasData: boolean } {
+  try {
+    const parsed = JSON.parse(rootJson) as unknown;
+    const value = getValueAtJsonPath(parsed, jsonPath);
+    if (value === undefined) {
+      return { text: lineFallback, hasData: lineFallback.trim().length > 0 };
+    }
+    const filtered = filterValueForPreviewDeep(value, filters);
+    return {
+      text: JSON.stringify(filtered.value, null, 2) || '—',
+      hasData: filtered.hasData,
+    };
+  } catch {
+    return { text: lineFallback, hasData: lineFallback.trim().length > 0 };
+  }
+}
+
 export function formatMappedValuePreview(
   rootJson: string,
   jsonPath: string,
   filters: MappingItemFilter[] | undefined,
   lineFallback: string,
 ): string {
-  try {
-    const parsed = JSON.parse(rootJson) as unknown;
-    let value = getValueAtJsonPath(parsed, jsonPath);
-    if (value === undefined) return lineFallback;
-    value = applyMappingItemFilters(value, filters);
-    return JSON.stringify(value, null, 2) || '—';
-  } catch {
-    return lineFallback;
-  }
+  return formatDeepFilteredValueAtPath(rootJson, jsonPath, filters, lineFallback).text;
 }

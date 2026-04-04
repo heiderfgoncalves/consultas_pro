@@ -1,11 +1,11 @@
-import { useState, useMemo, useEffect, useRef } from 'react';
+import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Navigate } from 'react-router-dom';
 import {
-  Server, Plus, Pencil, Trash2, Database, ArrowRightLeft,
+  Server, Plus, Pencil, Trash2, Database,
   Play, Tag, ChevronDown, ChevronRight, Search,
-  Code2, Link2, Save, Zap, Hash,
+  Code2, Link2, Save, Zap, Hash, Filter,
 } from 'lucide-react';
 import { useAuthStore } from '@/stores/authStore';
 import { PageHeader } from '@/components/shared/StatCard';
@@ -17,9 +17,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
 } from '@/components/ui/dialog';
-import type { Provider, ProviderConsultation, ConsultationFieldType, FieldMapping } from '@/types/integrations';
+import type {
+  Provider, ProviderConsultation, ConsultationFieldType, FieldMapping,
+  MappingItemFilter, MappingItemFilterOp,
+} from '@/types/integrations';
 import JsonFieldMapper from '@/components/integrations/JsonFieldMapper';
-import { applyMappingItemFilters, getValueAtJsonPath } from '@/lib/providerResponseMapping';
+import { formatDeepFilteredValueAtPath } from '@/lib/providerResponseMapping';
 import { toast } from 'sonner';
 import { slugify } from '@/lib/slug';
 import {
@@ -51,8 +54,33 @@ import {
 } from '@/api/admin-integrations';
 
 type ConsultationTestInput =
-  | { kind: 'saved'; productId: string }
-  | { kind: 'draft'; providerId: string; endpointPath: string; method: 'GET' | 'POST' };
+  | {
+      kind: 'saved';
+      productId: string;
+      bodyTemplate?: unknown;
+      queryTemplate?: Record<string, unknown>;
+      headersTemplate?: Record<string, unknown>;
+    }
+  | {
+      kind: 'draft';
+      providerId: string;
+      endpointPath: string;
+      method: 'GET' | 'POST';
+      bodyTemplate?: unknown;
+      queryTemplate?: Record<string, unknown>;
+      headersTemplate?: Record<string, unknown>;
+    };
+
+function parseOptionalBodyTemplateJson(raw: string): { bodyTemplate?: unknown } {
+  const t = raw.trim();
+  if (!t) return {};
+  try {
+    return { bodyTemplate: JSON.parse(t) };
+  } catch {
+    toast.error('Corpo da requisição (JSON) inválido');
+    throw new Error('INVALID_BODY_JSON');
+  }
+}
 
 const labelCls = 'text-xs font-medium text-muted-foreground uppercase tracking-wide';
 const inputCls = 'h-9 text-sm bg-background placeholder:text-muted-foreground';
@@ -63,6 +91,14 @@ const metaMonoCls = 'text-xs font-mono text-muted-foreground';
 const cardTitleCls = 'text-sm font-semibold text-foreground';
 const subtleBadgeCls = 'text-xs px-2 py-0.5 rounded font-medium';
 const linkActionCls = 'text-xs font-medium transition-colors flex items-center gap-1';
+
+const TYPES_TAB_FILTER_OPS: { value: MappingItemFilterOp; label: string }[] = [
+  { value: 'eq', label: 'igual a' },
+  { value: 'contains', label: 'contém' },
+  { value: 'startsWith', label: 'começa com' },
+  { value: 'endsWith', label: 'termina com' },
+  { value: 'regex', label: 'regex' },
+];
 
 const emptyProvider: Partial<Provider> = {
   name: '', baseUrl: '', balanceEndpoint: '', rechargeEndpoint: '',
@@ -312,38 +348,34 @@ function ConsultationEditor({
   consultation,
   providers,
   fieldTypes,
+  typeFilters,
+  onTypeFiltersChange,
   testLog,
   onSave,
   onCancel,
   onTest,
-  testing,
+  registerCardTestFn,
+  registerNewConsultationTestFn,
 }: {
   consultation: ProviderConsultation;
   providers: Provider[];
   fieldTypes: ConsultationFieldType[];
+  typeFilters: Record<string, MappingItemFilter[]>;
+  onTypeFiltersChange: (next: Record<string, MappingItemFilter[]>) => void;
   testLog: { id: string; consultationName: string; providerId: string; responseJson: string; testedAt: string }[];
   onSave: (data: Partial<ProviderConsultation>) => Promise<void>;
   onCancel: () => void;
   onTest: (input: ConsultationTestInput) => Promise<ApiProviderTestResult>;
-  testing: boolean;
+  registerCardTestFn?: (productId: string, fn: (() => Promise<void>) | null) => void;
+  registerNewConsultationTestFn?: (fn: (() => Promise<void>) | null) => void;
 }) {
   const [form, setForm] = useState<Partial<ProviderConsultation>>(() => ({
     ...consultation,
-    typeItemFilters: { ...(consultation.typeItemFilters ?? {}) },
   }));
   const [testJson, setTestJson] = useState(consultation.sampleResponse || '');
+  const [bodyTemplateJson, setBodyTemplateJson] = useState(consultation.bodyTemplateJson || '');
   const [curlInput, setCurlInput] = useState('');
   const [showLogPicker, setShowLogPicker] = useState(false);
-  const [jsonCollapsed, setJsonCollapsed] = useState(!!consultation.sampleResponse);
-
-  const isValidJson = (() => {
-    try {
-      JSON.parse(testJson);
-      return testJson.trim().length > 2;
-    } catch {
-      return false;
-    }
-  })();
 
   const formattedJson = useMemo(() => {
     try {
@@ -353,11 +385,14 @@ function ConsultationEditor({
     }
   }, [testJson]);
 
+  const baseUrl = providers.find((p) => p.id === form.providerId)?.baseUrl || '';
+  const path = (form.endpoint || '').trim();
+  const fullUrlLabel = baseUrl && path ? `${baseUrl.replace(/\/$/, '')}${path.startsWith('/') ? '' : '/'}${path}` : baseUrl || path || '—';
+
   const loadFromLog = (entry: (typeof testLog)[0]) => {
     setTestJson(entry.responseJson);
     setForm((f) => ({ ...f, sampleResponse: entry.responseJson }));
     setShowLogPicker(false);
-    setJsonCollapsed(false);
     toast.success('JSON carregado do log');
   };
 
@@ -366,8 +401,56 @@ function ConsultationEditor({
     const str = typeof payload === 'string' ? payload : JSON.stringify(payload, null, 2);
     setTestJson(str);
     setForm((f) => ({ ...f, sampleResponse: str }));
-    setJsonCollapsed(false);
   };
+
+  const runTestInternal = useCallback(async () => {
+    let extras: { bodyTemplate?: unknown } = {};
+    try {
+      extras = parseOptionalBodyTemplateJson(bodyTemplateJson);
+    } catch {
+      return;
+    }
+    try {
+      let result: ApiProviderTestResult;
+      if (consultation.id) {
+        result = await onTest({ kind: 'saved', productId: consultation.id, ...extras });
+      } else {
+        const endpoint = (form.endpoint || '').trim();
+        if (!form.providerId || !endpoint) {
+          toast.error('Preencha provedor e endpoint para testar');
+          return;
+        }
+        result = await onTest({
+          kind: 'draft',
+          providerId: form.providerId,
+          endpointPath: endpoint,
+          method: (form.method || 'POST') as 'GET' | 'POST',
+          ...extras,
+        });
+      }
+      applyProviderResponsePayload(result.response?.payload);
+    } catch {
+      /* onError da mutation */
+    }
+  }, [bodyTemplateJson, consultation.id, form.endpoint, form.method, form.providerId, onTest]);
+
+  useEffect(() => {
+    if (consultation.id) {
+      registerCardTestFn?.(consultation.id, runTestInternal);
+      return () => registerCardTestFn?.(consultation.id, null);
+    }
+    registerNewConsultationTestFn?.(runTestInternal);
+    return () => registerNewConsultationTestFn?.(null);
+  }, [consultation.id, registerCardTestFn, registerNewConsultationTestFn, runTestInternal]);
+
+  useEffect(() => {
+    setForm({
+      ...consultation,
+    });
+    setTestJson(consultation.sampleResponse || '');
+    setBodyTemplateJson(consultation.bodyTemplateJson || '');
+    setCurlInput('');
+  }, [consultation.id]);
 
   return (
     <div className="space-y-3">
@@ -385,14 +468,22 @@ function ConsultationEditor({
             if (parsed.url) {
               const mp = providers.find((p) => parsed.url.startsWith(p.baseUrl));
               const endpoint = mp ? parsed.url.replace(mp.baseUrl, '') : parsed.url;
+              const method = parsed.method === 'GET' ? 'GET' : 'POST';
               setForm((f) => ({
                 ...f,
-                method: (parsed.method === 'GET' ? 'GET' : 'POST') as 'GET' | 'POST',
+                method,
                 endpoint,
                 ...(mp ? { providerId: mp.id } : {}),
               }));
+              if (parsed.body !== undefined && parsed.body !== '') {
+                try {
+                  const asJson = JSON.parse(parsed.body) as unknown;
+                  setBodyTemplateJson(JSON.stringify(asJson, null, 2));
+                } catch {
+                  setBodyTemplateJson(parsed.body);
+                }
+              }
               toast.success(`cURL parseado: ${parsed.method} ${endpoint}`);
-              setCurlInput('');
             }
           }}
           className="w-full min-h-[3rem] p-2.5 rounded-md border border-border bg-background text-sm font-mono text-foreground resize-y focus:outline-none focus:ring-2 focus:ring-primary/30 placeholder:text-muted-foreground"
@@ -400,177 +491,118 @@ function ConsultationEditor({
         />
       </div>
 
-      <div className="grid grid-cols-2 gap-2">
-        <div className="space-y-1">
-          <label className={labelCls}>Provedor</label>
-          <Select value={form.providerId || '__none__'} onValueChange={(v) => setForm((f) => ({ ...f, providerId: v === '__none__' ? '' : v }))}>
-            <SelectTrigger className={selectTriggerCls}><SelectValue placeholder="Selecione" /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="__none__">Selecione</SelectItem>
-              {providers.map((p) => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="space-y-1">
-          <label className={labelCls}>Nome</label>
-          <Input value={form.name || ''} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} placeholder="Consulta Completa PF" className={inputCls} />
-        </div>
-      </div>
-
-      <div className="grid grid-cols-3 gap-2">
-        <div className="space-y-1">
-          <label className={labelCls}>External ID</label>
-          <Input value={form.externalId || ''} onChange={(e) => setForm((f) => ({ ...f, externalId: e.target.value }))} placeholder="SOLLOS_FULL_PF" className={`${inputCls} font-mono`} />
-        </div>
-        <div className="space-y-1">
-          <label className={labelCls}>Endpoint</label>
-          <Input value={form.endpoint || ''} onChange={(e) => setForm((f) => ({ ...f, endpoint: e.target.value }))} placeholder="/consulta/pf/completa" className={`${inputCls} font-mono`} />
-        </div>
-        <div className="space-y-1">
-          <label className={labelCls}>Custo (R$)</label>
-          <Input type="number" step="0.01" value={form.cost ?? 0} onChange={(e) => setForm((f) => ({ ...f, cost: parseFloat(e.target.value) }))} className={inputCls} />
-        </div>
-      </div>
-
-      <div className="flex gap-2 items-center">
-        <Select value={form.method || 'POST'} onValueChange={(v) => setForm((f) => ({ ...f, method: v as 'GET' | 'POST' }))}>
-          <SelectTrigger className="w-24 h-9 text-sm font-semibold"><SelectValue /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="GET">GET</SelectItem>
-            <SelectItem value="POST">POST</SelectItem>
-          </SelectContent>
-        </Select>
-        <div className="flex-1 h-9 flex items-center px-3 rounded-md border border-border bg-muted/40 text-sm font-mono text-muted-foreground truncate">
-          {providers.find((p) => p.id === form.providerId)?.baseUrl || 'https://...'}
-          {form.endpoint || '/...'}
-        </div>
-      </div>
-
-      <div className="space-y-1.5 rounded border border-border p-2.5 bg-muted/20">
-        <div className="flex items-center justify-between gap-2">
-          <span className={sectionLabelCls}>
-            <Code2 className="w-4 h-4" /> JSON de Retorno
-          </span>
-          <div className="flex gap-2">
-            <button type="button" onClick={() => setShowLogPicker(!showLogPicker)} className="text-xs text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1">
-              <Database className="w-3.5 h-3.5" /> Log ({testLog.length})
-            </button>
-            {isValidJson && (
-              <button type="button" onClick={() => setJsonCollapsed(!jsonCollapsed)} className="text-xs text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1">
-                {jsonCollapsed ? <ChevronRight className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-                {jsonCollapsed ? 'Expandir' : 'Colapsar'}
-              </button>
-            )}
+      <div className="overflow-x-auto -mx-0.5 px-0.5">
+        <div className="grid grid-cols-6 gap-2 min-w-[52rem]">
+          <div className="space-y-1">
+            <label className={labelCls}>Método</label>
+            <Select value={form.method || 'POST'} onValueChange={(v) => setForm((f) => ({ ...f, method: v as 'GET' | 'POST' }))}>
+              <SelectTrigger className={`${selectTriggerCls} font-semibold`}><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="GET">GET</SelectItem>
+                <SelectItem value="POST">POST</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1 min-w-0">
+            <label className={labelCls}>Provedor</label>
+            <Select value={form.providerId || '__none__'} onValueChange={(v) => setForm((f) => ({ ...f, providerId: v === '__none__' ? '' : v }))}>
+              <SelectTrigger className={selectTriggerCls}><SelectValue placeholder="Selecione" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__none__">Selecione</SelectItem>
+                {providers.map((p) => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1 min-w-0">
+            <label className={labelCls}>Nome</label>
+            <Input value={form.name || ''} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} placeholder="Consulta PF" className={inputCls} />
+          </div>
+          <div className="space-y-1 min-w-0">
+            <label className={labelCls}>External ID</label>
+            <Input value={form.externalId || ''} onChange={(e) => setForm((f) => ({ ...f, externalId: e.target.value }))} placeholder="CODIGO" className={`${inputCls} font-mono text-xs`} />
+          </div>
+          <div className="space-y-1 min-w-0">
+            <label className={labelCls}>Endpoint</label>
+            <Input value={form.endpoint || ''} onChange={(e) => setForm((f) => ({ ...f, endpoint: e.target.value }))} placeholder="/rota" className={`${inputCls} font-mono text-xs`} />
+          </div>
+          <div className="space-y-1">
+            <label className={labelCls}>Custo (R$)</label>
+            <Input type="number" step="0.01" value={form.cost ?? 0} onChange={(e) => setForm((f) => ({ ...f, cost: parseFloat(e.target.value) }))} className={inputCls} />
           </div>
         </div>
-
-        <AnimatePresence>
-          {showLogPicker && testLog.length > 0 && (
-            <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden">
-              <div className="space-y-0.5 max-h-28 overflow-y-auto border border-border rounded-md p-2 bg-background mb-2">
-                {testLog.map((entry) => {
-                  const prov = providers.find((p) => p.id === entry.providerId);
-                  return (
-                    <button
-                      key={entry.id}
-                      type="button"
-                      onClick={() => loadFromLog(entry)}
-                      className="w-full flex items-center justify-between px-2 py-1.5 rounded-md text-xs hover:bg-accent transition-colors text-left"
-                    >
-                      <div className="flex items-center gap-2 min-w-0">
-                        <Code2 className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
-                        <span className="font-medium text-foreground truncate">{entry.consultationName}</span>
-                        {prov && <span className="text-muted-foreground">{prov.name}</span>}
-                      </div>
-                      <span className="text-xs text-muted-foreground flex-shrink-0 tabular-nums">
-                        {new Date(entry.testedAt).toLocaleTimeString('pt-BR')}
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        {showLogPicker && testLog.length === 0 && (
-          <p className="text-sm text-muted-foreground italic py-1">Nenhum teste registrado.</p>
-        )}
-
-        {!jsonCollapsed && (
-          <textarea
-            value={testJson}
-            onChange={(e) => {
-              setTestJson(e.target.value);
-              setForm((f) => ({ ...f, sampleResponse: e.target.value }));
-            }}
-            className="w-full h-40 p-3 rounded-md border border-border bg-background text-sm font-mono text-foreground resize-y focus:outline-none focus:ring-2 focus:ring-primary/30 scrollbar-thin placeholder:text-muted-foreground leading-relaxed"
-            placeholder="Cole o JSON de retorno..."
-          />
-        )}
-        {jsonCollapsed && isValidJson && (
-          <p className="text-sm text-muted-foreground">JSON carregado · {formattedJson.split('\n').length} linhas</p>
-        )}
       </div>
 
-      {isValidJson && (
-        <div className="space-y-2">
-          <div className="flex items-center gap-2">
-            <ArrowRightLeft className="w-4 h-4 text-primary" />
-            <span className="text-xs font-semibold text-foreground uppercase tracking-wide">Mapeamento</span>
-          </div>
-          <JsonFieldMapper
-            key={consultation.id || 'new-consultation'}
-            json={formattedJson}
-            onJsonChange={(v) => {
-              setTestJson(v);
-              setForm((f) => ({ ...f, sampleResponse: v }));
-            }}
-            fieldTypes={fieldTypes}
-            mappings={form.fieldMappings || []}
-            onMappingsChange={(m) => setForm((f) => ({ ...f, fieldMappings: m }))}
-            typeFilters={form.typeItemFilters ?? {}}
-            onTypeFiltersChange={(next) => setForm((f) => ({ ...f, typeItemFilters: next }))}
-          />
-        </div>
+      <p className="text-[11px] text-muted-foreground/90 font-mono truncate px-0.5" title={fullUrlLabel}>
+        {fullUrlLabel}
+      </p>
+
+      <div className="space-y-1.5">
+        <label className={sectionLabelCls}>
+          <Code2 className="w-4 h-4" /> Corpo da requisição (JSON)
+        </label>
+        <textarea
+          value={bodyTemplateJson}
+          onChange={(e) => setBodyTemplateJson(e.target.value)}
+          className="w-full h-28 p-3 rounded-md border border-border bg-background text-sm font-mono text-foreground resize-y focus:outline-none focus:ring-2 focus:ring-primary/30 scrollbar-thin placeholder:text-muted-foreground leading-relaxed"
+          placeholder={'{\n  "documento": "{{cpf}}"\n}'}
+          spellCheck={false}
+        />
+      </div>
+
+      <div className="flex items-center justify-end gap-2">
+        <button type="button" onClick={() => setShowLogPicker(!showLogPicker)} className="text-xs text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1">
+          <Database className="w-3.5 h-3.5" /> Log de retorno ({testLog.length})
+        </button>
+      </div>
+
+      <AnimatePresence>
+        {showLogPicker && testLog.length > 0 && (
+          <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden">
+            <div className="space-y-0.5 max-h-28 overflow-y-auto border border-border rounded-md p-2 bg-background">
+              {testLog.map((entry) => {
+                const prov = providers.find((p) => p.id === entry.providerId);
+                return (
+                  <button
+                    key={entry.id}
+                    type="button"
+                    onClick={() => loadFromLog(entry)}
+                    className="w-full flex items-center justify-between px-2 py-1.5 rounded-md text-xs hover:bg-accent transition-colors text-left"
+                  >
+                    <div className="flex items-center gap-2 min-w-0">
+                      <Code2 className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
+                      <span className="font-medium text-foreground truncate">{entry.consultationName}</span>
+                      {prov && <span className="text-muted-foreground">{prov.name}</span>}
+                    </div>
+                    <span className="text-xs text-muted-foreground flex-shrink-0 tabular-nums">
+                      {new Date(entry.testedAt).toLocaleTimeString('pt-BR')}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {showLogPicker && testLog.length === 0 && (
+        <p className="text-sm text-muted-foreground italic py-0.5">Nenhum teste registrado.</p>
       )}
 
+      <JsonFieldMapper
+        key={consultation.id || 'new-consultation'}
+        json={formattedJson}
+        onJsonChange={(v) => {
+          setTestJson(v);
+          setForm((f) => ({ ...f, sampleResponse: v }));
+        }}
+        fieldTypes={fieldTypes}
+        mappings={form.fieldMappings || []}
+        onMappingsChange={(m) => setForm((f) => ({ ...f, fieldMappings: m }))}
+        typeFilters={typeFilters}
+        onTypeFiltersChange={onTypeFiltersChange}
+      />
+
       <div className="flex flex-wrap gap-2 pt-3 border-t border-border">
-        <Button
-          size="default"
-          className="gradient-primary text-primary-foreground text-sm h-9"
-          disabled={
-            consultation.id
-              ? false
-              : !(form.providerId && (form.endpoint || '').trim())
-          }
-          onClick={async () => {
-            try {
-              let result: ApiProviderTestResult;
-              if (consultation.id) {
-                result = await onTest({ kind: 'saved', productId: consultation.id });
-              } else {
-                const endpoint = (form.endpoint || '').trim();
-                if (!form.providerId || !endpoint) {
-                  toast.error('Preencha provedor e endpoint para testar');
-                  return;
-                }
-                result = await onTest({
-                  kind: 'draft',
-                  providerId: form.providerId,
-                  endpointPath: endpoint,
-                  method: (form.method || 'POST') as 'GET' | 'POST',
-                });
-              }
-              applyProviderResponsePayload(result.response?.payload);
-            } catch {
-              /* toast em onError da mutation */
-            }
-          }}
-        >
-          <Play className="w-4 h-4 mr-1.5" />
-          {testing ? 'Testando…' : 'Testar no provedor'}
-        </Button>
         <Button
           size="default"
           className="gradient-primary text-primary-foreground text-sm h-9"
@@ -579,7 +611,12 @@ function ConsultationEditor({
               toast.error('Preencha nome, provedor e endpoint');
               return;
             }
-            void onSave({ ...form, sampleResponse: testJson });
+            try {
+              parseOptionalBodyTemplateJson(bodyTemplateJson);
+            } catch {
+              return;
+            }
+            void onSave({ ...form, sampleResponse: testJson, bodyTemplateJson });
           }}
         >
           <Save className="w-4 h-4 mr-1.5" /> Salvar
@@ -602,32 +639,140 @@ function NewConsultationForm(props: Omit<Parameters<typeof ConsultationEditor>[0
     method: 'POST',
     cost: 0,
     fieldMappings: [],
-    typeItemFilters: {},
     status: 'active',
     sampleResponse: '',
+    bodyTemplateJson: '',
   };
   return <ConsultationEditor consultation={dummy} {...props} />;
 }
 
-function LinkedConsultationCard({ consultation: pc, provider: prov, fieldTypeKey }: {
+function ConsultationTypeFiltersEditor({
+  filters,
+  onChange,
+}: {
+  filters: MappingItemFilter[];
+  onChange: (next: MappingItemFilter[]) => void;
+}) {
+  return (
+    <div className="rounded-lg border border-border bg-muted/20 p-3 space-y-2">
+      <div className="flex items-center gap-2">
+        <Filter className="w-4 h-4 text-muted-foreground shrink-0" />
+        <span className="text-sm font-medium text-foreground">Critérios desta consulta</span>
+      </div>
+      {filters.length === 0 && (
+        <p className="text-xs italic text-muted-foreground">Nenhum critério. O preview exibe o trecho inteiro.</p>
+      )}
+      <div className="space-y-2">
+        {filters.map((rule, idx) => (
+          <div
+            key={idx}
+            className="flex flex-wrap items-end gap-2 rounded-md border border-border/80 bg-background/80 p-2"
+          >
+            <Input
+              value={rule.field}
+              onChange={(e) =>
+                onChange(filters.map((x, i) => (i === idx ? { ...x, field: e.target.value } : x)))
+              }
+              placeholder="Campo (ex: INFORMANTE)"
+              className="h-9 min-w-[6rem] flex-1 bg-background font-mono text-xs"
+            />
+            <Select
+              value={rule.op}
+              onValueChange={(v) =>
+                onChange(filters.map((x, i) => (i === idx ? { ...x, op: v as MappingItemFilterOp } : x)))
+              }
+            >
+              <SelectTrigger className="h-9 w-[9.5rem] shrink-0 bg-background text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {TYPES_TAB_FILTER_OPS.map((op) => (
+                  <SelectItem key={op.value} value={op.value} className="text-xs">
+                    {op.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Input
+              value={rule.value}
+              onChange={(e) =>
+                onChange(filters.map((x, i) => (i === idx ? { ...x, value: e.target.value } : x)))
+              }
+              placeholder="Valor"
+              className="h-9 min-w-[6rem] flex-1 bg-background text-xs"
+            />
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="h-9 w-9 shrink-0 text-muted-foreground hover:text-destructive"
+              aria-label="Remover critério"
+              onClick={() => onChange(filters.filter((_, i) => i !== idx))}
+            >
+              <Trash2 className="h-4 w-4" />
+            </Button>
+          </div>
+        ))}
+      </div>
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        className="h-9 w-full text-xs"
+        onClick={() => onChange([...filters, { field: '', op: 'eq', value: '' }])}
+      >
+        <Plus className="w-3.5 h-3.5 mr-1" />
+        Adicionar critério
+      </Button>
+    </div>
+  );
+}
+
+function LinkedConsultationCard({
+  consultation: pc,
+  provider: prov,
+  fieldTypeKey,
+  initialFilters,
+}: {
   consultation: ProviderConsultation;
   provider?: Provider;
   fieldTypeKey: string;
+  initialFilters?: MappingItemFilter[];
 }) {
   const [expanded, setExpanded] = useState(false);
+  const [filters, setFilters] = useState<MappingItemFilter[]>(() => (initialFilters ?? []).map((rule) => ({ ...rule })));
   const maps = pc.fieldMappings.filter((m) => m.fieldTypeKey === fieldTypeKey);
-  const filters = pc.typeItemFilters?.[fieldTypeKey];
+  const filterActive = (filters ?? []).some((f) => f.field.trim().length > 0);
+
+  useEffect(() => {
+    setFilters((initialFilters ?? []).map((rule) => ({ ...rule })));
+  }, [initialFilters, pc.id, fieldTypeKey]);
 
   let jsonExcerpt = '';
   if (pc.sampleResponse && maps.length > 0) {
     try {
-      const parsed = JSON.parse(pc.sampleResponse) as unknown;
-      const parts = maps.map((m) => {
-        let value = getValueAtJsonPath(parsed, m.jsonPath);
-        value = applyMappingItemFilters(value, filters);
-        return { trecho: m.jsonPath, dados: value };
-      });
-      jsonExcerpt = JSON.stringify(parts.length === 1 ? parts[0].dados : parts, null, 2) || '—';
+      const parts: { trecho: string; dados: unknown }[] = [];
+      for (const m of maps) {
+        const { text, hasData } = formatDeepFilteredValueAtPath(
+          pc.sampleResponse,
+          m.jsonPath,
+          filters,
+          '',
+        );
+        if (filterActive && !hasData) continue;
+        let dados: unknown;
+        try {
+          dados = JSON.parse(text);
+        } catch {
+          dados = text;
+        }
+        parts.push({ trecho: m.jsonPath, dados });
+      }
+      if (parts.length === 0) {
+        jsonExcerpt = filterActive ? 'Nenhum trecho corresponde aos critérios.' : '—';
+      } else {
+        jsonExcerpt = JSON.stringify(parts.length === 1 ? parts[0].dados : parts, null, 2) || '—';
+      }
     } catch {
       jsonExcerpt = '—';
     }
@@ -663,7 +808,8 @@ function LinkedConsultationCard({ consultation: pc, provider: prov, fieldTypeKey
       <AnimatePresence>
         {expanded && jsonExcerpt && (
           <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden">
-            <div className="px-3 pb-2.5 border-t border-border pt-2">
+            <div className="px-3 pb-2.5 border-t border-border pt-2 space-y-2">
+              <ConsultationTypeFiltersEditor filters={filters} onChange={setFilters} />
               <pre className="text-sm font-mono text-foreground/80 bg-background rounded-md border border-border p-3 max-h-40 overflow-auto scrollbar-thin leading-relaxed">
                 {jsonExcerpt}
               </pre>
@@ -705,6 +851,8 @@ async function syncMappings(
       productId,
       canonicalFieldId: ft.id,
       sourcePath: m.jsonPath,
+      uiStartLine: m.uiStartLine,
+      uiEndLine: m.uiEndLine,
       sortOrder: i,
     });
   }
@@ -723,6 +871,19 @@ export default function IntegrationsPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [savingProvider, setSavingProvider] = useState(false);
   const [savingFieldType, setSavingFieldType] = useState(false);
+  const [globalTypeFilters, setGlobalTypeFilters] = useState<Record<string, MappingItemFilter[]>>({});
+
+  const cardTestFnsRef = useRef<Record<string, () => Promise<void>>>({});
+  const newConsultationTestRef = useRef<(() => Promise<void>) | null>(null);
+
+  const registerCardTestFn = useCallback((productId: string, fn: (() => Promise<void>) | null) => {
+    if (fn) cardTestFnsRef.current[productId] = fn;
+    else delete cardTestFnsRef.current[productId];
+  }, []);
+
+  const registerNewConsultationTestFn = useCallback((fn: (() => Promise<void>) | null) => {
+    newConsultationTestRef.current = fn;
+  }, []);
 
   const enabled = !!accessToken && user?.backendRole === 'PLATFORM_ADMIN';
 
@@ -750,6 +911,14 @@ export default function IntegrationsPage() {
     [canonicalQuery.data],
   );
 
+  useEffect(() => {
+    const next: Record<string, MappingItemFilter[]> = {};
+    for (const fieldType of fieldTypes) {
+      next[fieldType.key] = (fieldType.typeItemFilters ?? []).map((rule) => ({ ...rule }));
+    }
+    setGlobalTypeFilters(next);
+  }, [fieldTypes]);
+
   const providers = useMemo(() => apiProviders.map(mapApiProvider), [apiProviders]);
 
   const consultations = useMemo(() => {
@@ -774,14 +943,20 @@ export default function IntegrationsPage() {
 
   const testMutation = useMutation({
     mutationFn: async (input: ConsultationTestInput) => {
+      const payload: Parameters<typeof testProductApi>[2] = {
+        context: {},
+        ...(input.bodyTemplate !== undefined ? { bodyTemplate: input.bodyTemplate } : {}),
+        ...(input.queryTemplate !== undefined ? { queryTemplate: input.queryTemplate } : {}),
+        ...(input.headersTemplate !== undefined ? { headersTemplate: input.headersTemplate } : {}),
+      };
       if (input.kind === 'saved') {
-        return testProductApi(accessToken, input.productId, {});
+        return testProductApi(accessToken, input.productId, payload);
       }
       return testProductDraftApi(accessToken, {
         providerId: input.providerId,
         endpointPath: input.endpointPath,
         method: input.method,
-        context: {},
+        ...payload,
       });
     },
     onSuccess: () => {
@@ -853,6 +1028,7 @@ export default function IntegrationsPage() {
         await patchCanonicalFieldApi(accessToken, fieldTypeModal.ft.id, {
           label: form.label,
           description: form.description || null,
+          uiItemFilters: form.typeItemFilters ?? [],
         });
         toast.success('Tipo atualizado');
       } else {
@@ -861,6 +1037,7 @@ export default function IntegrationsPage() {
           label: form.label!,
           dataType: 'object',
           description: form.description,
+          uiItemFilters: form.typeItemFilters ?? [],
         });
         toast.success('Tipo cadastrado');
       }
@@ -870,6 +1047,25 @@ export default function IntegrationsPage() {
     }
   };
 
+  const handleGlobalTypeFiltersChange = useCallback(async (next: Record<string, MappingItemFilter[]>) => {
+    setGlobalTypeFilters(next);
+    const changed = fieldTypes.filter((fieldType) => {
+      const prev = JSON.stringify(globalTypeFilters[fieldType.key] ?? []);
+      const curr = JSON.stringify(next[fieldType.key] ?? []);
+      return prev !== curr;
+    });
+
+    for (const fieldType of changed) {
+      await patchCanonicalFieldApi(accessToken, fieldType.id, {
+        uiItemFilters: next[fieldType.key] ?? [],
+      });
+    }
+
+    if (changed.length > 0) {
+      void queryClient.invalidateQueries({ queryKey: ['admin-canonical-fields'] });
+    }
+  }, [accessToken, fieldTypes, globalTypeFilters, queryClient]);
+
   const saveConsultation = async (data: Partial<ProviderConsultation>, existingId?: string) => {
     let sampleResponse: unknown = undefined;
     if (data.sampleResponse !== undefined && data.sampleResponse !== '') {
@@ -877,6 +1073,21 @@ export default function IntegrationsPage() {
         sampleResponse = JSON.parse(data.sampleResponse);
       } catch {
         sampleResponse = data.sampleResponse;
+      }
+    }
+
+    let bodyTemplate: unknown | null | undefined = undefined;
+    if (data.bodyTemplateJson !== undefined) {
+      const raw = data.bodyTemplateJson.trim();
+      if (!raw) {
+        bodyTemplate = null;
+      } else {
+        try {
+          bodyTemplate = JSON.parse(raw);
+        } catch {
+          toast.error('Corpo da requisição (JSON) inválido');
+          return;
+        }
       }
     }
 
@@ -892,6 +1103,7 @@ export default function IntegrationsPage() {
         cost: data.cost ?? 0,
         isActive: data.status !== 'inactive',
         sampleResponse: sampleResponse === undefined ? undefined : sampleResponse,
+        ...(bodyTemplate !== undefined ? { bodyTemplate } : {}),
       });
       await syncMappings(accessToken, existingId, fieldTypes, data.fieldMappings || [], prev);
       toast.success('Consulta atualizada');
@@ -911,6 +1123,7 @@ export default function IntegrationsPage() {
         cost: data.cost ?? 0,
         isActive: data.status !== 'inactive',
         sampleResponse: sampleResponse ?? undefined,
+        ...(bodyTemplate !== undefined && bodyTemplate !== null ? { bodyTemplate } : {}),
       });
       await syncMappings(accessToken, created.id, fieldTypes, data.fieldMappings || [], undefined);
       toast.success('Consulta cadastrada');
@@ -1123,16 +1336,30 @@ export default function IntegrationsPage() {
             {creatingConsultation.active && (
               <motion.div initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -4 }}>
                 <div className="bg-card rounded-md border-2 border-primary/30 p-4">
-                  <div className="flex items-center gap-2 mb-4">
-                    <Zap className="w-5 h-5 text-primary" />
-                    <span className="text-base font-semibold text-foreground">Nova Consulta</span>
+                  <div className="flex items-center justify-between gap-2 mb-4">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <Zap className="w-5 h-5 text-primary shrink-0" />
+                      <span className="text-base font-semibold text-foreground truncate">Nova Consulta</span>
+                    </div>
+                    <Button
+                      type="button"
+                      size="sm"
+                      className="gradient-primary text-primary-foreground text-sm h-9 shrink-0 px-3"
+                      disabled={testMutation.isPending}
+                      onClick={() => void newConsultationTestRef.current?.()}
+                    >
+                      <Play className="w-4 h-4 mr-1.5" />
+                      {testMutation.isPending ? '…' : 'Testar'}
+                    </Button>
                   </div>
                   <NewConsultationForm
                     providers={providers}
                     fieldTypes={fieldTypes}
+                    typeFilters={globalTypeFilters}
+                    onTypeFiltersChange={(next) => void handleGlobalTypeFiltersChange(next)}
                     testLog={testLog}
                     providerId={creatingConsultation.providerId}
-                    testing={testMutation.isPending}
+                    registerNewConsultationTestFn={registerNewConsultationTestFn}
                     onTest={(input) => testMutation.mutateAsync(input)}
                     onSave={async (data) => saveConsultation(data)}
                     onCancel={() => setCreatingConsultation({ active: false })}
@@ -1178,7 +1405,23 @@ export default function IntegrationsPage() {
                           <span>{pc.fieldMappings.length} campos</span>
                         </div>
                       </div>
-                      <div className="flex items-center gap-1">
+                      <div className="flex items-center gap-1 shrink-0">
+                        <button
+                          type="button"
+                          title="Testar no provedor"
+                          className="w-8 h-8 flex items-center justify-center rounded-md text-muted-foreground hover:text-primary transition-colors disabled:opacity-50"
+                          disabled={testMutation.isPending}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (isEditing && cardTestFnsRef.current[pc.id]) {
+                              void cardTestFnsRef.current[pc.id]();
+                            } else {
+                              void testMutation.mutateAsync({ kind: 'saved', productId: pc.id });
+                            }
+                          }}
+                        >
+                          <Play className="w-4 h-4" />
+                        </button>
                         <button
                           type="button"
                           className="w-8 h-8 flex items-center justify-center rounded-md text-muted-foreground hover:text-destructive transition-colors"
@@ -1207,8 +1450,10 @@ export default function IntegrationsPage() {
                               consultation={pc}
                               providers={providers}
                               fieldTypes={fieldTypes}
+                              typeFilters={globalTypeFilters}
+                              onTypeFiltersChange={(next) => void handleGlobalTypeFiltersChange(next)}
                               testLog={testLog}
-                              testing={testMutation.isPending}
+                              registerCardTestFn={registerCardTestFn}
                               onTest={(input) => testMutation.mutateAsync(input)}
                               onSave={async (data) => saveConsultation(data, pc.id)}
                               onCancel={() => setEditingConsultation(null)}
@@ -1238,8 +1483,9 @@ export default function IntegrationsPage() {
             </Button>
           </div>
 
-          <div className="flex gap-3 min-h-[360px]">
-            <div className="w-64 flex-shrink-0 space-y-1">
+          <div className="flex min-h-[360px] max-h-[min(70vh,40rem)] gap-3">
+            <div className="flex w-64 shrink-0 flex-col border-r border-border/60 pr-2 min-h-0">
+              <div className="min-h-0 flex-1 space-y-1 overflow-y-auto overflow-x-hidden [scrollbar-width:thin] pr-1">
               {fieldTypes.map((ft, i) => {
                 const linked = getLinkedConsultations(ft.key);
                 const isSelected = selectedFieldType === ft.key;
@@ -1301,9 +1547,10 @@ export default function IntegrationsPage() {
                   </motion.div>
                 );
               })}
+              </div>
             </div>
 
-            <div className="flex-1 min-w-0">
+            <div className="min-h-0 min-w-0 flex-1 overflow-y-auto [scrollbar-width:thin]">
               {selectedFieldType ? (() => {
                 const ft = fieldTypes.find((f) => f.key === selectedFieldType);
                 const linked = getLinkedConsultations(selectedFieldType);
@@ -1330,6 +1577,7 @@ export default function IntegrationsPage() {
                             consultation={pc}
                             provider={providers.find((p) => p.id === pc.providerId)}
                             fieldTypeKey={selectedFieldType!}
+                            initialFilters={pc.typeItemFilters?.[selectedFieldType] ?? globalTypeFilters[selectedFieldType] ?? []}
                           />
                         ))}
                       </div>

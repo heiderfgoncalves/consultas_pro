@@ -7,6 +7,7 @@ export interface ConsultationFieldType {
   description: string;
   color: string;
   icon: string;
+  typeItemFilters?: MappingItemFilter[];
 }
 
 export interface FieldMapping {
@@ -14,6 +15,8 @@ export interface FieldMapping {
   fieldTypeKey: string;
   label: string;
   format?: string;
+  uiStartLine?: number;
+  uiEndLine?: number;
 }
 
 export type MappingItemFilterOp = 'eq' | 'contains' | 'startsWith' | 'endsWith' | 'regex';
@@ -47,7 +50,7 @@ export interface ProviderConsultation {
   method: 'GET' | 'POST';
   cost: number;
   fieldMappings: FieldMapping[];
-  /** Critérios por tipo canônico (pathKey); aplicam a todos os trechos JSON desse tipo. Não persistido na API ainda. */
+  /** Critérios mantidos por compatibilidade local; a fonte de verdade agora é o catálogo canônico. */
   typeItemFilters?: Record<string, MappingItemFilter[]>;
   sampleRequest?: string;
   sampleResponse?: string;

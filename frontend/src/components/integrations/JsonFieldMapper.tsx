@@ -8,13 +8,21 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from '@/components/ui/resizable';
 import type { ConsultationFieldType, FieldMapping, MappingItemFilter, MappingItemFilterOp } from '@/types/integrations';
-import { formatMappedValuePreview, getValueAtJsonPath } from '@/lib/providerResponseMapping';
+import { formatDeepFilteredValueAtPath, getValueAtJsonPath } from '@/lib/providerResponseMapping';
 
 interface JsonSection {
   path: string;
@@ -41,6 +49,8 @@ interface JsonFieldMapperProps {
   onMappingsChange: (mappings: FieldMapping[]) => void;
   typeFilters?: Record<string, MappingItemFilter[]>;
   onTypeFiltersChange?: (next: Record<string, MappingItemFilter[]>) => void;
+  /** Título da coluna esquerda (JSON de retorno do provedor) */
+  jsonColumnTitle?: string;
 }
 
 function newRegionId(): string {
@@ -50,7 +60,7 @@ function newRegionId(): string {
 function parseJsonSections(jsonStr: string): { lines: string[]; sections: JsonSection[] } {
   const lines = jsonStr.split('\n');
   const sections: JsonSection[] = [];
-  const stack: { path: string; startLine: number; isArray: boolean; depth: number }[] = [];
+  const stack: { path: string; startLine: number; isArray: boolean; depth: number; pushedKey: boolean }[] = [];
   const pathStack: string[] = [];
   let lastKey = '';
 
@@ -61,19 +71,21 @@ function parseJsonSections(jsonStr: string): { lines: string[]; sections: JsonSe
 
     if (trimmed.includes('{') && !trimmed.includes('}')) {
       const path = lastKey ? [...pathStack, lastKey].join('.') : pathStack.join('.') || 'root';
-      stack.push({ path, startLine: i, isArray: false, depth: stack.length });
-      if (lastKey) pathStack.push(lastKey);
+      const pushedKey = Boolean(lastKey);
+      stack.push({ path, startLine: i, isArray: false, depth: stack.length, pushedKey });
+      if (pushedKey) pathStack.push(lastKey);
       lastKey = '';
     } else if (trimmed.includes('[') && !trimmed.includes(']')) {
       const path = lastKey ? [...pathStack, lastKey].join('.') : pathStack.join('.') || 'root';
-      stack.push({ path, startLine: i, isArray: true, depth: stack.length });
-      if (lastKey) pathStack.push(lastKey);
+      const pushedKey = Boolean(lastKey);
+      stack.push({ path, startLine: i, isArray: true, depth: stack.length, pushedKey });
+      if (pushedKey) pathStack.push(lastKey);
       lastKey = '';
     }
 
     if ((trimmed.startsWith('}') || trimmed.startsWith(']')) && stack.length > 0) {
       const opened = stack.pop()!;
-      pathStack.pop();
+      if (opened.pushedKey) pathStack.pop();
       sections.push({
         path: opened.path || `section_${opened.startLine}`,
         startLine: opened.startLine,
@@ -86,6 +98,37 @@ function parseJsonSections(jsonStr: string): { lines: string[]; sections: JsonSe
   });
 
   return { lines, sections };
+}
+
+/** Vários trechos podem compartilhar o mesmo path (ex.: chave do array e cada `{...}` interno). Prefere a seção do array. */
+function resolveSectionForJsonPath(sections: JsonSection[], jsonPath: string): JsonSection | undefined {
+  const candidates = sections.filter(s => s.path === jsonPath);
+  if (candidates.length === 0) return undefined;
+  if (candidates.length === 1) return candidates[0];
+  const arrays = candidates.filter(s => s.isArray);
+  if (arrays.length === 1) return arrays[0];
+  if (arrays.length > 1) {
+    return arrays.reduce((a, b) =>
+      (a.endLine - a.startLine) < (b.endLine - b.startLine) ? a : b,
+    );
+  }
+  return candidates[0];
+}
+
+function resolveRegionBounds(
+  sections: JsonSection[],
+  mapping: Pick<FieldMapping, 'jsonPath' | 'uiStartLine' | 'uiEndLine'>,
+): { startLine: number; endLine: number } | null {
+  if (
+    typeof mapping.uiStartLine === 'number'
+    && typeof mapping.uiEndLine === 'number'
+    && mapping.uiEndLine >= mapping.uiStartLine
+  ) {
+    return { startLine: mapping.uiStartLine, endLine: mapping.uiEndLine };
+  }
+  const section = resolveSectionForJsonPath(sections, mapping.jsonPath);
+  if (!section) return null;
+  return { startLine: section.startLine, endLine: section.endLine };
 }
 
 const colorMap: Record<string, {
@@ -115,6 +158,19 @@ const colorMap: Record<string, {
 
 function getColors(color: string) {
   return colorMap[color] || colorMap.primary;
+}
+
+function cloneFilters(filters: MappingItemFilter[] | undefined): MappingItemFilter[] {
+  return (filters ?? []).map((filter) => ({ ...filter }));
+}
+
+function getMappedValuePreview(
+  rootJson: string,
+  jsonPath: string,
+  filters: MappingItemFilter[] | undefined,
+  lineFallback: string,
+): { text: string; hasData: boolean } {
+  return formatDeepFilteredValueAtPath(rootJson, jsonPath, filters, lineFallback);
 }
 
 const iconMap: Record<string, React.ComponentType<{ className?: string }>> = {
@@ -176,59 +232,137 @@ function cellToSuggestionString(val: unknown): string {
   }
 }
 
-/** Chaves e valores distintos a partir de arrays de objetos nos trechos mapeados (para critérios). */
-function collectFilterSuggestionsFromPaths(jsonStr: string, jsonPaths: string[]): {
+/** Extrai `{...}` ou `[...]` balanceado a partir de `start` (respeitando strings JSON). */
+function extractBalancedJsonFragment(s: string, start: number): string | null {
+  const first = s[start];
+  if (first !== '{' && first !== '[') return null;
+  const stack: string[] = [first === '{' ? '}' : ']'];
+  let inString = false;
+  let esc = false;
+  for (let i = start + 1; i < s.length; i++) {
+    const c = s[i];
+    if (inString) {
+      if (esc) esc = false;
+      else if (c === '\\') esc = true;
+      else if (c === '"') inString = false;
+      continue;
+    }
+    if (c === '"') {
+      inString = true;
+      continue;
+    }
+    if (c === '{') stack.push('}');
+    else if (c === '[') stack.push(']');
+    else if (c === '}' || c === ']') {
+      const top = stack[stack.length - 1];
+      if (c !== top) return null;
+      stack.pop();
+      if (stack.length === 0) return s.slice(start, i + 1);
+    }
+  }
+  return null;
+}
+
+/**
+ * Interpreta o texto das linhas grifadas: documento completo, ou trecho `"CHAVE": valor`, ou só o valor a partir do primeiro `{`/`[`.
+ */
+function tryParseJsonValueFromSlice(slice: string): unknown | null {
+  const t = slice.trim();
+  if (!t) return null;
+  try {
+    return JSON.parse(t);
+  } catch {
+    /* continua */
+  }
+  let body = t;
+  const keyPrefix = body.match(/^\s*"(?:[^"\\]|\\.)*"\s*:\s*/);
+  if (keyPrefix) body = body.slice(keyPrefix[0].length).trimStart();
+  const relStart = body.search(/[\[{]/);
+  if (relStart < 0) return null;
+  const balanced = extractBalancedJsonFragment(body, relStart);
+  if (!balanced) return null;
+  try {
+    return JSON.parse(balanced);
+  } catch {
+    return null;
+  }
+}
+
+/** Coleta chaves e valores dos trechos mapeados: valor no `jsonPath` + JSON literal das linhas selecionadas. */
+function collectFilterSuggestionsForMappedRegions(
+  jsonStr: string,
+  lines: string[],
+  regions: { path: string; startLine: number; endLine: number }[],
+): {
   fields: string[];
   valuesByField: Record<string, string[]>;
   allValues: string[];
 } {
+  const fieldSet = new Set<string>();
+  const valueMap = new Map<string, Set<string>>();
+
+  const scanObject = (obj: Record<string, unknown>) => {
+    for (const [k, val] of Object.entries(obj)) {
+      fieldSet.add(k);
+      if (!valueMap.has(k)) valueMap.set(k, new Set());
+      const s = cellToSuggestionString(val);
+      if (s) valueMap.get(k)!.add(s);
+    }
+  };
+
+  const scanArrayOfObjects = (arr: unknown[]) => {
+    for (const el of arr) {
+      if (!el || typeof el !== 'object' || Array.isArray(el)) continue;
+      scanObject(el as Record<string, unknown>);
+    }
+  };
+
+  const deepCollect = (value: unknown) => {
+    if (value == null) return;
+    if (Array.isArray(value)) {
+      scanArrayOfObjects(value);
+      for (const el of value) deepCollect(el);
+    } else if (typeof value === 'object') {
+      scanObject(value as Record<string, unknown>);
+      for (const v of Object.values(value as Record<string, unknown>)) deepCollect(v);
+    }
+  };
+
+  let root: unknown;
   try {
-    const root = JSON.parse(jsonStr) as unknown;
-    const fieldSet = new Set<string>();
-    const valueMap = new Map<string, Set<string>>();
-
-    const scanArray = (arr: unknown[]) => {
-      for (const el of arr) {
-        if (!el || typeof el !== 'object' || Array.isArray(el)) continue;
-        for (const [k, val] of Object.entries(el as Record<string, unknown>)) {
-          fieldSet.add(k);
-          if (!valueMap.has(k)) valueMap.set(k, new Set());
-          const s = cellToSuggestionString(val);
-          if (s) valueMap.get(k)!.add(s);
-        }
-      }
-    };
-
-    const deepCollect = (value: unknown) => {
-      if (Array.isArray(value)) {
-        scanArray(value);
-        for (const el of value) deepCollect(el);
-      } else if (value && typeof value === 'object') {
-        for (const v of Object.values(value as Record<string, unknown>)) deepCollect(v);
-      }
-    };
-
-    for (const path of jsonPaths) {
-      const raw = getValueAtJsonPath(root, path);
-      deepCollect(raw);
-    }
-
-    const valuesByField: Record<string, string[]> = {};
-    for (const [k, s] of valueMap) {
-      valuesByField[k] = [...s].sort((a, b) => a.localeCompare(b, 'pt-BR'));
-    }
-    const all = new Set<string>();
-    for (const arr of Object.values(valuesByField)) for (const v of arr) all.add(v);
-    const allValues = [...all].sort((a, b) => a.localeCompare(b, 'pt-BR'));
-
-    return {
-      fields: [...fieldSet].sort((a, b) => a.localeCompare(b, 'pt-BR')),
-      valuesByField,
-      allValues,
-    };
+    root = JSON.parse(jsonStr) as unknown;
   } catch {
     return { fields: [], valuesByField: {}, allValues: [] };
   }
+
+  for (const r of regions) {
+    const slice = lines.slice(r.startLine, r.endLine + 1).join('\n');
+    const fromSlice = tryParseJsonValueFromSlice(slice);
+    if (fromSlice !== null) deepCollect(fromSlice);
+    deepCollect(getValueAtJsonPath(root, r.path));
+  }
+
+  const valuesByField: Record<string, string[]> = {};
+  for (const [k, s] of valueMap) {
+    const uniq = [...s];
+    const seen = new Set<string>();
+    const deduped: string[] = [];
+    for (const v of uniq) {
+      if (seen.has(v)) continue;
+      seen.add(v);
+      deduped.push(v);
+    }
+    valuesByField[k] = deduped.sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  }
+  const all = new Set<string>();
+  for (const arr of Object.values(valuesByField)) for (const v of arr) all.add(v);
+  const allValues = [...all].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+
+  return {
+    fields: [...fieldSet].sort((a, b) => a.localeCompare(b, 'pt-BR')),
+    valuesByField,
+    allValues,
+  };
 }
 
 
@@ -240,6 +374,7 @@ export default function JsonFieldMapper({
   onMappingsChange,
   typeFilters = {},
   onTypeFiltersChange = () => {},
+  jsonColumnTitle = 'JSON de retorno',
 }: JsonFieldMapperProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [editBuffer, setEditBuffer] = useState(json);
@@ -248,12 +383,12 @@ export default function JsonFieldMapper({
   const [mappedRegions, setMappedRegions] = useState<MappedRegion[]>(() => {
     const { sections } = parseJsonSections(json);
     return mappings.map((m, i) => {
-      const section = sections.find(s => s.path === m.jsonPath);
+      const bounds = resolveRegionBounds(sections, m);
       return {
         regionId: `${m.fieldTypeKey}::${m.jsonPath}::${i}`,
         fieldTypeKey: m.fieldTypeKey,
-        startLine: section?.startLine ?? 0,
-        endLine: section?.endLine ?? 0,
+        startLine: bounds?.startLine ?? 0,
+        endLine: bounds?.endLine ?? 0,
         path: m.jsonPath,
       };
     }).filter(r => r.endLine > 0);
@@ -261,11 +396,28 @@ export default function JsonFieldMapper({
   const [selectedRegion, setSelectedRegion] = useState<string | null>(null);
   const [dedupEnabled, setDedupEnabled] = useState(false);
   const [dedupFields, setDedupFields] = useState<string[]>([]);
+  const [openFilterTypeKey, setOpenFilterTypeKey] = useState<string | null>(null);
+  const [draftTypeFilters, setDraftTypeFilters] = useState<Record<string, MappingItemFilter[]>>({});
   const jsonContainerRef = useRef<HTMLDivElement>(null);
   const skipNextRegionLineClick = useRef(false);
   const prevMappingsSigRef = useRef<string | null>(null);
   /** Atualizado em todo dragover; o drop usa isto para não perder a seção (state/React 18 ou dragleave). */
   const hoveredSectionRef = useRef<JsonSection | null>(null);
+
+  useEffect(() => {
+    setEditBuffer(json);
+    const trimmed = json.trim();
+    if (!trimmed) {
+      setIsEditing(true);
+      return;
+    }
+    try {
+      JSON.parse(json);
+      setIsEditing(false);
+    } catch {
+      setIsEditing(true);
+    }
+  }, [json]);
 
   /** Por tipo: modo lista vs texto livre para campo/valor em cada critério (índice alinhado a `rules`). */
   const [criterionUiByType, setCriterionUiByType] = useState<
@@ -273,7 +425,12 @@ export default function JsonFieldMapper({
   >({});
 
   const mappingsSig = useMemo(
-    () => JSON.stringify(mappings.map(m => ({ k: m.fieldTypeKey, p: m.jsonPath }))),
+    () => JSON.stringify(mappings.map(m => ({
+      k: m.fieldTypeKey,
+      p: m.jsonPath,
+      s: m.uiStartLine ?? null,
+      e: m.uiEndLine ?? null,
+    }))),
     [mappings],
   );
 
@@ -311,6 +468,8 @@ export default function JsonFieldMapper({
         fieldTypeKey: r.fieldTypeKey,
         label: fieldTypes.find(ft => ft.key === r.fieldTypeKey)?.label || r.path,
         format: 'object',
+        uiStartLine: r.startLine,
+        uiEndLine: r.endLine,
       })),
     [fieldTypes],
   );
@@ -329,12 +488,12 @@ export default function JsonFieldMapper({
         prevMappingsSigRef.current = mappingsSig;
         return mappings
           .map((m, i) => {
-            const section = nextSections.find(s => s.path === m.jsonPath);
+            const bounds = resolveRegionBounds(nextSections, m);
             return {
               regionId: `${m.fieldTypeKey}::${m.jsonPath}::${i}`,
               fieldTypeKey: m.fieldTypeKey,
-              startLine: section?.startLine ?? 0,
-              endLine: section?.endLine ?? 0,
+              startLine: bounds?.startLine ?? 0,
+              endLine: bounds?.endLine ?? 0,
               path: m.jsonPath,
             };
           })
@@ -380,7 +539,59 @@ export default function JsonFieldMapper({
     [typeFilters, onTypeFiltersChange],
   );
 
+  const setDraftFiltersForType = useCallback(
+    (fieldTypeKey: string, nextRules: MappingItemFilter[]) => {
+      setDraftTypeFilters((prev) => ({ ...prev, [fieldTypeKey]: nextRules }));
+    },
+    [],
+  );
+
+  const openFilterDialog = useCallback(
+    (fieldTypeKey: string) => {
+      const nextRules = cloneFilters(typeFilters[fieldTypeKey]);
+      setDraftTypeFilters((prev) => ({ ...prev, [fieldTypeKey]: nextRules }));
+      setCriterionUiByType((prev) => {
+        const cur = [...(prev[fieldTypeKey] ?? [])];
+        while (cur.length < nextRules.length) {
+          cur.push({ fieldList: true, valueList: true });
+        }
+        cur.length = nextRules.length;
+        return { ...prev, [fieldTypeKey]: cur };
+      });
+      setOpenFilterTypeKey(fieldTypeKey);
+    },
+    [typeFilters],
+  );
+
+  const closeFilterDialog = useCallback((fieldTypeKey?: string) => {
+    const key = fieldTypeKey ?? openFilterTypeKey;
+    if (!key) return;
+    setDraftTypeFilters((prev) => {
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    });
+    setOpenFilterTypeKey((current) => (current === key ? null : current));
+  }, [openFilterTypeKey]);
+
+  const saveFilterDialog = useCallback(
+    (fieldTypeKey: string) => {
+      setFiltersForType(fieldTypeKey, cloneFilters(draftTypeFilters[fieldTypeKey]));
+      setOpenFilterTypeKey(null);
+    },
+    [draftTypeFilters, setFiltersForType],
+  );
+
   const findSectionForLine = useCallback((lineIdx: number): JsonSection | null => {
+    const startingHere = sections.filter(s => s.startLine === lineIdx);
+    if (startingHere.length > 0) {
+      const arrays = startingHere.filter(s => s.isArray);
+      const pool = arrays.length > 0 ? arrays : startingHere;
+      return pool.reduce((largest, s) =>
+        (s.endLine - s.startLine) > (largest.endLine - largest.startLine) ? s : largest,
+      );
+    }
+
     const matching = sections.filter(s => lineIdx >= s.startLine && lineIdx <= s.endLine);
     if (matching.length === 0) return null;
 
@@ -602,33 +813,36 @@ export default function JsonFieldMapper({
 
   const suggestionsByType = useMemo(() => {
     const keys = [...new Set(mappedRegions.map(r => r.fieldTypeKey))];
-    const out: Record<string, ReturnType<typeof collectFilterSuggestionsFromPaths>> = {};
+    const out: Record<string, ReturnType<typeof collectFilterSuggestionsForMappedRegions>> = {};
     for (const k of keys) {
-      const paths = mappedRegions.filter(r => r.fieldTypeKey === k).map(r => r.path);
-      out[k] = collectFilterSuggestionsFromPaths(json, paths);
+      const regs = mappedRegions.filter(r => r.fieldTypeKey === k);
+      out[k] = collectFilterSuggestionsForMappedRegions(json, lines, regs);
     }
     return out;
-  }, [json, mappedRegions]);
+  }, [json, mappedRegions, lines]);
 
   const previewByType = useMemo(() => {
     return typeKeysInOrder.map(fieldTypeKey => {
       const ft = fieldTypes.find(f => f.key === fieldTypeKey);
       if (!ft) return null;
       const regions = mappedRegions.filter(r => r.fieldTypeKey === fieldTypeKey);
-      const filters = typeFilters[fieldTypeKey];
+      const filters = openFilterTypeKey === fieldTypeKey
+        ? (draftTypeFilters[fieldTypeKey] ?? typeFilters[fieldTypeKey])
+        : typeFilters[fieldTypeKey];
       const parts = regions.map(region => {
         const fallback = lineSlicePreview(region);
-        const text = formatMappedValuePreview(json, region.path, filters, fallback);
-        return { regionId: region.regionId, path: region.path, text };
-      });
+        const preview = getMappedValuePreview(json, region.path, filters, fallback);
+        return { regionId: region.regionId, path: region.path, text: preview.text, hasData: preview.hasData };
+      }).filter(part => !filters?.length || part.hasData);
+      if (filters?.length && parts.length === 0) return null;
       return { fieldTypeKey, ft, parts, filters: filters ?? [] };
     }).filter(Boolean) as {
       fieldTypeKey: string;
       ft: ConsultationFieldType;
-      parts: { regionId: string; path: string; text: string }[];
+      parts: { regionId: string; path: string; text: string; hasData: boolean }[];
       filters: MappingItemFilter[];
     }[];
-  }, [typeKeysInOrder, mappedRegions, fieldTypes, lines, json, typeFilters]);
+  }, [typeKeysInOrder, mappedRegions, fieldTypes, lines, json, typeFilters, openFilterTypeKey, draftTypeFilters]);
 
   return (
     <div className="h-[460px] border border-border rounded-md overflow-hidden bg-card"
@@ -638,8 +852,8 @@ export default function JsonFieldMapper({
         <ResizablePanel defaultSize={50} minSize={25} className="min-h-0 min-w-0">
           <div className="flex min-h-0 min-w-0 flex-col h-full">
             <div className="flex items-center justify-between px-3 h-9 border-b border-border bg-muted/40">
-              <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-2">
-                <Code2 className="w-4 h-4" /> JSON
+              <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-2 min-w-0">
+                <Code2 className="w-4 h-4 shrink-0" /> <span className="truncate">{jsonColumnTitle}</span>
               </span>
               {!isEditing ? (
                 <button onClick={() => { setEditBuffer(json); setIsEditing(true); }}
@@ -662,14 +876,14 @@ export default function JsonFieldMapper({
               <textarea
                 value={editBuffer}
                 onChange={e => setEditBuffer(e.target.value)}
-                className="flex-1 p-3 text-sm font-mono bg-background text-foreground resize-none focus:outline-none leading-6"
+                className="flex-1 min-h-0 min-w-0 p-3 text-sm font-mono bg-background text-foreground resize-none focus:outline-none leading-6 overflow-x-auto overflow-y-auto [scrollbar-width:thin]"
                 spellCheck={false}
               />
             ) : (
-              <ScrollArea className="min-h-0 min-w-0 flex-1">
+              <div className="min-h-0 min-w-0 flex-1 overflow-x-auto overflow-y-auto [scrollbar-width:thin] overscroll-x-contain">
                 <div
                   ref={jsonContainerRef}
-                  className="select-none relative min-w-0"
+                  className="select-none relative w-max min-w-full"
                   onDragOver={e => {
                     e.preventDefault();
                     e.dataTransfer.dropEffect = 'copy';
@@ -697,14 +911,14 @@ export default function JsonFieldMapper({
                     const leftBorder =
                       region && selectedRegion === region.fieldTypeKey && primaryColors
                         ? `${primaryColors.border} border-l-2`
-                        : dragHoverLine && dragColors
-                          ? `${dragColors.border} border-l-2`
-                          : '';
+                        : '';
+                    const isDragStartLine = dragHoverLine && hoveredSection && i === hoveredSection.startLine;
+                    const isDragEndLine = dragHoverLine && hoveredSection && i === hoveredSection.endLine;
 
                     return (
                       <div
                         key={i}
-                        className={`flex items-stretch text-sm font-mono leading-6 transition-colors duration-75 relative hover:bg-accent/20 ${regionsOnLine.length ? 'cursor-grab active:cursor-grabbing' : ''} ${leftBorder}`}
+                        className={`flex w-max min-w-full items-stretch text-sm font-mono leading-6 transition-colors duration-75 relative hover:bg-accent/20 ${regionsOnLine.length ? 'cursor-grab active:cursor-grabbing' : ''} ${leftBorder}`}
                         style={{ height: LINE_HEIGHT }}
                         onDragOver={e => handleLineDragOver(e, i)}
                         onMouseDown={(e) => {
@@ -735,7 +949,11 @@ export default function JsonFieldMapper({
                             );
                           })}
                           {dragHoverLine && dragColors && (
-                            <div className={`absolute inset-0 ${dragColors.highlightLayer}`} />
+                            <div
+                              className={`absolute inset-y-0 left-0 right-0 border-x-2 ${dragColors.border} ${dragColors.highlightLayer} ${
+                                isDragStartLine ? 'rounded-t-md border-t-2' : 'border-t-0'
+                              } ${isDragEndLine ? 'rounded-b-md border-b-2' : 'border-b-0'}`}
+                            />
                           )}
                         </div>
 
@@ -769,13 +987,13 @@ export default function JsonFieldMapper({
                         <span className="relative z-10 w-10 text-right pr-2 text-muted-foreground/40 select-none flex-shrink-0 border-r border-border/40 text-xs leading-6 tabular-nums">
                           {i + 1}
                         </span>
-                        <div className="relative z-10 flex min-h-0 min-w-0 flex-1 items-center gap-1">
-                          <pre className="min-h-0 min-w-0 flex-1 overflow-x-auto px-2 whitespace-pre text-foreground/90 leading-6 [scrollbar-width:thin]">
+                        <div className="relative z-10 flex min-h-0 flex-1 items-center">
+                          <pre className="px-2 pr-24 whitespace-pre text-foreground/90 leading-6">
                             {line || ' '}
                           </pre>
                           {startsOnLine.length > 0 && (
                             <div
-                              className="pointer-events-auto flex shrink-0 flex-col items-end gap-0.5 rounded-md border border-border/60 bg-card p-0.5 shadow-sm"
+                              className="pointer-events-auto sticky right-1 ml-auto flex max-w-[12rem] shrink-0 flex-row flex-nowrap items-center justify-end gap-1 rounded-l-full bg-gradient-to-l from-background via-background/95 to-transparent pl-3 pr-1"
                               data-json-mapper-badge-stack
                             >
                               {startsOnLine.map(r => {
@@ -787,7 +1005,7 @@ export default function JsonFieldMapper({
                                     key={r.regionId}
                                     data-json-mapper-badge
                                     variant="outline"
-                                    className={`text-[10px] h-5 max-w-[10rem] shrink-0 cursor-pointer border ${c.border} ${c.text} font-medium gap-0.5`}
+                                    className={`text-[10px] h-5 max-w-[5.75rem] shrink-0 cursor-pointer rounded-full border ${c.border} ${c.text} bg-background/95 font-medium gap-0.5 shadow-sm`}
                                     onClick={(e) => {
                                       e.stopPropagation();
                                       setSelectedRegion(r.fieldTypeKey === selectedRegion ? null : r.fieldTypeKey);
@@ -805,7 +1023,7 @@ export default function JsonFieldMapper({
                     );
                   })}
                 </div>
-              </ScrollArea>
+              </div>
             )}
           </div>
         </ResizablePanel>
@@ -826,7 +1044,9 @@ export default function JsonFieldMapper({
                   const colors = getColors(ft.color);
                   const regionsForType = mappedRegions.filter(r => r.fieldTypeKey === ft.key);
                   const isMapped = regionsForType.length > 0;
-                  const rules = typeFilters[ft.key] ?? [];
+                  const rules = openFilterTypeKey === ft.key
+                    ? (draftTypeFilters[ft.key] ?? [])
+                    : (typeFilters[ft.key] ?? []);
                   const suggest = suggestionsByType[ft.key] ?? { fields: [], valuesByField: {}, allValues: [] };
                   const uiModes = criterionUiByType[ft.key] ?? [];
 
@@ -863,29 +1083,43 @@ export default function JsonFieldMapper({
                         </div>
                         <span className="min-w-0 flex-1 truncate font-medium text-foreground">{ft.label}</span>
                         {isMapped && (
-                          <Popover modal={false}>
-                            <PopoverTrigger asChild>
+                          <Dialog
+                            open={openFilterTypeKey === ft.key}
+                            onOpenChange={(open) => {
+                              if (open) {
+                                openFilterDialog(ft.key);
+                              } else {
+                                closeFilterDialog(ft.key);
+                              }
+                            }}
+                          >
+                            <DialogTrigger asChild>
                               <Button
                                 type="button"
                                 variant="ghost"
                                 size="icon"
                                 className="h-7 w-7 shrink-0 text-muted-foreground hover:text-foreground"
-                                onClick={e => e.stopPropagation()}
+                                onClick={e => {
+                                  e.stopPropagation();
+                                  openFilterDialog(ft.key);
+                                }}
                                 aria-label="Critérios de filtro do tipo"
                               >
                                 <Filter className="w-3.5 h-3.5" />
                               </Button>
-                            </PopoverTrigger>
-                            <PopoverContent
-                              className="w-[min(22rem,calc(100vw-2rem))] p-3"
-                              align="start"
+                            </DialogTrigger>
+                            <DialogContent
+                              className="flex max-h-[min(90vh,880px)] w-[min(36rem,calc(100vw-1.5rem))] max-w-[min(36rem,95vw)] flex-col gap-0 overflow-hidden border bg-background p-0 sm:max-w-[min(36rem,95vw)]"
                               onClick={e => e.stopPropagation()}
                             >
-                              <p className="text-xs font-semibold text-foreground">Critérios do tipo</p>
-                              <p className="mt-1 text-[11px] leading-snug text-muted-foreground">
-                                Valem para todos os trechos JSON deste tipo. Em arrays de objetos, os critérios combinam com AND.
-                              </p>
-                              <div className="mt-2 max-h-56 space-y-2 overflow-y-auto pr-0.5">
+                              <DialogHeader className="space-y-2 border-b border-border px-5 py-4 text-left">
+                                <DialogTitle className="text-base">Critérios do tipo</DialogTitle>
+                                <DialogDescription className="text-xs leading-relaxed">
+                                  Valem para todos os trechos JSON deste tipo. Em arrays de objetos, os critérios combinam com AND.
+                                  Campos e valores são inferidos do trecho grifado (linhas) e do path JSON, sem duplicar entradas.
+                                </DialogDescription>
+                              </DialogHeader>
+                              <div className="min-h-0 flex-1 space-y-2.5 overflow-y-auto px-5 py-4">
                                 {rules.length === 0 && (
                                   <p className="text-xs italic text-muted-foreground">Nenhum critério</p>
                                 )}
@@ -896,18 +1130,14 @@ export default function JsonFieldMapper({
                                     : suggest.allValues;
                                   const showFieldSelect =
                                     uiRow.fieldList &&
-                                    (suggest.fields.length === 0 ||
-                                      rule.field === '' ||
-                                      suggest.fields.includes(rule.field));
+                                    (suggest.fields.length > 0 || rule.field === '');
                                   const showValueSelect =
                                     uiRow.valueList &&
-                                    (valueOpts.length === 0 ||
-                                      rule.value === '' ||
-                                      valueOpts.includes(rule.value));
+                                    (valueOpts.length > 0 || rule.value === '');
 
                                   const patchRule = (patch: Partial<MappingItemFilter>) => {
-                                    const base = typeFilters[ft.key] ?? [];
-                                    setFiltersForType(
+                                    const base = draftTypeFilters[ft.key] ?? [];
+                                    setDraftFiltersForType(
                                       ft.key,
                                       base.map((x, i) => (i === idx ? { ...x, ...patch } : x)),
                                     );
@@ -928,9 +1158,9 @@ export default function JsonFieldMapper({
                                   return (
                                     <div
                                       key={idx}
-                                      className="space-y-1.5 rounded-md border border-border/70 bg-muted/15 p-2"
+                                      className="space-y-2 rounded-lg border border-border/80 bg-muted/20 p-3"
                                     >
-                                      <div className="flex flex-wrap items-end gap-1.5">
+                                      <div className="flex flex-wrap items-end gap-2">
                                         {showFieldSelect ? (
                                           <Select
                                             value={
@@ -950,10 +1180,10 @@ export default function JsonFieldMapper({
                                               patchRule({ field: v });
                                             }}
                                           >
-                                            <SelectTrigger className="h-8 min-w-[6.5rem] max-w-[10rem] flex-1 bg-background text-xs">
+                                            <SelectTrigger className="h-9 min-w-[7rem] max-w-[11rem] flex-1 bg-background text-xs">
                                               <SelectValue placeholder="Campo" />
                                             </SelectTrigger>
-                                            <SelectContent className="max-h-48">
+                                            <SelectContent className="max-h-60 z-[200]">
                                               <SelectItem value={SENTINEL_EMPTY} className="text-xs text-muted-foreground">
                                                 Selecione o campo…
                                               </SelectItem>
@@ -976,25 +1206,28 @@ export default function JsonFieldMapper({
                                             </SelectContent>
                                           </Select>
                                         ) : (
-                                          <div className="flex min-w-0 flex-1 items-center gap-1">
+                                          <div className="flex min-w-0 flex-1 items-center gap-1.5">
                                             <Input
                                               value={rule.field}
                                               onChange={e => patchRule({ field: e.target.value })}
                                               placeholder="Campo (livre)"
-                                              className="h-8 min-w-0 flex-1 bg-background font-mono text-xs"
+                                              className="h-9 min-w-0 flex-1 bg-background font-mono text-xs"
                                             />
-                                            {suggest.fields.length > 0 && (
-                                              <Button
-                                                type="button"
-                                                variant="outline"
-                                                size="icon"
-                                                className="h-8 w-8 shrink-0 cursor-pointer"
-                                                title="Escolher campo da lista"
-                                                onClick={() => setMode({ fieldList: true })}
-                                              >
-                                                <List className="h-3.5 w-3.5" />
-                                              </Button>
-                                            )}
+                                            <Button
+                                              type="button"
+                                              variant="outline"
+                                              size="icon"
+                                              className="h-9 w-9 shrink-0 cursor-pointer"
+                                              title={
+                                                suggest.fields.length > 0
+                                                  ? 'Abrir lista de campos'
+                                                  : 'Abrir seletor (lista vazia até haver objeto/array no trecho)'
+                                              }
+                                              aria-label="Abrir lista de campos"
+                                              onClick={() => setMode({ fieldList: true })}
+                                            >
+                                              <List className="h-4 w-4" />
+                                            </Button>
                                           </div>
                                         )}
 
@@ -1004,7 +1237,7 @@ export default function JsonFieldMapper({
                                             patchRule({ op: v as MappingItemFilterOp })
                                           }
                                         >
-                                          <SelectTrigger className="h-8 w-[8.5rem] shrink-0 bg-background text-xs">
+                                          <SelectTrigger className="h-9 w-[9.5rem] shrink-0 bg-background text-xs">
                                             <SelectValue />
                                           </SelectTrigger>
                                           <SelectContent>
@@ -1035,10 +1268,10 @@ export default function JsonFieldMapper({
                                               patchRule({ value: v });
                                             }}
                                           >
-                                            <SelectTrigger className="h-8 min-w-[6rem] max-w-[9rem] flex-1 bg-background text-xs">
+                                            <SelectTrigger className="h-9 min-w-[7rem] max-w-[11rem] flex-1 bg-background text-xs">
                                               <SelectValue placeholder="Valor" />
                                             </SelectTrigger>
-                                            <SelectContent className="max-h-48">
+                                            <SelectContent className="max-h-60 z-[200]">
                                               <SelectItem value={SENTINEL_EMPTY} className="text-xs text-muted-foreground">
                                                 Selecione o valor…
                                               </SelectItem>
@@ -1068,25 +1301,28 @@ export default function JsonFieldMapper({
                                             </SelectContent>
                                           </Select>
                                         ) : (
-                                          <div className="flex min-w-0 flex-1 items-center gap-1">
+                                          <div className="flex min-w-0 flex-1 items-center gap-1.5">
                                             <Input
                                               value={rule.value}
                                               onChange={e => patchRule({ value: e.target.value })}
                                               placeholder="Valor (livre)"
-                                              className="h-8 min-w-0 flex-1 bg-background text-xs"
+                                              className="h-9 min-w-0 flex-1 bg-background text-xs"
                                             />
-                                            {valueOpts.length > 0 && (
-                                              <Button
-                                                type="button"
-                                                variant="outline"
-                                                size="icon"
-                                                className="h-8 w-8 shrink-0 cursor-pointer"
-                                                title="Escolher valor da lista"
-                                                onClick={() => setMode({ valueList: true })}
-                                              >
-                                                <List className="h-3.5 w-3.5" />
-                                              </Button>
-                                            )}
+                                            <Button
+                                              type="button"
+                                              variant="outline"
+                                              size="icon"
+                                              className="h-9 w-9 shrink-0 cursor-pointer"
+                                              title={
+                                                valueOpts.length > 0
+                                                  ? 'Abrir lista de valores'
+                                                  : 'Abrir seletor (escolha um campo ou mapeie trecho com dados)'
+                                              }
+                                              aria-label="Abrir lista de valores"
+                                              onClick={() => setMode({ valueList: true })}
+                                            >
+                                              <List className="h-4 w-4" />
+                                            </Button>
                                           </div>
                                         )}
 
@@ -1095,8 +1331,8 @@ export default function JsonFieldMapper({
                                           className="shrink-0 cursor-pointer p-1.5 text-muted-foreground hover:text-destructive"
                                           aria-label="Remover critério"
                                           onClick={() => {
-                                            const base = typeFilters[ft.key] ?? [];
-                                            setFiltersForType(ft.key, base.filter((_, i) => i !== idx));
+                                            const base = draftTypeFilters[ft.key] ?? [];
+                                            setDraftFiltersForType(ft.key, base.filter((_, i) => i !== idx));
                                           }}
                                         >
                                           <Trash2 className="h-3.5 w-3.5" />
@@ -1106,21 +1342,40 @@ export default function JsonFieldMapper({
                                   );
                                 })}
                               </div>
-                              <Button
-                                type="button"
-                                variant="outline"
-                                size="sm"
-                                className="mt-2 h-8 w-full text-xs"
-                                onClick={() => {
-                                  const base = typeFilters[ft.key] ?? [];
-                                  setFiltersForType(ft.key, [...base, { field: '', op: 'eq', value: '' }]);
-                                }}
-                              >
-                                <Plus className="mr-1 h-3 w-3" />
-                                Adicionar critério
-                              </Button>
-                            </PopoverContent>
-                          </Popover>
+                              <div className="border-t border-border px-5 py-3">
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  className="h-9 w-full cursor-pointer text-xs"
+                                  onClick={() => {
+                                    const base = draftTypeFilters[ft.key] ?? [];
+                                    setDraftFiltersForType(ft.key, [...base, { field: '', op: 'eq', value: '' }]);
+                                  }}
+                                >
+                                  <Plus className="mr-1 h-3 w-3" />
+                                  Adicionar critério
+                                </Button>
+                              </div>
+                              <DialogFooter className="border-t border-border px-5 py-3">
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  className="h-9"
+                                  onClick={() => closeFilterDialog(ft.key)}
+                                >
+                                  Cancelar
+                                </Button>
+                                <Button
+                                  type="button"
+                                  className="h-9"
+                                  onClick={() => saveFilterDialog(ft.key)}
+                                >
+                                  Salvar
+                                </Button>
+                              </DialogFooter>
+                            </DialogContent>
+                          </Dialog>
                         )}
                         {isMapped && (
                           <button
