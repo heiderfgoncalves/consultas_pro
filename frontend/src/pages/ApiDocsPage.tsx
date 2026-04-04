@@ -37,7 +37,7 @@ export default function ApiDocsPage() {
   }
 
   return (
-    <div className="flex flex-col gap-4 h-[calc(100vh-8rem)] min-h-[480px]">
+    <div className="flex flex-col gap-3 pb-8">
       <div>
         <h1 className="text-xl font-semibold tracking-tight">Documentação da API</h1>
         <p className="text-sm text-muted-foreground mt-1">
@@ -45,7 +45,7 @@ export default function ApiDocsPage() {
           &quot;Authorize&quot;.
         </p>
       </div>
-      <div className="flex-1 rounded-lg border border-border overflow-hidden bg-card swagger-docs-wrap">
+      <div className="rounded-lg border border-border bg-card swagger-docs-wrap">
         <Suspense
           fallback={
             <div className="p-6 text-sm text-muted-foreground">Carregando interface Swagger…</div>

@@ -9,6 +9,9 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
+import { HeroTypewriterHeading, getHeroTypewriterCursorStartMs } from '@/components/branding/HeroTypewriterHeading';
+import { BackgroundRippleEffect } from '@/components/ui/background-ripple-effect';
+import { PointerHighlight } from '@/components/ui/pointer-highlight';
 
 
 export default function LoginPage() {
@@ -37,20 +40,34 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen flex">
       {/* Left - Branding */}
-      <div className="hidden lg:flex lg:w-1/2 gradient-primary relative overflow-hidden">
-        <div className="absolute inset-0 opacity-10">
+      <div className="hidden min-h-screen lg:flex lg:w-1/2 gradient-primary relative overflow-hidden">
+        <BackgroundRippleEffect
+          cover
+          rows={11}
+          cols={26}
+          cellSize={44}
+          masked={false}
+          className="z-0 [--cell-border-color:rgba(255,255,255,0.22)] [--cell-fill-color:rgba(255,255,255,0.08)] [--cell-shadow-color:rgba(255,255,255,0.18)]"
+        />
+        <div className="absolute inset-0 z-[1] opacity-10 pointer-events-none">
           <div className="absolute top-20 left-20 w-64 h-64 rounded-full bg-primary-foreground blur-3xl" />
           <div className="absolute bottom-20 right-20 w-96 h-96 rounded-full bg-primary-foreground blur-3xl" />
         </div>
         <div className="relative z-10 flex flex-col justify-center px-16">
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
             <div className="w-12 h-12 rounded-xl bg-primary-foreground/20 flex items-center justify-center text-primary-foreground font-bold text-xl mb-10">CP</div>
-            <h1 className="text-4xl font-bold text-primary-foreground leading-tight mb-4">
-              Consultas de crédito<br />inteligentes e modulares.
-            </h1>
-            <p className="text-lg text-primary-foreground/70 max-w-md">
-              Monte seu relatório personalizado, escolha os blocos de dados que precisa e pague apenas pelo que usar.
-            </p>
+            <HeroTypewriterHeading className="text-4xl font-bold text-primary-foreground leading-tight mb-4" />
+            <div className="text-lg text-primary-foreground/70 max-w-md leading-relaxed">
+              Monte seu relatório{" "}
+              <PointerHighlight
+                effectDelaySec={getHeroTypewriterCursorStartMs() / 1000}
+                rectangleClassName="border-primary-foreground/40"
+                pointerClassName="text-primary-foreground"
+              >
+                <span className="relative z-[1] font-medium text-primary-foreground/90">personalizado</span>
+              </PointerHighlight>
+              , escolha os blocos de dados que precisa e pague apenas pelo que usar.
+            </div>
           </motion.div>
           <motion.div
             initial={{ opacity: 0 }}
@@ -68,11 +85,18 @@ export default function LoginPage() {
       </div>
 
       {/* Right - Form */}
-      <div className="flex-1 flex items-center justify-center px-6 py-12 bg-background">
+      <div className="relative flex min-h-screen flex-1 items-center justify-center overflow-hidden bg-background px-6 py-12">
+        <BackgroundRippleEffect
+          rows={14}
+          cols={28}
+          cellSize={44}
+          masked={false}
+          className="z-0 [--cell-border-color:hsl(var(--border)_/_0.85)] [--cell-fill-color:hsl(var(--muted)_/_0.55)] [--cell-shadow-color:hsl(var(--muted-foreground)_/_0.25)] dark:[--cell-border-color:hsl(var(--border)_/_0.6)] dark:[--cell-fill-color:hsl(var(--muted)_/_0.4)]"
+        />
         <motion.div
           initial={{ opacity: 0, x: 20 }}
           animate={{ opacity: 1, x: 0 }}
-          className="w-full max-w-[420px]"
+          className="relative z-10 w-full max-w-[420px]"
         >
           <div className="lg:hidden mb-8">
             <div className="w-10 h-10 rounded-xl gradient-primary flex items-center justify-center text-primary-foreground font-bold text-lg">CP</div>

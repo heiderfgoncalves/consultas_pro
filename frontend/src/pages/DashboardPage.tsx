@@ -5,6 +5,7 @@ import {
   ArrowUpRight, Plus, Clock
 } from 'lucide-react';
 import { useAuthStore } from '@/stores/authStore';
+import { openRechargeModal } from '@/stores/rechargeModalStore';
 import { mockHistory, mockFinancialEntries } from '@/stores/consultationStore';
 import StatCard, { PageHeader, StatusBadge } from '@/components/shared/StatCard';
 import { Button } from '@/components/ui/button';
@@ -12,11 +13,17 @@ import { Button } from '@/components/ui/button';
 export default function DashboardPage() {
   const { user } = useAuthStore();
 
-  const quickActions = [
-    { label: 'Nova Consulta', icon: Search, path: '/consulta/nova', variant: 'gradient-primary text-primary-foreground' as const },
-    { label: 'Recarregar', icon: Plus, path: '/financeiro/recarga', variant: 'bg-success/10 text-success border border-success/20' as const },
-    { label: 'Histórico', icon: History, path: '/consulta/historico', variant: 'bg-card text-foreground border border-border' as const },
-    { label: 'Equipe', icon: Users, path: '/equipe', variant: 'bg-card text-foreground border border-border' as const },
+  const canRecharge = (user?.accessLevel ?? 2) <= 1;
+  const quickActions: (
+    | { label: string; icon: typeof Search; path: string; variant: string }
+    | { label: string; icon: typeof Plus; action: 'recharge'; variant: string }
+  )[] = [
+    { label: 'Nova Consulta', icon: Search, path: '/consulta/nova', variant: 'gradient-primary text-primary-foreground' },
+    ...(canRecharge
+      ? [{ label: 'Recarregar', icon: Plus, action: 'recharge' as const, variant: 'bg-success/10 text-success border border-success/20' }]
+      : []),
+    { label: 'Histórico', icon: History, path: '/consulta/historico', variant: 'bg-card text-foreground border border-border' },
+    { label: 'Equipe', icon: Users, path: '/equipe', variant: 'bg-card text-foreground border border-border' },
   ];
 
   return (
@@ -35,14 +42,28 @@ export default function DashboardPage() {
       <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
         <h3 className="text-sm font-semibold text-foreground mb-3">Ações Rápidas</h3>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          {quickActions.map((action) => (
-            <Link key={action.path} to={action.path}>
-              <div className={`flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all hover:shadow-elevated cursor-pointer ${action.variant}`}>
+          {quickActions.map((action) =>
+            'path' in action ? (
+              <Link key={action.path} to={action.path}>
+                <div
+                  className={`flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all hover:shadow-elevated cursor-pointer ${action.variant}`}
+                >
+                  <action.icon className="w-4 h-4" />
+                  {action.label}
+                </div>
+              </Link>
+            ) : (
+              <button
+                key={action.label}
+                type="button"
+                onClick={() => openRechargeModal()}
+                className={`w-full text-left flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all hover:shadow-elevated cursor-pointer ${action.variant}`}
+              >
                 <action.icon className="w-4 h-4" />
                 {action.label}
-              </div>
-            </Link>
-          ))}
+              </button>
+            ),
+          )}
         </div>
       </motion.div>
 
