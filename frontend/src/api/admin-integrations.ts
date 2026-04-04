@@ -6,6 +6,7 @@ import type {
   Provider,
   ProviderConsultation,
   TestLogEntry,
+  TypeReportFieldConfig,
 } from '@/types/integrations';
 import { PATH_KEY_UI_META } from '@/lib/integrations-constants';
 
@@ -16,9 +17,19 @@ function tok(t: string | null) {
 const FILTER_OPS = new Set(['eq', 'contains', 'startsWith', 'endsWith', 'regex']);
 
 export function parseProductTypeItemFilters(raw: unknown): Record<string, MappingItemFilter[]> | undefined {
-  if (raw === null || raw === undefined) return undefined;
-  if (typeof raw !== 'object' || Array.isArray(raw)) return undefined;
-  const o = raw as Record<string, unknown>;
+  let v: unknown = raw;
+  if (typeof v === 'string') {
+    const t = v.trim();
+    if (!t) return undefined;
+    try {
+      v = JSON.parse(t) as unknown;
+    } catch {
+      return undefined;
+    }
+  }
+  if (v === null || v === undefined) return undefined;
+  if (typeof v !== 'object' || Array.isArray(v)) return undefined;
+  const o = v as Record<string, unknown>;
   const out: Record<string, MappingItemFilter[]> = {};
   for (const [key, val] of Object.entries(o)) {
     if (!Array.isArray(val)) continue;
@@ -29,7 +40,7 @@ export function parseProductTypeItemFilters(raw: unknown): Record<string, Mappin
       const field = typeof it.field === 'string' ? it.field : '';
       const opRaw = typeof it.op === 'string' ? it.op : 'eq';
       const op = FILTER_OPS.has(opRaw) ? (opRaw as MappingItemFilter['op']) : 'eq';
-      const value = typeof it.value === 'string' ? it.value : '';
+      const value = it.value == null ? '' : String(it.value);
       rules.push({ field, op, value });
     }
     out[key] = rules;
@@ -44,6 +55,7 @@ export interface ApiCanonicalField {
   dataType: string;
   description: string | null;
   uiItemFilters?: unknown;
+  reportFieldConfig?: unknown;
   isActive: boolean;
 }
 
@@ -76,7 +88,9 @@ export interface ApiProduct {
   endpointPath: string;
   method: string;
   cost: string | number;
+  consultationPrice?: string | number;
   isActive: boolean;
+  updatedAt?: string;
   sampleRequest: unknown;
   sampleResponse: unknown;
   bodyTemplate?: unknown;
@@ -146,6 +160,50 @@ export function pairsToCredentials(pairs: { key: string; value: string }[]): Rec
   return o;
 }
 
+export function parseReportFieldConfig(raw: unknown): TypeReportFieldConfig | undefined {
+  let value = raw;
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!trimmed) return undefined;
+    try {
+      value = JSON.parse(trimmed) as unknown;
+    } catch {
+      return undefined;
+    }
+  }
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+
+  const config = value as Record<string, unknown>;
+  if (config.version !== 1 || !Array.isArray(config.fields)) return undefined;
+
+  return {
+    version: 1,
+    fields: config.fields
+      .filter((field): field is Record<string, unknown> => !!field && typeof field === 'object' && !Array.isArray(field))
+      .map((field, fieldIndex) => ({
+        id: typeof field.id === 'string' && field.id.trim() ? field.id : `field_${fieldIndex + 1}`,
+        label: typeof field.label === 'string' ? field.label : '',
+        sortOrder: typeof field.sortOrder === 'number' && Number.isFinite(field.sortOrder) ? field.sortOrder : fieldIndex,
+        dataType: typeof field.dataType === 'string'
+          ? field.dataType as TypeReportFieldConfig['fields'][number]['dataType']
+          : 'text',
+        conditionalRules: Array.isArray(field.conditionalRules)
+          ? field.conditionalRules
+              .filter((rule): rule is Record<string, unknown> => !!rule && typeof rule === 'object' && !Array.isArray(rule))
+              .map((rule, ruleIndex) => ({
+                id: typeof rule.id === 'string' && rule.id.trim() ? rule.id : `rule_${fieldIndex + 1}_${ruleIndex + 1}`,
+                operator: typeof rule.operator === 'string'
+                  ? rule.operator as TypeReportFieldConfig['fields'][number]['conditionalRules'][number]['operator']
+                  : 'eq',
+                value: rule.value == null ? undefined : String(rule.value),
+                color: typeof rule.color === 'string' && rule.color.trim() ? rule.color : '#2563eb',
+                colorTarget: rule.colorTarget === 'row' ? 'row' : 'value',
+              }))
+          : [],
+      })),
+  };
+}
+
 export function mapCanonicalToFieldTypes(fields: ApiCanonicalField[]): ConsultationFieldType[] {
   return fields
     .filter(
@@ -165,6 +223,7 @@ export function mapCanonicalToFieldTypes(fields: ApiCanonicalField[]): Consultat
         color: meta.color,
         icon: meta.icon,
         typeItemFilters: Array.isArray(f.uiItemFilters) ? f.uiItemFilters as ConsultationFieldType['typeItemFilters'] : [],
+        reportFieldConfig: parseReportFieldConfig(f.reportFieldConfig),
       };
     });
 }
@@ -210,7 +269,15 @@ export function mapApiProduct(p: ApiProduct, providerId: string): ProviderConsul
   });
 
   const method = p.method === 'GET' || p.method === 'POST' ? p.method : 'POST';
-  const cost = typeof p.cost === 'string' ? parseFloat(p.cost) : p.cost;
+  const cost = typeof p.cost === 'string'       ? parseFloat(p.cost)       : p.cost;
+  const cpRaw = p.consultationPrice;
+  const consultationPrice =
+    cpRaw === undefined || cpRaw === null
+      ? (Number.isFinite(cost) ? cost : 0)
+      : typeof cpRaw === 'string'
+        ? parseFloat(cpRaw)
+        : cpRaw;
+  const updatedAt = typeof p.updatedAt === 'string' ? p.updatedAt : '';
 
   let bodyTemplateJson = '';
   if (p.bodyTemplate !== null && p.bodyTemplate !== undefined) {
@@ -228,11 +295,13 @@ export function mapApiProduct(p: ApiProduct, providerId: string): ProviderConsul
     endpoint: p.endpointPath,
     method,
     cost: Number.isFinite(cost) ? cost : 0,
+    consultationPrice: Number.isFinite(consultationPrice) ? consultationPrice : (Number.isFinite(cost) ? cost : 0),
     fieldMappings,
     mappingIds,
     typeItemFilters: parseProductTypeItemFilters(p.typeItemFilters),
     sampleResponse: sampleRes,
     bodyTemplateJson,
+    updatedAt,
     status: p.isActive ? 'active' : 'inactive',
   };
 }
@@ -247,6 +316,7 @@ export function mapTestLogs(logs: ApiTestLog[]): TestLogEntry[] {
           : JSON.stringify(l.responsePayload, null, 2);
     return {
       id: l.id,
+      productId: l.productId ?? null,
       consultationName: l.product?.name ?? 'Teste',
       providerId: l.providerId,
       endpoint: l.product?.name ?? '',
@@ -393,12 +463,26 @@ export async function deleteMappingApi(accessToken: string | null, mappingId: st
 
 export async function createCanonicalFieldApi(
   accessToken: string | null,
-  body: { pathKey: string; label: string; dataType: string; description?: string; uiItemFilters?: unknown },
+  body: {
+    pathKey: string;
+    label: string;
+    dataType: string;
+    description?: string;
+    uiItemFilters?: unknown;
+    reportFieldConfig?: unknown;
+  },
 ) {
   return apiRequest<ApiCanonicalField>('/admin/catalog/canonical-fields', {
     method: 'POST',
     token: tok(accessToken),
     body: JSON.stringify(body),
+  });
+}
+
+export async function importDefaultCanonicalSectionsApi(accessToken: string | null) {
+  return apiRequest<ApiCanonicalField[]>('/admin/catalog/canonical-fields/import-default-sections', {
+    method: 'POST',
+    token: tok(accessToken),
   });
 }
 

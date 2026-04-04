@@ -1,5 +1,48 @@
 /** Tipos da UI de integrações (alinhados ao antigo providerStore). */
 
+export type ReportFieldDataType =
+  | 'text'
+  | 'boolean'
+  | 'numeric'
+  | 'date'
+  | 'datetime'
+  | 'currency'
+  | 'percent';
+
+export type ReportFieldColorTarget = 'value' | 'row';
+
+export type ReportFieldConditionOperator =
+  | 'eq'
+  | 'neq'
+  | 'gt'
+  | 'gte'
+  | 'lt'
+  | 'lte'
+  | 'contains'
+  | 'empty'
+  | 'notEmpty';
+
+export interface ReportFieldConditionalRule {
+  id: string;
+  operator: ReportFieldConditionOperator;
+  value?: string;
+  color: string;
+  colorTarget: ReportFieldColorTarget;
+}
+
+export interface TypeReportFieldDefinition {
+  id: string;
+  label: string;
+  sortOrder: number;
+  dataType: ReportFieldDataType;
+  conditionalRules: ReportFieldConditionalRule[];
+}
+
+export interface TypeReportFieldConfig {
+  version: 1;
+  fields: TypeReportFieldDefinition[];
+}
+
 export interface ConsultationFieldType {
   id: string;
   key: string;
@@ -8,6 +51,7 @@ export interface ConsultationFieldType {
   color: string;
   icon: string;
   typeItemFilters?: MappingItemFilter[];
+  reportFieldConfig?: TypeReportFieldConfig;
 }
 
 export interface FieldMapping {
@@ -48,7 +92,10 @@ export interface ProviderConsultation {
   externalId: string;
   endpoint: string;
   method: 'GET' | 'POST';
+  /** Tarifa admin → provedor */
   cost: number;
+  /** Valor debitado do cliente (carteira) nesta consulta */
+  consultationPrice: number;
   fieldMappings: FieldMapping[];
   /** Critérios por chave do tipo canônico; persistidos em ProviderProduct.typeItemFilters. */
   typeItemFilters?: Record<string, MappingItemFilter[]>;
@@ -57,6 +104,7 @@ export interface ProviderConsultation {
   /** JSON do corpo da requisição (mapeado para bodyTemplate na API) */
   bodyTemplateJson?: string;
   lastTestedAt?: string;
+  updatedAt: string;
   status: 'active' | 'inactive';
   /** IDs de mapeamento persistidos (API) */
   mappingIds?: Record<string, string>;
@@ -64,6 +112,8 @@ export interface ProviderConsultation {
 
 export interface TestLogEntry {
   id: string;
+  /** Produto/consulta salvo; null em testes draft ou logs antigos */
+  productId: string | null;
   consultationName: string;
   providerId: string;
   endpoint: string;

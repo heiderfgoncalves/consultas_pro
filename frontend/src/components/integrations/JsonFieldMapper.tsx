@@ -529,11 +529,6 @@ export default function JsonFieldMapper({
 
   const setFiltersForType = useCallback(
     (fieldTypeKey: string, nextRules: MappingItemFilter[]) => {
-      const { [fieldTypeKey]: _removed, ...rest } = typeFilters;
-      if (nextRules.length === 0) {
-        onTypeFiltersChange(rest);
-        return;
-      }
       onTypeFiltersChange({ ...typeFilters, [fieldTypeKey]: nextRules });
     },
     [typeFilters, onTypeFiltersChange],

@@ -1,15 +1,28 @@
-import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
+import {
+  useState,
+  useMemo,
+  useEffect,
+  useRef,
+  useCallback,
+  forwardRef,
+  useImperativeHandle,
+  type ComponentProps,
+  type CSSProperties,
+  type ReactNode,
+  type Ref,
+} from 'react';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Navigate } from 'react-router-dom';
 import {
   Server, Plus, Pencil, Trash2, Database,
-  Play, Tag, ChevronDown, ChevronRight, Search,
-  Code2, Link2, Save, Zap, Hash, Filter,
+  Play, Tag, ChevronDown, ChevronRight, Search, RefreshCcw,
+  Code2, Link2, Save, Hash, Filter, Undo2, Loader2,
 } from 'lucide-react';
 import { useAuthStore } from '@/stores/authStore';
 import { PageHeader } from '@/components/shared/StatCard';
 import { Button } from '@/components/ui/button';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
@@ -17,11 +30,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
 } from '@/components/ui/dialog';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import type {
   Provider, ProviderConsultation, ConsultationFieldType, FieldMapping,
   MappingItemFilter, MappingItemFilterOp,
 } from '@/types/integrations';
 import JsonFieldMapper from '@/components/integrations/JsonFieldMapper';
+import TypeReportFieldsConfig from '@/components/integrations/TypeReportFieldsConfig';
 import { formatDeepFilteredValueAtPath } from '@/lib/providerResponseMapping';
 import { toast } from 'sonner';
 import { slugify } from '@/lib/slug';
@@ -39,6 +54,7 @@ import {
   getCanonicalFields,
   getProviders,
   getTestLogs,
+  importDefaultCanonicalSectionsApi,
   mapApiProduct,
   mapApiProvider,
   mapCanonicalToFieldTypes,
@@ -92,6 +108,24 @@ const cardTitleCls = 'text-sm font-semibold text-foreground';
 const subtleBadgeCls = 'text-xs px-2 py-0.5 rounded font-medium';
 const linkActionCls = 'text-xs font-medium transition-colors flex items-center gap-1';
 
+/** Valor do Select ao criar consulta nova (não confundir com id de produto). */
+const CONSULTATION_PICKER_NEW = '__new__';
+
+type TestLogRow = {
+  id: string;
+  productId?: string | null;
+  consultationName: string;
+  providerId: string;
+  responseJson: string;
+  testedAt: string;
+};
+
+type ConsultationEditorHandle = {
+  save: () => void;
+  revert: () => void;
+  loadResponseFromLog: (entry: TestLogRow) => void;
+};
+
 const TYPES_TAB_FILTER_OPS: { value: MappingItemFilterOp; label: string }[] = [
   { value: 'eq', label: 'igual a' },
   { value: 'contains', label: 'contém' },
@@ -99,6 +133,28 @@ const TYPES_TAB_FILTER_OPS: { value: MappingItemFilterOp; label: string }[] = [
   { value: 'endsWith', label: 'termina com' },
   { value: 'regex', label: 'regex' },
 ];
+
+/** Referência estável para evitar reset do estado em LinkedConsultationCard a cada render. */
+const EMPTY_LINKED_FILTERS: MappingItemFilter[] = [];
+
+/**
+ * Critérios exibidos por consulta: usa o que está salvo no produto (`typeItemFilters[pathKey]`).
+ * Se essa chave não existir no JSON do produto, usa o padrão do catálogo (`uiItemFilters` do tipo),
+ * para dados legados e até a primeira gravação por consulta.
+ */
+function linkedConsultationInitialFilters(
+  pc: ProviderConsultation,
+  fieldTypeKey: string,
+  catalogTypes: ConsultationFieldType[],
+): MappingItemFilter[] {
+  const blob = pc.typeItemFilters;
+  if (blob && Object.prototype.hasOwnProperty.call(blob, fieldTypeKey)) {
+    const row = blob[fieldTypeKey];
+    return Array.isArray(row) ? row : EMPTY_LINKED_FILTERS;
+  }
+  const ft = catalogTypes.find((f) => f.key === fieldTypeKey);
+  return ft?.typeItemFilters ?? EMPTY_LINKED_FILTERS;
+}
 
 const emptyProvider: Partial<Provider> = {
   name: '', baseUrl: '', balanceEndpoint: '', rechargeEndpoint: '',
@@ -344,34 +400,110 @@ function parseCurl(curlStr: string) {
   return result;
 }
 
-function ConsultationEditor({
-  consultation,
-  providers,
-  fieldTypes,
-  testLog,
-  onSave,
-  onCancel,
-  onTest,
-  registerCardTestFn,
-  registerNewConsultationTestFn,
+const sectionRailStyle: CSSProperties = {
+  width: 1,
+  background:
+    'repeating-linear-gradient(to bottom, hsl(var(--primary)) 0px, hsl(var(--primary)) 6px, transparent 6px, transparent 14px)',
+};
+
+function MinimalExpandSection({
+  title,
+  open,
+  onOpenChange,
+  headerExtra,
+  children,
 }: {
-  consultation: ProviderConsultation;
-  providers: Provider[];
-  fieldTypes: ConsultationFieldType[];
-  testLog: { id: string; consultationName: string; providerId: string; responseJson: string; testedAt: string }[];
-  onSave: (data: Partial<ProviderConsultation>) => Promise<void>;
-  onCancel: () => void;
-  onTest: (input: ConsultationTestInput) => Promise<ApiProviderTestResult>;
-  registerCardTestFn?: (productId: string, fn: (() => Promise<void>) | null) => void;
-  registerNewConsultationTestFn?: (fn: (() => Promise<void>) | null) => void;
+  title: string;
+  open: boolean;
+  onOpenChange: (next: boolean) => void;
+  headerExtra?: ReactNode;
+  children: ReactNode;
 }) {
+  return (
+    <div className="flex items-stretch gap-3">
+      <div
+        className="shrink-0 self-stretch rounded-full"
+        style={sectionRailStyle}
+        aria-hidden
+      />
+      <div className="min-w-0 flex-1 space-y-2">
+        <div className="flex w-full items-center justify-between gap-3">
+          <button
+            type="button"
+            onClick={() => onOpenChange(!open)}
+            className="flex min-w-0 cursor-pointer items-center gap-1.5 text-left transition-colors hover:text-foreground"
+          >
+            <span className="text-sm font-semibold text-foreground">{title}</span>
+            {open
+              ? <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
+              : <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />}
+          </button>
+          {headerExtra ? <div className="shrink-0">{headerExtra}</div> : null}
+        </div>
+        {open ? <div className="space-y-2 pb-0.5">{children}</div> : null}
+      </div>
+    </div>
+  );
+}
+
+const ConsultationEditor = forwardRef(function ConsultationEditor(
+  {
+    consultation,
+    providers,
+    fieldTypes,
+    onSave,
+    onCancel,
+    onTest,
+    registerCardTestFn,
+    registerNewConsultationTestFn,
+  }: {
+    consultation: ProviderConsultation;
+    providers: Provider[];
+    fieldTypes: ConsultationFieldType[];
+    /** Mantido na assinatura por compatibilidade com chamadas; o histórico fica no toolbar do card. */
+    testLog?: TestLogRow[];
+    onSave: (data: Partial<ProviderConsultation>) => Promise<void>;
+    onCancel: () => void;
+    onTest: (input: ConsultationTestInput) => Promise<ApiProviderTestResult>;
+    registerCardTestFn?: (productId: string, fn: (() => Promise<void>) | null) => void;
+    registerNewConsultationTestFn?: (fn: (() => Promise<void>) | null) => void;
+  },
+  ref: Ref<ConsultationEditorHandle>,
+) {
   const [form, setForm] = useState<Partial<ProviderConsultation>>(() => ({
     ...consultation,
   }));
   const [testJson, setTestJson] = useState(consultation.sampleResponse || '');
   const [bodyTemplateJson, setBodyTemplateJson] = useState(consultation.bodyTemplateJson || '');
   const [curlInput, setCurlInput] = useState('');
-  const [showLogPicker, setShowLogPicker] = useState(false);
+  const [paramsSectionOpen, setParamsSectionOpen] = useState(true);
+  const [mappingSectionOpen, setMappingSectionOpen] = useState(true);
+
+  const applyParsedCurl = (val: string) => {
+    setCurlInput(val);
+    if (!val.trim().toLowerCase().startsWith('curl')) return;
+    const parsed = parseCurl(val);
+    if (parsed.url) {
+      const mp = providers.find((p) => parsed.url.startsWith(p.baseUrl));
+      const endpoint = mp ? parsed.url.replace(mp.baseUrl, '') : parsed.url;
+      const method = parsed.method === 'GET' ? 'GET' : 'POST';
+      setForm((f) => ({
+        ...f,
+        method,
+        endpoint,
+        ...(mp ? { providerId: mp.id } : {}),
+      }));
+      if (parsed.body !== undefined && parsed.body !== '') {
+        try {
+          const asJson = JSON.parse(parsed.body) as unknown;
+          setBodyTemplateJson(JSON.stringify(asJson, null, 2));
+        } catch {
+          setBodyTemplateJson(parsed.body);
+        }
+      }
+      toast.success(`cURL parseado: ${parsed.method} ${endpoint}`);
+    }
+  };
 
   const formattedJson = useMemo(() => {
     try {
@@ -407,12 +539,11 @@ function ConsultationEditor({
   const path = (form.endpoint || '').trim();
   const fullUrlLabel = baseUrl && path ? `${baseUrl.replace(/\/$/, '')}${path.startsWith('/') ? '' : '/'}${path}` : baseUrl || path || '—';
 
-  const loadFromLog = (entry: (typeof testLog)[0]) => {
+  const loadResponseFromLog = useCallback((entry: TestLogRow) => {
     setTestJson(entry.responseJson);
     setForm((f) => ({ ...f, sampleResponse: entry.responseJson }));
-    setShowLogPicker(false);
     toast.success('JSON carregado do log');
-  };
+  }, []);
 
   const applyProviderResponsePayload = (payload: unknown) => {
     if (payload === undefined || payload === null) return;
@@ -473,207 +604,193 @@ function ConsultationEditor({
     JSON.stringify(consultation.typeItemFilters ?? null),
     consultation.sampleResponse,
     consultation.bodyTemplateJson,
+    consultation.cost,
+    consultation.consultationPrice,
   ]);
 
-  return (
-    <div className="space-y-3">
-      <div className="space-y-1.5 rounded border border-dashed border-primary/20 p-3 bg-primary/5">
-        <label className="text-xs font-semibold text-primary flex items-center gap-1.5">
-          <Link2 className="w-4 h-4" /> cURL (auto-parse)
-        </label>
-        <textarea
-          value={curlInput}
-          onChange={(e) => {
-            const val = e.target.value;
-            setCurlInput(val);
-            if (!val.trim().toLowerCase().startsWith('curl')) return;
-            const parsed = parseCurl(val);
-            if (parsed.url) {
-              const mp = providers.find((p) => parsed.url.startsWith(p.baseUrl));
-              const endpoint = mp ? parsed.url.replace(mp.baseUrl, '') : parsed.url;
-              const method = parsed.method === 'GET' ? 'GET' : 'POST';
-              setForm((f) => ({
-                ...f,
-                method,
-                endpoint,
-                ...(mp ? { providerId: mp.id } : {}),
-              }));
-              if (parsed.body !== undefined && parsed.body !== '') {
-                try {
-                  const asJson = JSON.parse(parsed.body) as unknown;
-                  setBodyTemplateJson(JSON.stringify(asJson, null, 2));
-                } catch {
-                  setBodyTemplateJson(parsed.body);
-                }
-              }
-              toast.success(`cURL parseado: ${parsed.method} ${endpoint}`);
-            }
-          }}
-          className="w-full min-h-[3rem] p-2.5 rounded-md border border-border bg-background text-sm font-mono text-foreground resize-y focus:outline-none focus:ring-2 focus:ring-primary/30 placeholder:text-muted-foreground"
-          placeholder="Cole um comando cURL aqui..."
-        />
-      </div>
+  const handleSave = useCallback(() => {
+    if (!form.name || !form.providerId || !form.endpoint) {
+      toast.error('Preencha nome, provedor e endpoint');
+      return;
+    }
+    try {
+      parseOptionalBodyTemplateJson(bodyTemplateJson);
+    } catch {
+      return;
+    }
+    void onSave({
+      ...form,
+      sampleResponse: testJson,
+      bodyTemplateJson,
+      typeItemFilters: form.typeItemFilters,
+    });
+  }, [bodyTemplateJson, form, onSave, testJson]);
 
-      <div className="overflow-x-auto -mx-0.5 px-0.5">
-        <div className="grid grid-cols-6 gap-2 min-w-[52rem]">
-          <div className="space-y-1">
-            <label className={labelCls}>Método</label>
-            <Select value={form.method || 'POST'} onValueChange={(v) => setForm((f) => ({ ...f, method: v as 'GET' | 'POST' }))}>
-              <SelectTrigger className={`${selectTriggerCls} font-semibold`}><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="GET">GET</SelectItem>
-                <SelectItem value="POST">POST</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-1 min-w-0">
-            <label className={labelCls}>Provedor</label>
-            <Select value={form.providerId || '__none__'} onValueChange={(v) => setForm((f) => ({ ...f, providerId: v === '__none__' ? '' : v }))}>
-              <SelectTrigger className={selectTriggerCls}><SelectValue placeholder="Selecione" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="__none__">Selecione</SelectItem>
-                {providers.map((p) => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-1 min-w-0">
-            <label className={labelCls}>Nome</label>
-            <Input value={form.name || ''} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} placeholder="Consulta PF" className={inputCls} />
-          </div>
-          <div className="space-y-1 min-w-0">
-            <label className={labelCls}>External ID</label>
-            <Input value={form.externalId || ''} onChange={(e) => setForm((f) => ({ ...f, externalId: e.target.value }))} placeholder="CODIGO" className={`${inputCls} font-mono text-xs`} />
-          </div>
-          <div className="space-y-1 min-w-0">
-            <label className={labelCls}>Endpoint</label>
-            <Input value={form.endpoint || ''} onChange={(e) => setForm((f) => ({ ...f, endpoint: e.target.value }))} placeholder="/rota" className={`${inputCls} font-mono text-xs`} />
-          </div>
-          <div className="space-y-1">
-            <label className={labelCls}>Custo (R$)</label>
-            <Input type="number" step="0.01" value={form.cost ?? 0} onChange={(e) => setForm((f) => ({ ...f, cost: parseFloat(e.target.value) }))} className={inputCls} />
+  useImperativeHandle(
+    ref,
+    () => ({
+      save: handleSave,
+      revert: onCancel,
+      loadResponseFromLog,
+    }),
+    [handleSave, loadResponseFromLog, onCancel],
+  );
+
+  return (
+    <div className="space-y-4">
+      <MinimalExpandSection
+        title="Parâmetros"
+        open={paramsSectionOpen}
+        onOpenChange={setParamsSectionOpen}
+      >
+        <div className="overflow-x-auto -mx-0.5 px-0.5">
+          <div className="flex min-w-[58rem] items-end gap-2">
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-9 shrink-0 cursor-pointer gap-1.5 px-2.5"
+                >
+                  <Link2 className="h-4 w-4" />
+                  cURL
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent align="start" className="w-[min(92vw,26rem)] space-y-2 p-3">
+                <p className="text-xs font-medium text-muted-foreground">
+                  Cole um cURL — método, URL, headers e corpo serão aplicados ao salvar os campos abaixo.
+                </p>
+                <textarea
+                  value={curlInput}
+                  onChange={(e) => applyParsedCurl(e.target.value)}
+                  className="min-h-[5.5rem] w-full resize-y rounded-md border border-border bg-background p-2.5 font-mono text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
+                  placeholder="curl -X POST 'https://…' -H '…' -d '{…}'"
+                  spellCheck={false}
+                />
+              </PopoverContent>
+            </Popover>
+            <div className="grid min-w-0 flex-1 grid-cols-7 gap-2">
+              <div className="space-y-1">
+                <label className={labelCls}>Método</label>
+                <Select value={form.method || 'POST'} onValueChange={(v) => setForm((f) => ({ ...f, method: v as 'GET' | 'POST' }))}>
+                  <SelectTrigger className={`${selectTriggerCls} font-semibold`}><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="GET">GET</SelectItem>
+                    <SelectItem value="POST">POST</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="min-w-0 space-y-1">
+                <label className={labelCls}>Provedor</label>
+                <Select value={form.providerId || '__none__'} onValueChange={(v) => setForm((f) => ({ ...f, providerId: v === '__none__' ? '' : v }))}>
+                  <SelectTrigger className={selectTriggerCls}><SelectValue placeholder="Selecione" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">Selecione</SelectItem>
+                    {providers.map((p) => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="min-w-0 space-y-1">
+                <label className={labelCls}>Nome</label>
+                <Input value={form.name || ''} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} placeholder="Consulta PF" className={inputCls} />
+              </div>
+              <div className="min-w-0 space-y-1">
+                <label className={labelCls}>External ID</label>
+                <Input value={form.externalId || ''} onChange={(e) => setForm((f) => ({ ...f, externalId: e.target.value }))} placeholder="CODIGO" className={`${inputCls} font-mono text-xs`} />
+              </div>
+              <div className="min-w-0 space-y-1">
+                <label className={labelCls}>Endpoint</label>
+                <Input value={form.endpoint || ''} onChange={(e) => setForm((f) => ({ ...f, endpoint: e.target.value }))} placeholder="/rota" className={`${inputCls} font-mono text-xs`} />
+              </div>
+              <div className="space-y-1">
+                <label className={`${labelCls} normal-case tracking-normal`} title="Tarifa cobrada pelo provedor (custo admin)">
+                  Preço de custo (R$)
+                </label>
+                <Input type="number" step="0.01" value={form.cost ?? 0} onChange={(e) => setForm((f) => ({ ...f, cost: parseFloat(e.target.value) }))} className={inputCls} />
+              </div>
+              <div className="space-y-1">
+                <label className={`${labelCls} normal-case tracking-normal`} title="Valor debitado do cliente na carteira ao emitir a consulta">
+                  Valor da consulta (R$)
+                </label>
+                <Input
+                  type="number"
+                  step="0.01"
+                  value={form.consultationPrice ?? 0}
+                  onChange={(e) => setForm((f) => ({ ...f, consultationPrice: parseFloat(e.target.value) }))}
+                  className={inputCls}
+                />
+              </div>
+            </div>
           </div>
         </div>
-      </div>
 
-      <p className="text-[11px] text-muted-foreground/90 font-mono truncate px-0.5" title={fullUrlLabel}>
-        {fullUrlLabel}
-      </p>
+        <p className="truncate px-0.5 font-mono text-[11px] text-muted-foreground/90" title={fullUrlLabel}>
+          {fullUrlLabel}
+        </p>
 
-      <div className="space-y-1.5">
-        <label className={sectionLabelCls}>
-          <Code2 className="w-4 h-4" /> Corpo da requisição (JSON)
-        </label>
-        <textarea
-          value={bodyTemplateJson}
-          onChange={(e) => setBodyTemplateJson(e.target.value)}
-          className="w-full h-28 p-3 rounded-md border border-border bg-background text-sm font-mono text-foreground resize-y focus:outline-none focus:ring-2 focus:ring-primary/30 scrollbar-thin placeholder:text-muted-foreground leading-relaxed"
-          placeholder={'{\n  "documento": "{{cpf}}"\n}'}
-          spellCheck={false}
-        />
-      </div>
+        <div className="space-y-1.5">
+          <label className={sectionLabelCls}>
+            <Code2 className="h-4 w-4" /> Corpo da requisição (JSON)
+          </label>
+          <textarea
+            value={bodyTemplateJson}
+            onChange={(e) => setBodyTemplateJson(e.target.value)}
+            className="scrollbar-thin h-28 w-full resize-y rounded-md border border-border bg-background p-3 font-mono text-sm leading-relaxed text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
+            placeholder={'{\n  "documento": "{{cpf}}"\n}'}
+            spellCheck={false}
+          />
+        </div>
+      </MinimalExpandSection>
 
-      <div className="flex items-center justify-end gap-2">
-        <button type="button" onClick={() => setShowLogPicker(!showLogPicker)} className="text-xs text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1">
-          <Database className="w-3.5 h-3.5" /> Log de retorno ({testLog.length})
-        </button>
-      </div>
-
-      <AnimatePresence>
-        {showLogPicker && testLog.length > 0 && (
-          <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden">
-            <div className="space-y-0.5 max-h-28 overflow-y-auto border border-border rounded-md p-2 bg-background">
-              {testLog.map((entry) => {
-                const prov = providers.find((p) => p.id === entry.providerId);
-                return (
-                  <button
-                    key={entry.id}
-                    type="button"
-                    onClick={() => loadFromLog(entry)}
-                    className="w-full flex items-center justify-between px-2 py-1.5 rounded-md text-xs hover:bg-accent transition-colors text-left"
-                  >
-                    <div className="flex items-center gap-2 min-w-0">
-                      <Code2 className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
-                      <span className="font-medium text-foreground truncate">{entry.consultationName}</span>
-                      {prov && <span className="text-muted-foreground">{prov.name}</span>}
-                    </div>
-                    <span className="text-xs text-muted-foreground flex-shrink-0 tabular-nums">
-                      {new Date(entry.testedAt).toLocaleTimeString('pt-BR')}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {showLogPicker && testLog.length === 0 && (
-        <p className="text-sm text-muted-foreground italic py-0.5">Nenhum teste registrado.</p>
-      )}
-
-      <JsonFieldMapper
-        key={consultation.id || 'new-consultation'}
-        json={formattedJson}
-        onJsonChange={(v) => {
-          setTestJson(v);
-          setForm((f) => ({ ...f, sampleResponse: v }));
-        }}
-        fieldTypes={fieldTypes}
-        mappings={form.fieldMappings || []}
-        onMappingsChange={(m) => setForm((f) => ({ ...f, fieldMappings: m }))}
-        typeFilters={typeFiltersForMapper}
-        onTypeFiltersChange={handleMapperTypeFiltersChange}
-      />
-
-      <div className="flex flex-wrap gap-2 pt-3 border-t border-border">
-        <Button
-          size="default"
-          className="gradient-primary text-primary-foreground text-sm h-9"
-          onClick={() => {
-            if (!form.name || !form.providerId || !form.endpoint) {
-              toast.error('Preencha nome, provedor e endpoint');
-              return;
-            }
-            try {
-              parseOptionalBodyTemplateJson(bodyTemplateJson);
-            } catch {
-              return;
-            }
-            void onSave({
-              ...form,
-              sampleResponse: testJson,
-              bodyTemplateJson,
-              typeItemFilters: form.typeItemFilters,
-            });
+      <MinimalExpandSection
+        title="Mapeamento de retorno"
+        open={mappingSectionOpen}
+        onOpenChange={setMappingSectionOpen}
+      >
+        <JsonFieldMapper
+          key={consultation.id || 'new-consultation'}
+          json={formattedJson}
+          onJsonChange={(v) => {
+            setTestJson(v);
+            setForm((f) => ({ ...f, sampleResponse: v }));
           }}
-        >
-          <Save className="w-4 h-4 mr-1.5" /> Salvar
-        </Button>
-        <Button size="default" variant="ghost" onClick={onCancel} className="text-sm h-9">
-          Cancelar
-        </Button>
-      </div>
+          fieldTypes={fieldTypes}
+          mappings={form.fieldMappings || []}
+          onMappingsChange={(m) => setForm((f) => ({ ...f, fieldMappings: m }))}
+          typeFilters={typeFiltersForMapper}
+          onTypeFiltersChange={handleMapperTypeFiltersChange}
+        />
+      </MinimalExpandSection>
     </div>
   );
-}
+});
 
-function NewConsultationForm(props: Omit<Parameters<typeof ConsultationEditor>[0], 'consultation'> & { providerId?: string }) {
+const NewConsultationForm = forwardRef(function NewConsultationForm(
+  {
+    providerId,
+    ...rest
+  }: Omit<ComponentProps<typeof ConsultationEditor>, 'consultation'> & { providerId?: string },
+  ref: Ref<ConsultationEditorHandle>,
+) {
   const dummy: ProviderConsultation = {
     id: '',
-    providerId: props.providerId || '',
+    providerId: providerId || '',
     name: '',
     externalId: '',
     endpoint: '',
     method: 'POST',
     cost: 0,
+    consultationPrice: 0,
     fieldMappings: [],
     status: 'active',
     sampleResponse: '',
     bodyTemplateJson: '',
     typeItemFilters: {},
+    updatedAt: '',
   };
-  return <ConsultationEditor consultation={dummy} {...props} />;
-}
+  return <ConsultationEditor ref={ref} consultation={dummy} {...rest} />;
+});
 
 function ConsultationTypeFiltersEditor({
   filters,
@@ -778,9 +895,36 @@ function LinkedConsultationCard({
   const maps = pc.fieldMappings.filter((m) => m.fieldTypeKey === fieldTypeKey);
   const filterActive = (filters ?? []).some((f) => f.field.trim().length > 0);
 
+  const initialSignature = JSON.stringify(initialFilters ?? []);
+
   useEffect(() => {
-    setFilters((initialFilters ?? []).map((rule) => ({ ...rule })));
-  }, [initialFilters, pc.id, fieldTypeKey]);
+    try {
+      const parsed = JSON.parse(initialSignature) as unknown;
+      if (!Array.isArray(parsed)) {
+        setFilters([]);
+        return;
+      }
+      setFilters(
+        parsed.map((rule) => {
+          if (!rule || typeof rule !== 'object' || Array.isArray(rule)) {
+            return { field: '', op: 'eq' as MappingItemFilterOp, value: '' };
+          }
+          const r = rule as Record<string, unknown>;
+          const opRaw = typeof r.op === 'string' ? r.op : 'eq';
+          const op = TYPES_TAB_FILTER_OPS.some((o) => o.value === opRaw)
+            ? (opRaw as MappingItemFilterOp)
+            : 'eq';
+          return {
+            field: typeof r.field === 'string' ? r.field : '',
+            op,
+            value: r.value == null ? '' : String(r.value),
+          };
+        }),
+      );
+    } catch {
+      setFilters([]);
+    }
+  }, [initialSignature, pc.id, fieldTypeKey]);
 
   const persistFilters = async () => {
     setSavingFilters(true);
@@ -927,16 +1071,20 @@ export default function IntegrationsPage() {
   const [providerModal, setProviderModal] = useState<{ open: boolean; provider?: Provider }>({ open: false });
   const [fieldTypeModal, setFieldTypeModal] = useState<{ open: boolean; ft?: ConsultationFieldType }>({ open: false });
   const [expandedProvider, setExpandedProvider] = useState<string | null>(null);
-  const [editingConsultation, setEditingConsultation] = useState<string | null>(null);
-  const [creatingConsultation, setCreatingConsultation] = useState<{ active: boolean; providerId?: string }>({ active: false });
+  const [consultationPicker, setConsultationPicker] = useState<string | null>(null);
+  const [newConsultationProviderId, setNewConsultationProviderId] = useState<string | undefined>(undefined);
+  const [consultationEditorNonce, setConsultationEditorNonce] = useState(0);
   const [selectedFieldType, setSelectedFieldType] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [savingProvider, setSavingProvider] = useState(false);
   const [savingFieldType, setSavingFieldType] = useState(false);
+  const [importingDefaultFieldTypes, setImportingDefaultFieldTypes] = useState(false);
   const [integrationsTab, setIntegrationsTab] = useState<'providers' | 'consultations' | 'types'>('providers');
 
   const cardTestFnsRef = useRef<Record<string, () => Promise<void>>>({});
   const newConsultationTestRef = useRef<(() => Promise<void>) | null>(null);
+  const consultationEditorRef = useRef<ConsultationEditorHandle | null>(null);
+  const [testLogSelectKey, setTestLogSelectKey] = useState(0);
 
   const registerCardTestFn = useCallback((productId: string, fn: (() => Promise<void>) | null) => {
     if (fn) cardTestFnsRef.current[productId] = fn;
@@ -984,8 +1132,65 @@ export default function IntegrationsPage() {
     }
     return list;
   }, [apiProviders]);
+  const sortedConsultations = useMemo(
+    () =>
+      [...consultations].sort((a, b) => {
+        const providerCompare = (providers.find((p) => p.id === a.providerId)?.name ?? '')
+          .localeCompare(providers.find((p) => p.id === b.providerId)?.name ?? '', 'pt-BR');
+        if (providerCompare !== 0) return providerCompare;
+        return a.name.localeCompare(b.name, 'pt-BR');
+      }),
+    [consultations, providers],
+  );
+
+  const recentConsultations = useMemo(
+    () =>
+      [...consultations].sort(
+        (a, b) =>
+          new Date(b.updatedAt || 0).getTime() - new Date(a.updatedAt || 0).getTime(),
+      ),
+    [consultations],
+  );
+
+  useEffect(() => {
+    if (integrationsTab !== 'consultations' || providersQuery.isLoading) return;
+
+    if (consultationPicker != null && consultationPicker !== CONSULTATION_PICKER_NEW) {
+      if (!consultations.some((c) => c.id === consultationPicker)) {
+        setConsultationPicker(recentConsultations[0]?.id ?? CONSULTATION_PICKER_NEW);
+        setConsultationEditorNonce((n) => n + 1);
+      }
+      return;
+    }
+
+    if (consultationPicker === null) {
+      if (recentConsultations.length === 0) setConsultationPicker(CONSULTATION_PICKER_NEW);
+      else setConsultationPicker(recentConsultations[0].id);
+    }
+  }, [
+    integrationsTab,
+    providersQuery.isLoading,
+    consultations,
+    consultationPicker,
+    recentConsultations,
+  ]);
 
   const testLog = useMemo(() => mapTestLogs(testLogsQuery.data ?? []), [testLogsQuery.data]);
+
+  const testLogForPicker = useMemo(() => {
+    const sorted = [...testLog].sort(
+      (a, b) => new Date(b.testedAt).getTime() - new Date(a.testedAt).getTime(),
+    );
+    if (consultationPicker === CONSULTATION_PICKER_NEW) {
+      return sorted.filter((t) => t.productId == null);
+    }
+    if (consultationPicker == null) return [];
+    return sorted.filter((t) => t.productId === consultationPicker);
+  }, [consultationPicker, testLog]);
+
+  useEffect(() => {
+    setTestLogSelectKey((k) => k + 1);
+  }, [consultationPicker]);
 
   const findApiProvider = (id: string) => apiProviders.find((p) => p.id === id);
   const findConsultation = (id: string) => consultations.find((c) => c.id === id);
@@ -1083,6 +1288,7 @@ export default function IntegrationsPage() {
           label: form.label,
           description: form.description || null,
           uiItemFilters: form.typeItemFilters ?? [],
+          reportFieldConfig: form.reportFieldConfig ?? null,
         });
         toast.success('Tipo atualizado');
       } else {
@@ -1092,10 +1298,41 @@ export default function IntegrationsPage() {
           dataType: 'object',
           description: form.description,
           uiItemFilters: form.typeItemFilters ?? [],
+          reportFieldConfig: form.reportFieldConfig,
         });
         toast.success('Tipo cadastrado');
       }
       void queryClient.invalidateQueries({ queryKey: ['admin-canonical-fields'] });
+    } finally {
+      setSavingFieldType(false);
+    }
+  };
+
+  const handleImportDefaultFieldTypes = async () => {
+    setImportingDefaultFieldTypes(true);
+    try {
+      await importDefaultCanonicalSectionsApi(accessToken);
+      toast.success('Tipos padrão importados');
+      await queryClient.invalidateQueries({ queryKey: ['admin-canonical-fields'] });
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : 'Não foi possível importar os tipos padrão';
+      toast.error(msg);
+    } finally {
+      setImportingDefaultFieldTypes(false);
+    }
+  };
+
+  const handleSaveTypeReportFields = async (fieldType: ConsultationFieldType, reportFieldConfig: ConsultationFieldType['reportFieldConfig']) => {
+    setSavingFieldType(true);
+    try {
+      await patchCanonicalFieldApi(accessToken, fieldType.id, {
+        reportFieldConfig,
+      });
+      toast.success('Campos do tipo atualizados');
+      await queryClient.invalidateQueries({ queryKey: ['admin-canonical-fields'] });
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : 'Não foi possível salvar os campos do tipo';
+      toast.error(msg);
     } finally {
       setSavingFieldType(false);
     }
@@ -1136,6 +1373,7 @@ export default function IntegrationsPage() {
         endpointPath: data.endpoint,
         method: data.method || 'POST',
         cost: data.cost ?? 0,
+        consultationPrice: data.consultationPrice ?? data.cost ?? 0,
         isActive: data.status !== 'inactive',
         sampleResponse: sampleResponse === undefined ? undefined : sampleResponse,
         ...(bodyTemplate !== undefined ? { bodyTemplate } : {}),
@@ -1157,6 +1395,7 @@ export default function IntegrationsPage() {
         endpointPath: data.endpoint!,
         method: data.method || 'POST',
         cost: data.cost ?? 0,
+        consultationPrice: data.consultationPrice ?? data.cost ?? 0,
         isActive: data.status !== 'inactive',
         sampleResponse: sampleResponse ?? undefined,
         ...(bodyTemplate !== undefined && bodyTemplate !== null ? { bodyTemplate } : {}),
@@ -1164,10 +1403,10 @@ export default function IntegrationsPage() {
       });
       await syncMappings(accessToken, created.id, fieldTypes, data.fieldMappings || [], undefined);
       toast.success('Consulta cadastrada');
+      setConsultationPicker(created.id);
     }
     invalidateAll();
-    setEditingConsultation(null);
-    setCreatingConsultation({ active: false });
+    setNewConsultationProviderId(undefined);
   };
 
   const errToast = useRef(false);
@@ -1237,14 +1476,34 @@ export default function IntegrationsPage() {
             </Button>
           )}
           {integrationsTab === 'consultations' && (
-            <Button size="default" className="gradient-primary text-primary-foreground text-sm h-9 px-4 shrink-0" onClick={() => setCreatingConsultation({ active: true })}>
-              <Plus className="w-4 h-4 mr-1.5" /> Consulta
+            <Button
+              size="default"
+              className="gradient-primary text-primary-foreground text-sm h-9 px-4 shrink-0"
+              onClick={() => {
+                setConsultationPicker(CONSULTATION_PICKER_NEW);
+                setNewConsultationProviderId(undefined);
+              }}
+            >
+              <Plus className="w-4 h-4 mr-1.5" /> Nova consulta
             </Button>
           )}
           {integrationsTab === 'types' && (
-            <Button size="default" className="gradient-primary text-primary-foreground text-sm h-9 px-4 shrink-0" onClick={() => setFieldTypeModal({ open: true })}>
-              <Plus className="w-4 h-4 mr-1.5" /> Tipo
-            </Button>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="default"
+                className="text-sm h-9 px-4 shrink-0"
+                onClick={() => void handleImportDefaultFieldTypes()}
+                disabled={importingDefaultFieldTypes}
+              >
+                <RefreshCcw className="w-4 h-4 mr-1.5" />
+                {importingDefaultFieldTypes ? 'Importando…' : 'Importar tipos'}
+              </Button>
+              <Button size="default" className="gradient-primary text-primary-foreground text-sm h-9 px-4 shrink-0" onClick={() => setFieldTypeModal({ open: true })}>
+                <Plus className="w-4 h-4 mr-1.5" /> Tipo
+              </Button>
+            </div>
           )}
         </div>
 
@@ -1335,7 +1594,15 @@ export default function IntegrationsPage() {
                             )}
 
                             <div className="flex flex-wrap gap-x-3 gap-y-1 pt-1">
-                              <button type="button" className={`${linkActionCls} text-primary hover:text-primary/80`} onClick={() => setCreatingConsultation({ active: true, providerId: prov.id })}>
+                              <button
+                                type="button"
+                                className={`${linkActionCls} text-primary hover:text-primary/80`}
+                                onClick={() => {
+                                  setIntegrationsTab('consultations');
+                                  setConsultationPicker(CONSULTATION_PICKER_NEW);
+                                  setNewConsultationProviderId(prov.id);
+                                }}
+                              >
                                 <Plus className="w-3.5 h-3.5" /> Consulta
                               </button>
                               <span className="text-border hidden sm:inline">·</span>
@@ -1378,144 +1645,201 @@ export default function IntegrationsPage() {
         </TabsContent>
 
         <TabsContent value="consultations" className="space-y-2">
-          <AnimatePresence>
-            {creatingConsultation.active && (
-              <motion.div initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -4 }}>
-                <div className="bg-card rounded-md border-2 border-primary/30 p-4">
-                  <div className="flex items-center justify-between gap-2 mb-4">
-                    <div className="flex items-center gap-2 min-w-0">
-                      <Zap className="w-5 h-5 text-primary shrink-0" />
-                      <span className="text-base font-semibold text-foreground truncate">Nova Consulta</span>
-                    </div>
-                    <Button
-                      type="button"
-                      size="sm"
-                      className="gradient-primary text-primary-foreground text-sm h-9 shrink-0 px-3"
-                      disabled={testMutation.isPending}
-                      onClick={() => void newConsultationTestRef.current?.()}
+          {integrationsTab === 'consultations' && providersQuery.isLoading && (
+            <p className="text-sm text-muted-foreground">Carregando consultas…</p>
+          )}
+
+          {integrationsTab === 'consultations' && !providersQuery.isLoading && consultationPicker !== null && (
+            <motion.div initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }}>
+              <div
+                className={`bg-card rounded-md border p-4 ${
+                  consultationPicker === CONSULTATION_PICKER_NEW ? 'border-2 border-primary/30' : 'border-border'
+                }`}
+              >
+                <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                  <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+                    <Select
+                      value={consultationPicker}
+                      onValueChange={(v) => {
+                        setConsultationPicker(v);
+                        if (v !== CONSULTATION_PICKER_NEW) setNewConsultationProviderId(undefined);
+                      }}
                     >
-                      <Play className="w-4 h-4 mr-1.5" />
-                      {testMutation.isPending ? '…' : 'Testar'}
-                    </Button>
+                      <SelectTrigger className={`h-9 w-full min-w-[12rem] flex-1 sm:max-w-lg ${selectTriggerCls}`}>
+                        <SelectValue placeholder="Selecione uma consulta" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value={CONSULTATION_PICKER_NEW}>Nova consulta</SelectItem>
+                        {sortedConsultations.map((c) => {
+                          const pv = providers.find((p) => p.id === c.providerId);
+                          return (
+                            <SelectItem key={c.id} value={c.id}>
+                              {c.name} — {pv?.name ?? 'Provedor'}
+                            </SelectItem>
+                          );
+                        })}
+                      </SelectContent>
+                    </Select>
+                    <Select
+                      key={testLogSelectKey}
+                      disabled={testLogForPicker.length === 0}
+                      onValueChange={(logId) => {
+                        const entry = testLogForPicker.find((t) => t.id === logId);
+                        if (entry) consultationEditorRef.current?.loadResponseFromLog(entry);
+                        setTestLogSelectKey((k) => k + 1);
+                      }}
+                    >
+                      <SelectTrigger className="h-9 w-full min-w-[11rem] sm:w-[min(100%,16rem)] cursor-pointer disabled:cursor-not-allowed">
+                        <SelectValue placeholder="Carregar retorno do histórico…" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {testLogForPicker.map((entry) => {
+                          const pv = providers.find((p) => p.id === entry.providerId);
+                          return (
+                            <SelectItem key={entry.id} value={entry.id} className="cursor-pointer">
+                              <span className="font-medium">{entry.consultationName}</span>
+                              <span className="text-muted-foreground">
+                                {' '}
+                                · {pv?.name ?? '—'} ·{' '}
+                              </span>
+                              <span className="tabular-nums text-muted-foreground">
+                                {new Date(entry.testedAt).toLocaleString('pt-BR')}
+                              </span>
+                            </SelectItem>
+                          );
+                        })}
+                      </SelectContent>
+                    </Select>
                   </div>
+                  <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          type="button"
+                          size="icon"
+                          variant="default"
+                          className="gradient-primary h-9 w-9 shrink-0 cursor-pointer text-primary-foreground"
+                          disabled={testMutation.isPending}
+                          aria-label="Testar no provedor"
+                          onClick={() => {
+                            if (consultationPicker === CONSULTATION_PICKER_NEW) {
+                              void newConsultationTestRef.current?.();
+                            } else {
+                              const run = cardTestFnsRef.current[consultationPicker];
+                              if (run) void run();
+                              else void testMutation.mutateAsync({ kind: 'saved', productId: consultationPicker });
+                            }
+                          }}
+                        >
+                          {testMutation.isPending
+                            ? <Loader2 className="h-4 w-4 animate-spin" />
+                            : <Play className="h-4 w-4" />}
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent side="bottom">Testar</TooltipContent>
+                    </Tooltip>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          type="button"
+                          size="icon"
+                          variant="default"
+                          className="gradient-primary h-9 w-9 shrink-0 cursor-pointer text-primary-foreground"
+                          aria-label="Salvar consulta"
+                          onClick={() => consultationEditorRef.current?.save()}
+                        >
+                          <Save className="h-4 w-4" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent side="bottom">Salvar</TooltipContent>
+                    </Tooltip>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          type="button"
+                          size="icon"
+                          variant="ghost"
+                          className="h-9 w-9 shrink-0 cursor-pointer"
+                          aria-label="Reverter alterações"
+                          onClick={() => consultationEditorRef.current?.revert()}
+                        >
+                          <Undo2 className="h-4 w-4" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent side="bottom">Reverter alterações</TooltipContent>
+                    </Tooltip>
+                    {consultationPicker !== CONSULTATION_PICKER_NEW && (
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="h-9 w-9 shrink-0 cursor-pointer text-muted-foreground hover:text-destructive"
+                            aria-label="Excluir consulta"
+                            onClick={async () => {
+                              const idToDelete = consultationPicker;
+                              try {
+                                await deleteProductApi(accessToken, idToDelete);
+                                toast.success('Removida');
+                                invalidateAll();
+                                const rest = consultations.filter((c) => c.id !== idToDelete);
+                                const sorted = [...rest].sort(
+                                  (a, b) =>
+                                    new Date(b.updatedAt || 0).getTime() -
+                                    new Date(a.updatedAt || 0).getTime(),
+                                );
+                                setConsultationPicker(sorted[0]?.id ?? CONSULTATION_PICKER_NEW);
+                                setConsultationEditorNonce((n) => n + 1);
+                              } catch {
+                                toast.error('Não foi possível remover');
+                              }
+                            }}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent side="bottom">Excluir consulta</TooltipContent>
+                      </Tooltip>
+                    )}
+                  </div>
+                </div>
+
+                {consultationPicker === CONSULTATION_PICKER_NEW ? (
                   <NewConsultationForm
+                    ref={consultationEditorRef}
+                    key={`new-${newConsultationProviderId ?? 'none'}`}
                     providers={providers}
                     fieldTypes={fieldTypes}
                     testLog={testLog}
-                    providerId={creatingConsultation.providerId}
+                    providerId={newConsultationProviderId}
                     registerNewConsultationTestFn={registerNewConsultationTestFn}
                     onTest={(input) => testMutation.mutateAsync(input)}
                     onSave={async (data) => saveConsultation(data)}
-                    onCancel={() => setCreatingConsultation({ active: false })}
+                    onCancel={() => {
+                      if (sortedConsultations.length === 0) return;
+                      setConsultationPicker(sortedConsultations[0].id);
+                      setNewConsultationProviderId(undefined);
+                    }}
                   />
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
-
-          <div className="space-y-1.5">
-            {consultations.map((pc, i) => {
-              const prov = providers.find((p) => p.id === pc.providerId);
-              const isEditing = editingConsultation === pc.id;
-
-              return (
-                <motion.div key={pc.id} initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.02 }}>
-                  <div className={`bg-card rounded-md border overflow-hidden ${isEditing ? 'border-primary/30 border-2' : 'border-border'}`}>
-                    <div
-                      className="flex items-center gap-2.5 px-3 py-2 cursor-pointer hover:bg-accent/30 transition-colors"
-                      onClick={() => setEditingConsultation(isEditing ? null : pc.id)}
-                      onKeyDown={(e) => e.key === 'Enter' && setEditingConsultation(isEditing ? null : pc.id)}
-                      role="button"
-                      tabIndex={0}
-                    >
-                      <div className="w-9 h-9 rounded-md bg-primary/8 flex items-center justify-center">
-                        <Database className="w-4 h-4 text-primary" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className={cardTitleCls}>{pc.name}</span>
-                          <code className="text-xs font-mono text-muted-foreground bg-muted px-1.5 py-0.5 rounded">{pc.externalId}</code>
-                          <span className={`${subtleBadgeCls} ${pc.status === 'active' ? 'bg-emerald-500/10 text-emerald-600' : 'bg-muted text-muted-foreground'}`}>
-                            {pc.status === 'active' ? 'Ativo' : 'Inativo'}
-                          </span>
-                        </div>
-                        <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-sm text-muted-foreground mt-1">
-                          <span>{prov?.name || '—'}</span>
-                          <span className="text-border">·</span>
-                          <span className="font-mono text-xs">{pc.method} {pc.endpoint}</span>
-                          <span className="text-border">·</span>
-                          <span>R$ {pc.cost.toFixed(2)}</span>
-                          <span className="text-border">·</span>
-                          <span>{pc.fieldMappings.length} campos</span>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-1 shrink-0">
-                        <button
-                          type="button"
-                          title="Testar no provedor"
-                          className="w-8 h-8 flex items-center justify-center rounded-md text-muted-foreground hover:text-primary transition-colors disabled:opacity-50"
-                          disabled={testMutation.isPending}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            if (isEditing && cardTestFnsRef.current[pc.id]) {
-                              void cardTestFnsRef.current[pc.id]();
-                            } else {
-                              void testMutation.mutateAsync({ kind: 'saved', productId: pc.id });
-                            }
-                          }}
-                        >
-                          <Play className="w-4 h-4" />
-                        </button>
-                        <button
-                          type="button"
-                          className="w-8 h-8 flex items-center justify-center rounded-md text-muted-foreground hover:text-destructive transition-colors"
-                          onClick={async (e) => {
-                            e.stopPropagation();
-                            try {
-                              await deleteProductApi(accessToken, pc.id);
-                              toast.success('Removida');
-                              invalidateAll();
-                            } catch {
-                              toast.error('Não foi possível remover');
-                            }
-                          }}
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                        {isEditing ? <ChevronDown className="w-4 h-4 text-muted-foreground" /> : <ChevronRight className="w-4 h-4 text-muted-foreground" />}
-                      </div>
-                    </div>
-
-                    <AnimatePresence>
-                      {isEditing && (
-                        <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden">
-                          <div className="px-3 pb-3 border-t border-border pt-2.5">
-                            <ConsultationEditor
-                              consultation={pc}
-                              providers={providers}
-                              fieldTypes={fieldTypes}
-                              testLog={testLog}
-                              registerCardTestFn={registerCardTestFn}
-                              onTest={(input) => testMutation.mutateAsync(input)}
-                              onSave={async (data) => saveConsultation(data, pc.id)}
-                              onCancel={() => setEditingConsultation(null)}
-                            />
-                          </div>
-                        </motion.div>
-                      )}
-                    </AnimatePresence>
-                  </div>
-                </motion.div>
-              );
-            })}
-
-            {consultations.length === 0 && !creatingConsultation.active && (
-              <div className="text-center py-12">
-                <Database className="w-10 h-10 text-muted-foreground/30 mx-auto mb-3" />
-                <p className="text-sm text-muted-foreground">Nenhuma consulta cadastrada</p>
+                ) : (
+                  <ConsultationEditor
+                    ref={consultationEditorRef}
+                    key={`${consultationPicker}-${consultationEditorNonce}`}
+                    consultation={findConsultation(consultationPicker)!}
+                    providers={providers}
+                    fieldTypes={fieldTypes}
+                    testLog={testLog}
+                    registerCardTestFn={registerCardTestFn}
+                    onTest={(input) => testMutation.mutateAsync(input)}
+                    onSave={async (data) => saveConsultation(data, consultationPicker)}
+                    onCancel={() => setConsultationEditorNonce((n) => n + 1)}
+                  />
+                )}
               </div>
-            )}
-          </div>
+            </motion.div>
+          )}
+
         </TabsContent>
 
         <TabsContent value="types" className="space-y-2">
@@ -1600,6 +1924,12 @@ export default function IntegrationsPage() {
                       <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded-md">{linked.length} consultas</span>
                     </div>
 
+                    <TypeReportFieldsConfig
+                      fieldType={ft}
+                      saving={savingFieldType}
+                      onSave={async (nextConfig) => handleSaveTypeReportFields(ft, nextConfig)}
+                    />
+
                     {linked.length === 0 ? (
                       <div className="text-center py-12 bg-card rounded-md border border-border">
                         <Database className="w-8 h-8 text-muted-foreground/20 mx-auto mb-2" />
@@ -1613,7 +1943,7 @@ export default function IntegrationsPage() {
                             consultation={pc}
                             provider={providers.find((p) => p.id === pc.providerId)}
                             fieldTypeKey={selectedFieldType!}
-                            initialFilters={pc.typeItemFilters?.[selectedFieldType] ?? []}
+                            initialFilters={linkedConsultationInitialFilters(pc, selectedFieldType, fieldTypes)}
                             accessToken={accessToken}
                             onFiltersPersisted={invalidateAll}
                           />
