@@ -279,6 +279,25 @@ model ConsultationType {
   updatedAt        DateTime         @updatedAt
 
   products         ProviderProduct[]
+  reportFields     ConsultationTypeReportField[]
+}
+
+model ConsultationTypeReportField {
+  id                 String           @id @default(cuid())
+  consultationTypeId String
+  fieldKey           String
+  label              String
+  fieldType          String
+  displayOrder       Int              @default(0)
+  colorRules         Json?
+  isActive           Boolean          @default(true)
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+
+  consultationType   ConsultationType @relation(fields: [consultationTypeId], references: [id], onDelete: Cascade)
+
+  @@unique([consultationTypeId, fieldKey])
+  @@index([consultationTypeId])
 }
 
 model CanonicalFieldCatalog {
