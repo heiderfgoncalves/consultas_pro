@@ -1,4 +1,5 @@
-import type { MappingItemFilter } from '@/types/integrations';
+import type { MappingItemFilter, TypeItemFilterConfig } from '@/types/integrations';
+import { getActiveTypeItemFilterGroups, normalizeTypeItemFilterConfig } from '@/lib/typeItemFilters';
 
 export function getValueAtJsonPath(root: unknown, path: string): unknown {
   if (!path) return root;
@@ -46,18 +47,33 @@ export function activeMappingItemFilters(filters: MappingItemFilter[] | undefine
   return filters.filter(f => f.field.trim().length > 0);
 }
 
+function matchesFilterConfig(
+  item: Record<string, unknown>,
+  filters: MappingItemFilter[] | TypeItemFilterConfig | undefined,
+): boolean {
+  const groups = getActiveTypeItemFilterGroups(normalizeTypeItemFilterConfig(filters));
+  if (!groups.length) return true;
+
+  let result = groups[0].rules.every((rule) => matchesFilter(item, rule));
+  for (let index = 1; index < groups.length; index += 1) {
+    const groupMatches = groups[index].rules.every((rule) => matchesFilter(item, rule));
+    result = groups[index].joinOperator === 'or' ? (result || groupMatches) : (result && groupMatches);
+  }
+  return result;
+}
+
 /** Aplica critérios em cada elemento quando o valor em `jsonPath` é um array de objetos. */
 export function applyMappingItemFilters(
   value: unknown,
-  filters: MappingItemFilter[] | undefined,
+  filters: MappingItemFilter[] | TypeItemFilterConfig | undefined,
 ): unknown {
-  const use = activeMappingItemFilters(filters);
-  if (!use.length) return value;
+  const groups = getActiveTypeItemFilterGroups(normalizeTypeItemFilterConfig(filters));
+  if (!groups.length) return value;
   if (!Array.isArray(value)) return value;
   return value.filter(el => {
     if (!el || typeof el !== 'object' || Array.isArray(el)) return false;
     const obj = el as Record<string, unknown>;
-    return use.every(f => matchesFilter(obj, f));
+    return matchesFilterConfig(obj, filters);
   });
 }
 
@@ -75,15 +91,16 @@ export function hasVisiblePreviewValue(value: unknown): boolean {
  */
 export function filterValueForPreviewDeep(
   value: unknown,
-  filters: MappingItemFilter[] | undefined,
+  filters: MappingItemFilter[] | TypeItemFilterConfig | undefined,
 ): { value: unknown; hasData: boolean } {
-  const active = activeMappingItemFilters(filters);
-  if (!active.length) {
+  const normalized = normalizeTypeItemFilterConfig(filters);
+  const activeGroups = getActiveTypeItemFilterGroups(normalized);
+  if (!activeGroups.length) {
     return { value, hasData: hasVisiblePreviewValue(value) };
   }
 
   if (Array.isArray(value)) {
-    const directlyFiltered = applyMappingItemFilters(value, active);
+    const directlyFiltered = applyMappingItemFilters(value, normalized);
     if (directlyFiltered !== value) {
       return {
         value: directlyFiltered,
@@ -95,7 +112,7 @@ export function filterValueForPreviewDeep(
 
     const nestedItems: unknown[] = [];
     for (const item of value) {
-      const nested = filterValueForPreviewDeep(item, active);
+      const nested = filterValueForPreviewDeep(item, normalized);
       if (nested.hasData) nestedItems.push(nested.value);
     }
     return { value: nestedItems, hasData: nestedItems.length > 0 };
@@ -106,7 +123,7 @@ export function filterValueForPreviewDeep(
     let matchedNestedChild = false;
 
     for (const [key, childValue] of Object.entries(value as Record<string, unknown>)) {
-      const nested = filterValueForPreviewDeep(childValue, active);
+      const nested = filterValueForPreviewDeep(childValue, normalized);
       if (nested.hasData) {
         nextObject[key] = nested.value;
         matchedNestedChild = true;
@@ -120,13 +137,14 @@ export function filterValueForPreviewDeep(
     return { value: {}, hasData: false };
   }
 
-  return { value, hasData: false };
+  // Critérios de item aplicam a arrays de objetos; em folhas (string, número, etc.) não há como filtrar — mostrar o valor.
+  return { value, hasData: hasVisiblePreviewValue(value) };
 }
 
 export function formatDeepFilteredValueAtPath(
   rootJson: string,
   jsonPath: string,
-  filters: MappingItemFilter[] | undefined,
+  filters: MappingItemFilter[] | TypeItemFilterConfig | undefined,
   lineFallback: string,
 ): { text: string; hasData: boolean } {
   try {
@@ -148,7 +166,7 @@ export function formatDeepFilteredValueAtPath(
 export function formatMappedValuePreview(
   rootJson: string,
   jsonPath: string,
-  filters: MappingItemFilter[] | undefined,
+  filters: MappingItemFilter[] | TypeItemFilterConfig | undefined,
   lineFallback: string,
 ): string {
   return formatDeepFilteredValueAtPath(rootJson, jsonPath, filters, lineFallback).text;
