@@ -1,6 +1,13 @@
-const TOKEN_KEY = 'cp_access_token';
-const USER_KEY = 'cp_user_json';
-const PREVIEW_KEY = 'cp_preview_level';
+/** Chaves usadas em localStorage + listener `storage` (sincronização entre abas). */
+export const AUTH_STORAGE_KEYS = {
+  TOKEN: 'cp_access_token',
+  USER: 'cp_user_json',
+  PREVIEW: 'cp_preview_level',
+} as const;
+
+const TOKEN_KEY = AUTH_STORAGE_KEYS.TOKEN;
+const USER_KEY = AUTH_STORAGE_KEYS.USER;
+const PREVIEW_KEY = AUTH_STORAGE_KEYS.PREVIEW;
 
 export function getStoredToken(): string | null {
   try {
@@ -78,14 +85,20 @@ export async function apiRequest<T>(
   options: RequestInit & { token?: string | null } = {},
 ): Promise<T> {
   const url = `${apiBase()}${path.startsWith('/') ? path : `/${path}`}`;
-  const token = options.token ?? getStoredToken();
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-    ...(options.headers as Record<string, string> | undefined),
-  };
-  if (token) headers.Authorization = `Bearer ${token}`;
+  const { token: explicitToken, ...rest } = options;
+  const token = explicitToken ?? getStoredToken();
 
-  const res = await fetch(url, { ...options, headers });
+  const headers = new Headers(rest.headers);
+  if (token) {
+    headers.set('Authorization', `Bearer ${token}`);
+  }
+
+  const body = rest.body;
+  if (typeof body === 'string' && body.length > 0 && !headers.has('Content-Type')) {
+    headers.set('Content-Type', 'application/json');
+  }
+
+  const res = await fetch(url, { ...rest, headers });
   const json = (await res.json()) as {
     success: boolean;
     data?: T;

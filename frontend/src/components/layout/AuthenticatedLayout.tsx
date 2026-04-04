@@ -9,9 +9,20 @@ function isApiDocsPath(pathname: string) {
 }
 
 export default function AuthenticatedLayout() {
-  const { isAuthenticated } = useAuthStore();
+  const { hydrated, isAuthenticated } = useAuthStore();
   const { pathname } = useLocation();
   const hideTopBar = isApiDocsPath(pathname);
+
+  if (!hydrated) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-background">
+        <div
+          className="h-9 w-9 rounded-full border-2 border-muted-foreground/25 border-t-primary animate-spin"
+          aria-hidden
+        />
+      </div>
+    );
+  }
 
   if (!isAuthenticated) {
     return <Navigate to="/login" replace />;

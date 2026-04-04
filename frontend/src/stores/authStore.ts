@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import {
+  ApiError,
   apiRequest,
   getStoredPreviewLevel,
   getStoredToken,
@@ -43,6 +44,8 @@ export interface User {
 }
 
 interface AuthState {
+  /** `true` após a primeira hidratação a partir do localStorage (evita redirect prematuro para /login). */
+  hydrated: boolean;
   isAuthenticated: boolean;
   accessToken: string | null;
   sessionUser: SessionUser | null;
@@ -132,6 +135,7 @@ function parsePreview(stored: string | null): AccessLevel {
 }
 
 export const useAuthStore = create<AuthState>((set, get) => ({
+  hydrated: false,
   isAuthenticated: false,
   accessToken: null,
   sessionUser: null,
@@ -162,6 +166,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     }
 
     set({
+      hydrated: true,
       isAuthenticated: true,
       accessToken: data.accessToken,
       sessionUser: session,
@@ -175,6 +180,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     setStoredUserJson(null);
     setStoredPreviewLevel(null);
     set({
+      hydrated: true,
       isAuthenticated: false,
       accessToken: null,
       sessionUser: null,
@@ -197,7 +203,14 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     const token = getStoredToken();
     const raw = getStoredUserJson();
     if (!token || !raw) {
-      set({ isAuthenticated: false, accessToken: null, sessionUser: null, user: null, previewAccessLevel: 0 });
+      set({
+        hydrated: true,
+        isAuthenticated: false,
+        accessToken: null,
+        sessionUser: null,
+        user: null,
+        previewAccessLevel: 0,
+      });
       return;
     }
     let session: SessionUser;
@@ -214,9 +227,12 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         method: 'GET',
         token,
       });
-    } catch {
-      get().logout();
-      return;
+    } catch (e) {
+      if (e instanceof ApiError && (e.status === 401 || e.status === 403)) {
+        get().logout();
+        return;
+      }
+      /* Rede ou erro transitório: mantém sessão local para não deslogar no dev/HMR. */
     }
 
     const preview =
@@ -225,6 +241,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         : roleToAccessLevel(session.role);
 
     set({
+      hydrated: true,
       isAuthenticated: true,
       accessToken: token,
       sessionUser: session,

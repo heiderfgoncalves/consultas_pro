@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Route, Routes, Navigate } from "react-router-dom";
+import { AUTH_STORAGE_KEYS } from "@/lib/api";
 import { useAuthStore } from "@/stores/authStore";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { Toaster } from "@/components/ui/toaster";
@@ -36,6 +37,21 @@ function AuthBootstrap() {
   const hydrate = useAuthStore((s) => s.hydrate);
   useEffect(() => {
     void hydrate();
+    const onStorage = (ev: StorageEvent) => {
+      if (!ev.key) {
+        void hydrate();
+        return;
+      }
+      if (
+        ev.key === AUTH_STORAGE_KEYS.TOKEN ||
+        ev.key === AUTH_STORAGE_KEYS.USER ||
+        ev.key === AUTH_STORAGE_KEYS.PREVIEW
+      ) {
+        void hydrate();
+      }
+    };
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
   }, [hydrate]);
   return null;
 }
