@@ -50,7 +50,7 @@ export interface ProviderConsultation {
   method: 'GET' | 'POST';
   cost: number;
   fieldMappings: FieldMapping[];
-  /** Critérios mantidos por compatibilidade local; a fonte de verdade agora é o catálogo canônico. */
+  /** Critérios por chave do tipo canônico; persistidos em ProviderProduct.typeItemFilters. */
   typeItemFilters?: Record<string, MappingItemFilter[]>;
   sampleRequest?: string;
   sampleResponse?: string;

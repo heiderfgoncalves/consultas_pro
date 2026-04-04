@@ -348,8 +348,6 @@ function ConsultationEditor({
   consultation,
   providers,
   fieldTypes,
-  typeFilters,
-  onTypeFiltersChange,
   testLog,
   onSave,
   onCancel,
@@ -360,8 +358,6 @@ function ConsultationEditor({
   consultation: ProviderConsultation;
   providers: Provider[];
   fieldTypes: ConsultationFieldType[];
-  typeFilters: Record<string, MappingItemFilter[]>;
-  onTypeFiltersChange: (next: Record<string, MappingItemFilter[]>) => void;
   testLog: { id: string; consultationName: string; providerId: string; responseJson: string; testedAt: string }[];
   onSave: (data: Partial<ProviderConsultation>) => Promise<void>;
   onCancel: () => void;
@@ -384,6 +380,28 @@ function ConsultationEditor({
       return testJson;
     }
   }, [testJson]);
+
+  const typeFiltersForMapper = useMemo(() => {
+    const stored = form.typeItemFilters ?? {};
+    const out: Record<string, MappingItemFilter[]> = {};
+    for (const ft of fieldTypes) {
+      const own = stored[ft.key];
+      if (own !== undefined) {
+        out[ft.key] = own.map((r) => ({ ...r }));
+      } else {
+        out[ft.key] = (ft.typeItemFilters ?? []).map((r) => ({ ...r }));
+      }
+    }
+    return out;
+  }, [fieldTypes, form.typeItemFilters]);
+
+  const handleMapperTypeFiltersChange = useCallback((next: Record<string, MappingItemFilter[]>) => {
+    const cloned: Record<string, MappingItemFilter[]> = {};
+    for (const [k, rules] of Object.entries(next)) {
+      cloned[k] = rules.map((r) => ({ ...r }));
+    }
+    setForm((f) => ({ ...f, typeItemFilters: cloned }));
+  }, []);
 
   const baseUrl = providers.find((p) => p.id === form.providerId)?.baseUrl || '';
   const path = (form.endpoint || '').trim();
@@ -450,7 +468,12 @@ function ConsultationEditor({
     setTestJson(consultation.sampleResponse || '');
     setBodyTemplateJson(consultation.bodyTemplateJson || '');
     setCurlInput('');
-  }, [consultation.id]);
+  }, [
+    consultation.id,
+    JSON.stringify(consultation.typeItemFilters ?? null),
+    consultation.sampleResponse,
+    consultation.bodyTemplateJson,
+  ]);
 
   return (
     <div className="space-y-3">
@@ -598,8 +621,8 @@ function ConsultationEditor({
         fieldTypes={fieldTypes}
         mappings={form.fieldMappings || []}
         onMappingsChange={(m) => setForm((f) => ({ ...f, fieldMappings: m }))}
-        typeFilters={typeFilters}
-        onTypeFiltersChange={onTypeFiltersChange}
+        typeFilters={typeFiltersForMapper}
+        onTypeFiltersChange={handleMapperTypeFiltersChange}
       />
 
       <div className="flex flex-wrap gap-2 pt-3 border-t border-border">
@@ -616,7 +639,12 @@ function ConsultationEditor({
             } catch {
               return;
             }
-            void onSave({ ...form, sampleResponse: testJson, bodyTemplateJson });
+            void onSave({
+              ...form,
+              sampleResponse: testJson,
+              bodyTemplateJson,
+              typeItemFilters: form.typeItemFilters,
+            });
           }}
         >
           <Save className="w-4 h-4 mr-1.5" /> Salvar
@@ -642,6 +670,7 @@ function NewConsultationForm(props: Omit<Parameters<typeof ConsultationEditor>[0
     status: 'active',
     sampleResponse: '',
     bodyTemplateJson: '',
+    typeItemFilters: {},
   };
   return <ConsultationEditor consultation={dummy} {...props} />;
 }
@@ -733,20 +762,39 @@ function LinkedConsultationCard({
   provider: prov,
   fieldTypeKey,
   initialFilters,
+  accessToken,
+  onFiltersPersisted,
 }: {
   consultation: ProviderConsultation;
   provider?: Provider;
   fieldTypeKey: string;
   initialFilters?: MappingItemFilter[];
+  accessToken: string | null;
+  onFiltersPersisted: () => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   const [filters, setFilters] = useState<MappingItemFilter[]>(() => (initialFilters ?? []).map((rule) => ({ ...rule })));
+  const [savingFilters, setSavingFilters] = useState(false);
   const maps = pc.fieldMappings.filter((m) => m.fieldTypeKey === fieldTypeKey);
   const filterActive = (filters ?? []).some((f) => f.field.trim().length > 0);
 
   useEffect(() => {
     setFilters((initialFilters ?? []).map((rule) => ({ ...rule })));
   }, [initialFilters, pc.id, fieldTypeKey]);
+
+  const persistFilters = async () => {
+    setSavingFilters(true);
+    try {
+      const merged: Record<string, MappingItemFilter[]> = { ...(pc.typeItemFilters ?? {}), [fieldTypeKey]: filters };
+      await patchProductApi(accessToken, pc.id, { typeItemFilters: merged });
+      toast.success('Critérios salvos nesta consulta');
+      onFiltersPersisted();
+    } catch {
+      toast.error('Não foi possível salvar os critérios');
+    } finally {
+      setSavingFilters(false);
+    }
+  };
 
   let jsonExcerpt = '';
   if (pc.sampleResponse && maps.length > 0) {
@@ -806,12 +854,26 @@ function LinkedConsultationCard({
       </div>
 
       <AnimatePresence>
-        {expanded && jsonExcerpt && (
+        {expanded && (
           <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden">
             <div className="px-3 pb-2.5 border-t border-border pt-2 space-y-2">
               <ConsultationTypeFiltersEditor filters={filters} onChange={setFilters} />
+              <div className="flex justify-end">
+                <Button
+                  type="button"
+                  size="sm"
+                  className="h-8 text-xs gradient-primary text-primary-foreground"
+                  disabled={savingFilters}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    void persistFilters();
+                  }}
+                >
+                  {savingFilters ? 'Salvando…' : 'Salvar critérios'}
+                </Button>
+              </div>
               <pre className="text-sm font-mono text-foreground/80 bg-background rounded-md border border-border p-3 max-h-40 overflow-auto scrollbar-thin leading-relaxed">
-                {jsonExcerpt}
+                {jsonExcerpt || '—'}
               </pre>
             </div>
           </motion.div>
@@ -871,7 +933,7 @@ export default function IntegrationsPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [savingProvider, setSavingProvider] = useState(false);
   const [savingFieldType, setSavingFieldType] = useState(false);
-  const [globalTypeFilters, setGlobalTypeFilters] = useState<Record<string, MappingItemFilter[]>>({});
+  const [integrationsTab, setIntegrationsTab] = useState<'providers' | 'consultations' | 'types'>('providers');
 
   const cardTestFnsRef = useRef<Record<string, () => Promise<void>>>({});
   const newConsultationTestRef = useRef<(() => Promise<void>) | null>(null);
@@ -910,14 +972,6 @@ export default function IntegrationsPage() {
     () => mapCanonicalToFieldTypes(canonicalQuery.data ?? []),
     [canonicalQuery.data],
   );
-
-  useEffect(() => {
-    const next: Record<string, MappingItemFilter[]> = {};
-    for (const fieldType of fieldTypes) {
-      next[fieldType.key] = (fieldType.typeItemFilters ?? []).map((rule) => ({ ...rule }));
-    }
-    setGlobalTypeFilters(next);
-  }, [fieldTypes]);
 
   const providers = useMemo(() => apiProviders.map(mapApiProvider), [apiProviders]);
 
@@ -1047,25 +1101,6 @@ export default function IntegrationsPage() {
     }
   };
 
-  const handleGlobalTypeFiltersChange = useCallback(async (next: Record<string, MappingItemFilter[]>) => {
-    setGlobalTypeFilters(next);
-    const changed = fieldTypes.filter((fieldType) => {
-      const prev = JSON.stringify(globalTypeFilters[fieldType.key] ?? []);
-      const curr = JSON.stringify(next[fieldType.key] ?? []);
-      return prev !== curr;
-    });
-
-    for (const fieldType of changed) {
-      await patchCanonicalFieldApi(accessToken, fieldType.id, {
-        uiItemFilters: next[fieldType.key] ?? [],
-      });
-    }
-
-    if (changed.length > 0) {
-      void queryClient.invalidateQueries({ queryKey: ['admin-canonical-fields'] });
-    }
-  }, [accessToken, fieldTypes, globalTypeFilters, queryClient]);
-
   const saveConsultation = async (data: Partial<ProviderConsultation>, existingId?: string) => {
     let sampleResponse: unknown = undefined;
     if (data.sampleResponse !== undefined && data.sampleResponse !== '') {
@@ -1104,6 +1139,7 @@ export default function IntegrationsPage() {
         isActive: data.status !== 'inactive',
         sampleResponse: sampleResponse === undefined ? undefined : sampleResponse,
         ...(bodyTemplate !== undefined ? { bodyTemplate } : {}),
+        ...(data.typeItemFilters !== undefined ? { typeItemFilters: data.typeItemFilters } : {}),
       });
       await syncMappings(accessToken, existingId, fieldTypes, data.fieldMappings || [], prev);
       toast.success('Consulta atualizada');
@@ -1124,6 +1160,7 @@ export default function IntegrationsPage() {
         isActive: data.status !== 'inactive',
         sampleResponse: sampleResponse ?? undefined,
         ...(bodyTemplate !== undefined && bodyTemplate !== null ? { bodyTemplate } : {}),
+        ...(data.typeItemFilters !== undefined ? { typeItemFilters: data.typeItemFilters } : {}),
       });
       await syncMappings(accessToken, created.id, fieldTypes, data.fieldMappings || [], undefined);
       toast.success('Consulta cadastrada');
@@ -1177,26 +1214,41 @@ export default function IntegrationsPage() {
         <p className="text-sm text-muted-foreground">Carregando…</p>
       )}
 
-      <Tabs defaultValue="providers" className="space-y-4">
-        <TabsList className="h-10 bg-muted/50 p-1 rounded-lg gap-1">
-          <TabsTrigger value="providers" className="text-sm h-8 gap-2 px-4 rounded-md">
-            <Server className="w-4 h-4" /> Provedores
-          </TabsTrigger>
-          <TabsTrigger value="consultations" className="text-sm h-8 gap-2 px-4 rounded-md">
-            <Database className="w-4 h-4" /> Consultas
-          </TabsTrigger>
-          <TabsTrigger value="types" className="text-sm h-8 gap-2 px-4 rounded-md">
-            <Tag className="w-4 h-4" /> Tipos
-          </TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="providers" className="space-y-2">
-          <div className="flex justify-end">
-            <Button size="default" className="gradient-primary text-primary-foreground text-sm h-9 px-4" onClick={() => setProviderModal({ open: true })}>
+      <Tabs
+        value={integrationsTab}
+        onValueChange={(v) => setIntegrationsTab(v as 'providers' | 'consultations' | 'types')}
+        className="space-y-4"
+      >
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <TabsList className="h-10 bg-muted/50 p-1 rounded-lg gap-1 inline-flex w-fit max-w-full overflow-x-auto [scrollbar-width:thin]">
+            <TabsTrigger value="providers" className="text-sm h-8 gap-2 px-4 rounded-md shrink-0">
+              <Server className="w-4 h-4" /> Provedores
+            </TabsTrigger>
+            <TabsTrigger value="consultations" className="text-sm h-8 gap-2 px-4 rounded-md shrink-0">
+              <Database className="w-4 h-4" /> Consultas
+            </TabsTrigger>
+            <TabsTrigger value="types" className="text-sm h-8 gap-2 px-4 rounded-md shrink-0">
+              <Tag className="w-4 h-4" /> Tipos
+            </TabsTrigger>
+          </TabsList>
+          {integrationsTab === 'providers' && (
+            <Button size="default" className="gradient-primary text-primary-foreground text-sm h-9 px-4 shrink-0" onClick={() => setProviderModal({ open: true })}>
               <Plus className="w-4 h-4 mr-1.5" /> Provedor
             </Button>
-          </div>
+          )}
+          {integrationsTab === 'consultations' && (
+            <Button size="default" className="gradient-primary text-primary-foreground text-sm h-9 px-4 shrink-0" onClick={() => setCreatingConsultation({ active: true })}>
+              <Plus className="w-4 h-4 mr-1.5" /> Consulta
+            </Button>
+          )}
+          {integrationsTab === 'types' && (
+            <Button size="default" className="gradient-primary text-primary-foreground text-sm h-9 px-4 shrink-0" onClick={() => setFieldTypeModal({ open: true })}>
+              <Plus className="w-4 h-4 mr-1.5" /> Tipo
+            </Button>
+          )}
+        </div>
 
+        <TabsContent value="providers" className="space-y-2">
           <div className="space-y-1.5">
             {filteredProviders.map((prov, i) => {
               const provConsults = consultations.filter((c) => c.providerId === prov.id);
@@ -1326,12 +1378,6 @@ export default function IntegrationsPage() {
         </TabsContent>
 
         <TabsContent value="consultations" className="space-y-2">
-          <div className="flex justify-end">
-            <Button size="default" className="gradient-primary text-primary-foreground text-sm h-9 px-4" onClick={() => setCreatingConsultation({ active: true })}>
-              <Plus className="w-4 h-4 mr-1.5" /> Consulta
-            </Button>
-          </div>
-
           <AnimatePresence>
             {creatingConsultation.active && (
               <motion.div initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -4 }}>
@@ -1355,8 +1401,6 @@ export default function IntegrationsPage() {
                   <NewConsultationForm
                     providers={providers}
                     fieldTypes={fieldTypes}
-                    typeFilters={globalTypeFilters}
-                    onTypeFiltersChange={(next) => void handleGlobalTypeFiltersChange(next)}
                     testLog={testLog}
                     providerId={creatingConsultation.providerId}
                     registerNewConsultationTestFn={registerNewConsultationTestFn}
@@ -1450,8 +1494,6 @@ export default function IntegrationsPage() {
                               consultation={pc}
                               providers={providers}
                               fieldTypes={fieldTypes}
-                              typeFilters={globalTypeFilters}
-                              onTypeFiltersChange={(next) => void handleGlobalTypeFiltersChange(next)}
                               testLog={testLog}
                               registerCardTestFn={registerCardTestFn}
                               onTest={(input) => testMutation.mutateAsync(input)}
@@ -1477,12 +1519,6 @@ export default function IntegrationsPage() {
         </TabsContent>
 
         <TabsContent value="types" className="space-y-2">
-          <div className="flex justify-end">
-            <Button size="default" className="gradient-primary text-primary-foreground text-sm h-9 px-4" onClick={() => setFieldTypeModal({ open: true })}>
-              <Plus className="w-4 h-4 mr-1.5" /> Tipo
-            </Button>
-          </div>
-
           <div className="flex min-h-[360px] max-h-[min(70vh,40rem)] gap-3">
             <div className="flex w-64 shrink-0 flex-col border-r border-border/60 pr-2 min-h-0">
               <div className="min-h-0 flex-1 space-y-1 overflow-y-auto overflow-x-hidden [scrollbar-width:thin] pr-1">
@@ -1577,7 +1613,9 @@ export default function IntegrationsPage() {
                             consultation={pc}
                             provider={providers.find((p) => p.id === pc.providerId)}
                             fieldTypeKey={selectedFieldType!}
-                            initialFilters={pc.typeItemFilters?.[selectedFieldType] ?? globalTypeFilters[selectedFieldType] ?? []}
+                            initialFilters={pc.typeItemFilters?.[selectedFieldType] ?? []}
+                            accessToken={accessToken}
+                            onFiltersPersisted={invalidateAll}
                           />
                         ))}
                       </div>

@@ -2,6 +2,7 @@ import { apiRequest } from '@/lib/api';
 import type {
   ConsultationFieldType,
   FieldMapping,
+  MappingItemFilter,
   Provider,
   ProviderConsultation,
   TestLogEntry,
@@ -10,6 +11,30 @@ import { PATH_KEY_UI_META } from '@/lib/integrations-constants';
 
 function tok(t: string | null) {
   return t;
+}
+
+const FILTER_OPS = new Set(['eq', 'contains', 'startsWith', 'endsWith', 'regex']);
+
+export function parseProductTypeItemFilters(raw: unknown): Record<string, MappingItemFilter[]> | undefined {
+  if (raw === null || raw === undefined) return undefined;
+  if (typeof raw !== 'object' || Array.isArray(raw)) return undefined;
+  const o = raw as Record<string, unknown>;
+  const out: Record<string, MappingItemFilter[]> = {};
+  for (const [key, val] of Object.entries(o)) {
+    if (!Array.isArray(val)) continue;
+    const rules: MappingItemFilter[] = [];
+    for (const item of val) {
+      if (!item || typeof item !== 'object' || Array.isArray(item)) continue;
+      const it = item as Record<string, unknown>;
+      const field = typeof it.field === 'string' ? it.field : '';
+      const opRaw = typeof it.op === 'string' ? it.op : 'eq';
+      const op = FILTER_OPS.has(opRaw) ? (opRaw as MappingItemFilter['op']) : 'eq';
+      const value = typeof it.value === 'string' ? it.value : '';
+      rules.push({ field, op, value });
+    }
+    out[key] = rules;
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
 }
 
 export interface ApiCanonicalField {
@@ -57,6 +82,7 @@ export interface ApiProduct {
   bodyTemplate?: unknown;
   queryTemplate?: unknown;
   headersTemplate?: unknown;
+  typeItemFilters?: unknown;
   mappings: ApiFieldMapping[];
 }
 
@@ -204,6 +230,7 @@ export function mapApiProduct(p: ApiProduct, providerId: string): ProviderConsul
     cost: Number.isFinite(cost) ? cost : 0,
     fieldMappings,
     mappingIds,
+    typeItemFilters: parseProductTypeItemFilters(p.typeItemFilters),
     sampleResponse: sampleRes,
     bodyTemplateJson,
     status: p.isActive ? 'active' : 'inactive',

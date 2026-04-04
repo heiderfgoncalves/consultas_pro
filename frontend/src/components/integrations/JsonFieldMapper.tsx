@@ -993,7 +993,7 @@ export default function JsonFieldMapper({
                           </pre>
                           {startsOnLine.length > 0 && (
                             <div
-                              className="pointer-events-auto sticky right-1 ml-auto flex max-w-[12rem] shrink-0 flex-row flex-nowrap items-center justify-end gap-1 rounded-l-full bg-gradient-to-l from-background via-background/95 to-transparent pl-3 pr-1"
+                              className="pointer-events-auto sticky right-1 ml-auto flex max-w-[18rem] shrink-0 flex-row flex-nowrap items-center justify-end gap-1 rounded-l-full bg-gradient-to-l from-background via-background/95 to-transparent pl-3 pr-1"
                               data-json-mapper-badge-stack
                             >
                               {startsOnLine.map(r => {
@@ -1005,7 +1005,7 @@ export default function JsonFieldMapper({
                                     key={r.regionId}
                                     data-json-mapper-badge
                                     variant="outline"
-                                    className={`text-[10px] h-5 max-w-[5.75rem] shrink-0 cursor-pointer rounded-full border ${c.border} ${c.text} bg-background/95 font-medium gap-0.5 shadow-sm`}
+                                    className={`text-[10px] h-5 max-w-[8.5rem] shrink-0 cursor-pointer rounded-full border ${c.border} ${c.text} bg-background/95 font-medium gap-0.5 shadow-sm`}
                                     onClick={(e) => {
                                       e.stopPropagation();
                                       setSelectedRegion(r.fieldTypeKey === selectedRegion ? null : r.fieldTypeKey);
