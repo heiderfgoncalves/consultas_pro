@@ -9,24 +9,9 @@ import {
   HttpMethod,
 } from '@prisma/client';
 import bcrypt from 'bcryptjs';
+import { DEFAULT_CANONICAL_SECTION_FIELDS } from '../src/modules/admin/canonical-field-defaults';
 
 const prisma = new PrismaClient();
-
-/** Chaves de seção alinhadas à aba "Tipos" do frontend (mapeamento UI → catálogo canônico). */
-const uiSectionCatalog: Array<{ pathKey: string; label: string; description?: string }> = [
-  { pathKey: 'DADOS_PESSOAIS', label: 'Dados Pessoais', description: 'Nome, CPF, data de nascimento, endereço' },
-  { pathKey: 'DIVIDAS_SPC', label: 'Dívidas SPC', description: 'Registros de inadimplência no SPC Brasil' },
-  { pathKey: 'DIVIDAS_SERASA', label: 'Dívidas Serasa', description: 'Registros de negativação Serasa Experian' },
-  { pathKey: 'DIVIDAS_BOA_VISTA', label: 'Dívidas Boa Vista', description: 'Apontamentos SCPC Boa Vista' },
-  { pathKey: 'SCORE_CREDITO', label: 'Score de Crédito', description: 'Pontuação de risco 0-1000' },
-  { pathKey: 'PROTESTO_CARTORIO', label: 'Protestos em Cartório', description: 'Títulos protestados em cartórios' },
-  { pathKey: 'APONTAMENTOS_BACEN', label: 'Apontamentos Bacen', description: 'Dados do Banco Central (Registrato)' },
-  { pathKey: 'CHEQUES_DEVOLVIDOS', label: 'Cheques Devolvidos', description: 'Cheques sem fundo devolvidos' },
-  { pathKey: 'PARTICIPACAO_SOCIETARIA', label: 'Participação Societária', description: 'Empresas vinculadas ao documento' },
-  { pathKey: 'RENDA_PRESUMIDA', label: 'Renda Presumida', description: 'Estimativa de renda com base em dados de mercado' },
-  { pathKey: 'CAPACIDADE_PAGAMENTO', label: 'Capacidade de Pagamento', description: 'Análise de capacidade de pagamento mensal' },
-  { pathKey: 'RATING_CREDITO', label: 'Rating de Crédito', description: 'Classificação por letras (AAA a D)' },
-];
 
 const mockProviders = [
   {
@@ -170,7 +155,7 @@ async function main() {
     });
   }
 
-  for (const row of uiSectionCatalog) {
+  for (const row of DEFAULT_CANONICAL_SECTION_FIELDS) {
     await prisma.canonicalFieldCatalog.upsert({
       where: { pathKey: row.pathKey },
       update: { label: row.label, description: row.description, dataType: 'object' },
@@ -317,6 +302,7 @@ async function main() {
       endpointPath: '/consulta/pf/completa',
       method: HttpMethod.POST,
       cost: 12.5,
+      consultationPrice: 18.9,
       isActive: true,
       consultationTypeId: composta.id,
       sampleResponse: sollosSampleResponse as object,
@@ -330,6 +316,7 @@ async function main() {
       endpointPath: '/consulta/pf/completa',
       method: HttpMethod.POST,
       cost: 12.5,
+      consultationPrice: 18.9,
       isActive: true,
       sampleResponse: sollosSampleResponse as object,
     },
@@ -343,6 +330,7 @@ async function main() {
       endpointPath: '/consulta/score-restricoes',
       method: HttpMethod.POST,
       cost: 8,
+      consultationPrice: 12.0,
       isActive: true,
       consultationTypeId: scoreType.id,
       sampleResponse: ehmSampleResponse as object,
@@ -356,6 +344,7 @@ async function main() {
       endpointPath: '/consulta/score-restricoes',
       method: HttpMethod.POST,
       cost: 8,
+      consultationPrice: 12.0,
       isActive: true,
       sampleResponse: ehmSampleResponse as object,
     },

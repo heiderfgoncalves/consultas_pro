@@ -34,6 +34,7 @@ export const createProviderProductSchema = z.object({
   headersTemplate: z.record(z.any()).optional(),
   timeoutMs: z.number().int().positive().optional(),
   cost: z.coerce.number().nonnegative(),
+  consultationPrice: z.coerce.number().nonnegative().optional(),
   sampleRequest: z.any().optional(),
   sampleResponse: z.any().optional(),
   typeItemFilters: z.any().optional(),
@@ -85,6 +86,7 @@ export const updateProviderProductSchema = z.object({
   headersTemplate: z.record(z.any()).nullable().optional(),
   timeoutMs: z.number().int().positive().nullable().optional(),
   cost: z.coerce.number().nonnegative().optional(),
+  consultationPrice: z.coerce.number().nonnegative().optional(),
   isActive: z.boolean().optional(),
   sampleRequest: z.any().nullable().optional(),
   sampleResponse: z.any().nullable().optional(),
@@ -108,6 +110,7 @@ export const updateCanonicalFieldSchema = z.object({
   dataType: z.string().min(2).optional(),
   description: z.string().nullable().optional(),
   uiItemFilters: z.any().nullable().optional(),
+  reportFieldConfig: z.any().nullable().optional(),
   isActive: z.boolean().optional(),
 });
 
@@ -124,6 +127,7 @@ export const createCanonicalFieldSchema = z.object({
   dataType: z.string().min(2),
   description: z.string().optional(),
   uiItemFilters: z.any().optional(),
+  reportFieldConfig: z.any().optional(),
 });
 
 export const testProductSchema = z.object({

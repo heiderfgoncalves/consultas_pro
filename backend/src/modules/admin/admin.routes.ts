@@ -559,7 +559,7 @@ export async function registerAdminRoutes(app: FastifyInstance) {
               orderBy: { sortOrder: 'asc' },
             },
           },
-          orderBy: { createdAt: 'asc' },
+          orderBy: { updatedAt: 'desc' },
         },
       },
       orderBy: { createdAt: 'desc' },
@@ -593,6 +593,7 @@ export async function registerAdminRoutes(app: FastifyInstance) {
             consultationType: true,
             mappings: { include: { canonicalField: true }, orderBy: { sortOrder: 'asc' } },
           },
+          orderBy: { updatedAt: 'desc' },
         },
       },
     });
@@ -691,10 +692,12 @@ export async function registerAdminRoutes(app: FastifyInstance) {
 
   app.post('/admin/providers/products', adminOnly, async (request, reply) => {
     const payload = createProviderProductSchema.parse(request.body);
+    const { consultationPrice, ...rest } = payload;
     return ok(reply, await app.prisma.providerProduct.create({
       data: {
-        ...payload,
+        ...rest,
         cost: payload.cost,
+        consultationPrice: consultationPrice ?? payload.cost,
       },
     }), 201);
   });
@@ -726,6 +729,7 @@ export async function registerAdminRoutes(app: FastifyInstance) {
     if (payload.method !== undefined) data.method = payload.method;
     if (payload.timeoutMs !== undefined) data.timeoutMs = payload.timeoutMs;
     if (payload.cost !== undefined) data.cost = payload.cost;
+    if (payload.consultationPrice !== undefined) data.consultationPrice = payload.consultationPrice;
     if (payload.isActive !== undefined) data.isActive = payload.isActive;
     if (payload.queryTemplate !== undefined) {
       data.queryTemplate = payload.queryTemplate === null ? Prisma.JsonNull : (payload.queryTemplate as Prisma.InputJsonValue);
