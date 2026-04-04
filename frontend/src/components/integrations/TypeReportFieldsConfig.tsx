@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import type { LucideIcon } from 'lucide-react';
 import {
   DndContext,
   PointerSensor,
@@ -15,13 +16,20 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import {
-  GripVertical,
-  Plus,
-  Trash2,
-  Save,
-  Palette,
-  Rows3,
   Baseline,
+  Calendar,
+  CalendarClock,
+  DollarSign,
+  GripVertical,
+  Hash,
+  Palette,
+  Percent,
+  Plus,
+  Rows3,
+  Save,
+  ToggleLeft,
+  Trash2,
+  Type,
 } from 'lucide-react';
 import type {
   ConsultationFieldType,
@@ -31,6 +39,7 @@ import type {
   TypeReportFieldConfig,
   TypeReportFieldDefinition,
 } from '@/types/integrations';
+import { assignKeysToReportFields } from '@/lib/reportFieldKeys';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -47,6 +56,27 @@ const FIELD_TYPE_OPTIONS: Array<{ value: ReportFieldDataType; label: string }> =
   { value: 'currency', label: 'Currency' },
   { value: 'percent', label: 'Percent' },
 ];
+
+const REPORT_FIELD_TYPE_ICONS: Record<ReportFieldDataType, LucideIcon> = {
+  text: Type,
+  boolean: ToggleLeft,
+  numeric: Hash,
+  date: Calendar,
+  datetime: CalendarClock,
+  currency: DollarSign,
+  percent: Percent,
+};
+
+function ReportFieldDataTypeIcon({
+  dataType,
+  className,
+}: {
+  dataType: ReportFieldDataType;
+  className?: string;
+}) {
+  const Icon = REPORT_FIELD_TYPE_ICONS[dataType] ?? Type;
+  return <Icon className={cn('h-3.5 w-3.5 shrink-0', className)} aria-hidden strokeWidth={2} />;
+}
 
 const CONDITION_OPTIONS: Array<{ value: ReportFieldConditionOperator; label: string }> = [
   { value: 'eq', label: 'Igual a' },
@@ -86,6 +116,7 @@ function createEmptyRule(): ReportFieldConditionalRule {
 function createEmptyField(nextOrder: number): TypeReportFieldDefinition {
   return {
     id: createId('field'),
+    key: 'campo',
     label: '',
     sortOrder: nextOrder,
     dataType: 'text',
@@ -107,15 +138,17 @@ function normalizeConfig(config?: TypeReportFieldConfig): TypeReportFieldConfig 
       })),
     }));
 
-  return { version: 1, fields };
+  return { version: 1, fields: assignKeysToReportFields(fields) };
 }
 
 function SortableFieldRow({
   field,
   children,
+  keyHint,
 }: {
   field: TypeReportFieldDefinition;
   children: ReactNode;
+  keyHint: ReactNode;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: field.id });
   const style = {
@@ -128,7 +161,7 @@ function SortableFieldRow({
     <div
       ref={setNodeRef}
       style={style}
-      className="flex min-h-0 items-center gap-1 rounded-md border border-border/60 bg-background px-1 py-0.5"
+      className="flex min-h-0 items-center gap-1 rounded-md border border-border/60 bg-background py-0.5 pl-1 pr-0.5"
     >
       <button
         type="button"
@@ -140,6 +173,7 @@ function SortableFieldRow({
         <GripVertical className="h-3.5 w-3.5" />
       </button>
       <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1 sm:flex-nowrap">{children}</div>
+      {keyHint}
     </div>
   );
 }
@@ -166,7 +200,9 @@ export default function TypeReportFieldsConfig({
 
   const setFields = (updater: (current: TypeReportFieldDefinition[]) => TypeReportFieldDefinition[]) => {
     setDraft((current) => {
-      const nextFields = updater(current.fields).map((field, index) => ({ ...field, sortOrder: index }));
+      const nextFields = assignKeysToReportFields(
+        updater(current.fields).map((field, index) => ({ ...field, sortOrder: index })),
+      );
       return { version: 1, fields: nextFields };
     });
     setDirty(true);
@@ -240,12 +276,23 @@ export default function TypeReportFieldsConfig({
             <SortableContext items={fieldIds} strategy={verticalListSortingStrategy}>
               <div className="space-y-1">
                 {draft.fields.map((field, index) => (
-                  <SortableFieldRow key={field.id} field={field}>
+                  <SortableFieldRow
+                    key={field.id}
+                    field={field}
+                    keyHint={
+                      <span
+                        className="pointer-events-none shrink-0 self-center rounded border border-border/60 bg-muted/40 py-px pl-1 pr-1 font-mono text-[10px] tabular-nums tracking-tight text-muted-foreground max-w-[min(6.5rem,22vw)] truncate sm:max-w-[7.25rem]"
+                        title={`Chave de referência: ${field.key}`}
+                      >
+                        {field.key}
+                      </span>
+                    }
+                  >
                     <Input
                       value={field.label}
                       onChange={(event) => updateField(field.id, { label: event.target.value })}
                       placeholder={`Campo ${index + 1}`}
-                      className="h-7 min-w-0 flex-1 border-0 bg-transparent px-2 text-sm shadow-none focus-visible:ring-1 focus-visible:ring-ring sm:max-w-[min(100%,14rem)] md:max-w-[min(100%,18rem)]"
+                      className="h-7 min-w-0 flex-1 border-0 bg-transparent px-2 text-sm shadow-none placeholder:text-muted-foreground/80 focus-visible:ring-1 focus-visible:ring-ring sm:max-w-[min(100%,14rem)] md:max-w-[min(100%,18rem)]"
                       aria-label="Nome do campo"
                     />
                     <Select
@@ -254,8 +301,16 @@ export default function TypeReportFieldsConfig({
                         updateField(field.id, { dataType: value as ReportFieldDataType })
                       }
                     >
-                      <SelectTrigger className="h-7 w-[6.75rem] shrink-0 border-0 bg-transparent px-2 text-xs shadow-none focus:ring-1">
-                        <SelectValue />
+                      <SelectTrigger
+                        className="flex h-7 w-[7.75rem] shrink-0 items-center justify-between gap-0 border-0 bg-transparent px-0.5 py-0 text-xs shadow-none focus:ring-1 [&>div]:min-w-0 [&_.lucide-chevron-down]:size-3 [&_.lucide-chevron-down]:shrink-0"
+                        title={FIELD_TYPE_OPTIONS.find((o) => o.value === field.dataType)?.label}
+                      >
+                        <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden">
+                          <span className="flex size-6 shrink-0 items-center justify-center text-muted-foreground">
+                            <ReportFieldDataTypeIcon dataType={field.dataType} />
+                          </span>
+                          <SelectValue className="min-w-0 flex-1 truncate p-0 text-xs leading-5" />
+                        </div>
                       </SelectTrigger>
                       <SelectContent>
                         {FIELD_TYPE_OPTIONS.map((option) => (

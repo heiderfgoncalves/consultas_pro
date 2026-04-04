@@ -9,6 +9,7 @@ import type {
   TypeReportFieldConfig,
 } from '@/types/integrations';
 import { PATH_KEY_UI_META } from '@/lib/integrations-constants';
+import { assignKeysToReportFields } from '@/lib/reportFieldKeys';
 import { parseTypeItemFiltersRecord } from '@/lib/typeItemFilters';
 
 function tok(t: string | null) {
@@ -147,31 +148,33 @@ export function parseReportFieldConfig(raw: unknown): TypeReportFieldConfig | un
   const config = value as Record<string, unknown>;
   if (config.version !== 1 || !Array.isArray(config.fields)) return undefined;
 
+  const fields = config.fields
+    .filter((field): field is Record<string, unknown> => !!field && typeof field === 'object' && !Array.isArray(field))
+    .map((field, fieldIndex) => ({
+      id: typeof field.id === 'string' && field.id.trim() ? field.id : `field_${fieldIndex + 1}`,
+      label: typeof field.label === 'string' ? field.label : '',
+      sortOrder: typeof field.sortOrder === 'number' && Number.isFinite(field.sortOrder) ? field.sortOrder : fieldIndex,
+      dataType: typeof field.dataType === 'string'
+        ? field.dataType as TypeReportFieldConfig['fields'][number]['dataType']
+        : 'text',
+      conditionalRules: Array.isArray(field.conditionalRules)
+        ? field.conditionalRules
+            .filter((rule): rule is Record<string, unknown> => !!rule && typeof rule === 'object' && !Array.isArray(rule))
+            .map((rule, ruleIndex) => ({
+              id: typeof rule.id === 'string' && rule.id.trim() ? rule.id : `rule_${fieldIndex + 1}_${ruleIndex + 1}`,
+              operator: typeof rule.operator === 'string'
+                ? rule.operator as TypeReportFieldConfig['fields'][number]['conditionalRules'][number]['operator']
+                : 'eq',
+              value: rule.value == null ? undefined : String(rule.value),
+              color: typeof rule.color === 'string' && rule.color.trim() ? rule.color : '#2563eb',
+              colorTarget: rule.colorTarget === 'row' ? 'row' : 'value',
+            }))
+        : [],
+    }));
+
   return {
     version: 1,
-    fields: config.fields
-      .filter((field): field is Record<string, unknown> => !!field && typeof field === 'object' && !Array.isArray(field))
-      .map((field, fieldIndex) => ({
-        id: typeof field.id === 'string' && field.id.trim() ? field.id : `field_${fieldIndex + 1}`,
-        label: typeof field.label === 'string' ? field.label : '',
-        sortOrder: typeof field.sortOrder === 'number' && Number.isFinite(field.sortOrder) ? field.sortOrder : fieldIndex,
-        dataType: typeof field.dataType === 'string'
-          ? field.dataType as TypeReportFieldConfig['fields'][number]['dataType']
-          : 'text',
-        conditionalRules: Array.isArray(field.conditionalRules)
-          ? field.conditionalRules
-              .filter((rule): rule is Record<string, unknown> => !!rule && typeof rule === 'object' && !Array.isArray(rule))
-              .map((rule, ruleIndex) => ({
-                id: typeof rule.id === 'string' && rule.id.trim() ? rule.id : `rule_${fieldIndex + 1}_${ruleIndex + 1}`,
-                operator: typeof rule.operator === 'string'
-                  ? rule.operator as TypeReportFieldConfig['fields'][number]['conditionalRules'][number]['operator']
-                  : 'eq',
-                value: rule.value == null ? undefined : String(rule.value),
-                color: typeof rule.color === 'string' && rule.color.trim() ? rule.color : '#2563eb',
-                colorTarget: rule.colorTarget === 'row' ? 'row' : 'value',
-              }))
-          : [],
-      })),
+    fields: assignKeysToReportFields(fields) as TypeReportFieldConfig['fields'],
   };
 }
 

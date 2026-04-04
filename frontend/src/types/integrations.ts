@@ -32,6 +32,8 @@ export interface ReportFieldConditionalRule {
 
 export interface TypeReportFieldDefinition {
   id: string;
+  /** Chave de referência (slug do rótulo): minúsculas, sem acento, espaços como `_`. */
+  key: string;
   label: string;
   sortOrder: number;
   dataType: ReportFieldDataType;
