@@ -22,6 +22,8 @@ export interface SessionUser {
   phone: string | null;
   role: BackendRole;
   companyId: string | null;
+  /** Presente quando o backend envia (login /users/me futuro) */
+  accountStatus?: 'ACTIVE' | 'SUSPENDED' | 'BLOCKED';
 }
 
 export interface User {
@@ -102,7 +104,7 @@ function buildUser(session: SessionUser, previewAccessLevel: AccessLevel): User 
       accountType: 'master',
       accessLevel: 0,
       backendRole: 'PLATFORM_ADMIN',
-      companyName: 'Consultas Pró',
+      companyName: 'Consultas PRO',
       balance: 0,
       priceTable: 'Admin',
     };

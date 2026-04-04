@@ -25,7 +25,7 @@ export default function RecoverAccessPage() {
           <ArrowLeft className="w-4 h-4" /> Voltar ao login
         </Link>
 
-        <img src={logo} alt="Consultas Pró" className="h-10 w-auto mb-6" />
+        <img src={logo} alt="Consultas PRO" className="h-10 w-auto mb-6" />
 
         {sent ? (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-center py-8">

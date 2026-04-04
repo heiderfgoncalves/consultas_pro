@@ -39,7 +39,7 @@ export default function RegisterPage() {
           <ArrowLeft className="w-4 h-4" /> Voltar ao login
         </Link>
 
-        <img src={logo} alt="Consultas Pró" className="h-10 w-auto mb-6" />
+        <img src={logo} alt="Consultas PRO" className="h-10 w-auto mb-6" />
         <h2 className="text-2xl font-bold text-foreground mb-1">Criar sua conta</h2>
         <p className="text-sm text-muted-foreground mb-8">Preencha os dados para começar a utilizar</p>
 

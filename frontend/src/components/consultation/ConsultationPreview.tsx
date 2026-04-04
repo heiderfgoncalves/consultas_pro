@@ -329,7 +329,7 @@ export default function ConsultationPreview({ blocks, document: docInput, onReor
             )}
             <div>
               <EditableText
-                value="Consultas Pró"
+                value="Consultas PRO"
                 onChange={(v) => updateSectionTitle('header-title', v)}
                 className="text-[10px] font-bold text-primary tracking-widest uppercase"
               />
@@ -747,7 +747,7 @@ export default function ConsultationPreview({ blocks, document: docInput, onReor
       {blocks.length > 0 && (
         <div className="border-t border-border pt-4 mt-6">
           <EditableText
-            value="Aviso Importante: Este documento contém informações confidenciais e privilegiadas, protegidas por sigilo legal. O relatório tem caráter estritamente indicativo, baseado em dados coletados de provedores públicos e privados de proteção ao crédito no momento da consulta. O Consultas Pró atua apenas como intermediador tecnológico e não se responsabiliza pela veracidade, atualidade ou integridade dos dados originais, nem por decisões de crédito tomadas com base nas informações aqui apresentadas. Em conformidade com a Lei Geral de Proteção de Dados (LGPD - nº 13.709/2018), é vedada a divulgação, cópia ou compartilhamento deste relatório com terceiros não autorizados, sob pena de responsabilidade civil e criminal."
+            value="Aviso Importante: Este documento contém informações confidenciais e privilegiadas, protegidas por sigilo legal. O relatório tem caráter estritamente indicativo, baseado em dados coletados de provedores públicos e privados de proteção ao crédito no momento da consulta. O Consultas PRO atua apenas como intermediador tecnológico e não se responsabiliza pela veracidade, atualidade ou integridade dos dados originais, nem por decisões de crédito tomadas com base nas informações aqui apresentadas. Em conformidade com a Lei Geral de Proteção de Dados (LGPD - nº 13.709/2018), é vedada a divulgação, cópia ou compartilhamento deste relatório com terceiros não autorizados, sob pena de responsabilidade civil e criminal."
             onChange={(v) => updateAdditionalInfo('footer', v)}
             className="text-[8px] text-muted-foreground leading-relaxed block text-justify"
             tag="p"

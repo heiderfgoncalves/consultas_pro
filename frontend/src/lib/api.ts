@@ -67,7 +67,7 @@ export class ApiError extends Error {
   }
 }
 
-function apiBase(): string {
+export function apiBase(): string {
   const base = import.meta.env.VITE_API_URL as string | undefined;
   if (!base) return '';
   return base.replace(/\/$/, '');
