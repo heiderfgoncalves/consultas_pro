@@ -22,6 +22,7 @@ import ProfilePage from "@/pages/ProfilePage";
 import AdminPage from "@/pages/AdminPage";
 import AdminCanvasPage from "@/pages/AdminCanvasPage";
 import IntegrationsPage from "@/pages/IntegrationsPage";
+import ApiDocsPage from "@/pages/ApiDocsPage";
 import NotFound from "@/pages/NotFound";
 
 const queryClient = new QueryClient({});
@@ -66,6 +67,7 @@ const App = () => (
               <Route path="/admin" element={<AdminPage />} />
               <Route path="/admin/canvas" element={<AdminCanvasPage />} />
               <Route path="/admin/integracoes" element={<IntegrationsPage />} />
+              <Route path="/documentacao/api" element={<ApiDocsPage />} />
             </Route>
 
             <Route path="*" element={<NotFound />} />

@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   LayoutDashboard, Search, FileText, History, Receipt,
   Wallet, Users, UserCircle, LogOut, Settings,
-  Menu, X, Shield, Code2, PanelLeftClose, PanelLeft, Server
+  Menu, X, Shield, Code2, PanelLeftClose, PanelLeft, Server, BookOpen
 } from 'lucide-react';
 import { useAuthStore, accessLevelLabels } from '@/stores/authStore';
 import ThemeToggle from '@/components/ThemeToggle';
@@ -20,6 +20,7 @@ const navItems = [
   { label: 'Admin', icon: Shield, path: '/admin', minLevel: 0, adminOnly: true },
   { label: 'Editor Canvas', icon: Code2, path: '/admin/canvas', minLevel: 0, adminOnly: true },
   { label: 'Integrações', icon: Server, path: '/admin/integracoes', minLevel: 0, adminOnly: true },
+  { label: 'Documentação API', icon: BookOpen, path: '/documentacao/api', minLevel: 2, apiDocsOnly: true },
   { label: 'Perfil', icon: UserCircle, path: '/perfil', minLevel: 2 },
 ];
 
@@ -32,6 +33,10 @@ export default function AppSidebar() {
 
   const filteredItems = navItems.filter(item => {
     if ('adminOnly' in item && item.adminOnly && user?.backendRole !== 'PLATFORM_ADMIN') return false;
+    if ('apiDocsOnly' in item && item.apiDocsOnly) {
+      const r = user?.backendRole;
+      if (!r || !['PLATFORM_ADMIN', 'COMPANY_OWNER', 'COMPANY_MANAGER'].includes(r)) return false;
+    }
     const level = user?.accessLevel ?? 2;
     return level <= item.minLevel;
   });
