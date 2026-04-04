@@ -1,9 +1,9 @@
 ---
 name: consultas-pro-frontend-canonical
-description: Guides canonical frontend changes in Consultas Pro using Vite 5, React 18, React Router, shadcn/ui and Tailwind CSS v3. Use when creating or changing pages, components, styles, navigation or frontend state in this repository.
+description: Guides canonical frontend changes in Consultas PRO using Vite 5, React 18, React Router, shadcn/ui and Tailwind CSS v3. Use when creating or changing pages, components, styles, navigation or frontend state in this repository.
 ---
 
-# Consultas Pro Frontend Canonical
+# Consultas PRO Frontend Canonical
 
 ## Stack
 

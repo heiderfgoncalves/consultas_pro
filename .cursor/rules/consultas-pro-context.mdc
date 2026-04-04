@@ -1,12 +1,12 @@
 ---
-description: Contexto de produto e stack do Consultas Pró
+description: Contexto de produto e stack do Consultas PRO
 alwaysApply: true
 ---
-# Consultas Pró Contexto
+# Consultas PRO Contexto
 
 ## Produto
 
-O projeto é o **Consultas Pró**, uma plataforma SaaS multi-tenant para emissão de consultas de crédito e restrições em formato self-service, com templates, saldo pré-pago, histórico, integrações com provedores e área administrativa.
+O projeto é o **Consultas PRO**, uma plataforma SaaS multi-tenant para emissão de consultas de crédito e restrições em formato self-service, com templates, saldo pré-pago, histórico, integrações com provedores e área administrativa.
 
 ## Stack real
 

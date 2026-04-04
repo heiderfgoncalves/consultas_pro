@@ -18,7 +18,7 @@ Sempre preferir a spec local ao inventar URLs, headers ou payloads.
 ## Servidor
 
 - Padrão OpenAPI: `https://{subdomain}.uazapi.com` com `subdomain` em `free` | `api` (instalações podem usar subdomínio dedicado, ex. projeto em produção).
-- No Consultas Pro, a base costuma vir de `UAZ_API_BASE_URL` (ver `backend/src/config/env.ts`).
+- No Consultas PRO, a base costuma vir de `UAZ_API_BASE_URL` (ver `backend/src/config/env.ts`).
 
 ## Autenticação
 
@@ -98,7 +98,7 @@ sequenceDiagram
 
 - Incluir `"excludeMessages": ["wasSentByApi"]` no webhook, **ou**
 - Garantir deduplicação por `wasSentByApi` / IDs no consumidor.
-- No Consultas Pro, quando o webhook `messages` chegar com **`fromMe=true` + `wasSentByApi=true`**, tratar o evento como **eco tecnico de entrega**: **registrar auditoria/log** e **nao** criar nova mensagem conversacional exibivel no `/chat`.
+- No Consultas PRO, quando o webhook `messages` chegar com **`fromMe=true` + `wasSentByApi=true`**, tratar o evento como **eco tecnico de entrega**: **registrar auditoria/log** e **nao** criar nova mensagem conversacional exibivel no `/chat`.
 - A bolha visível “enviada por mim” deve ser a mensagem já criada pela origem funcional do envio:
   - envio pela UI `/chat` -> `source='chat'`
   - resposta do agente/n8n -> `source='n8n_ai'`
@@ -164,7 +164,7 @@ Não duplicar a spec aqui; abrir os YAML quando for implementar:
 - **Perfil instância**: `POST /profile/name`, `/profile/image`.
 - **Chamadas VoIP**: `/call/make`, `/call/reject`.
 
-## Integração no repositório Consultas Pro
+## Integração no repositório Consultas PRO
 
 Ao alterar comportamento de WhatsApp neste monorepo:
 

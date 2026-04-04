@@ -1,13 +1,13 @@
 ---
 name: consultas-pro-backend-canonical
-description: Enforces the canonical backend architecture of Consultas Pro using Fastify 5, Prisma 6, Zod and BullMQ. Use when creating or changing backend modules, routes, services, provider integrations, queues, workers or ledger/consultation flows in this repository.
+description: Enforces the canonical backend architecture of Consultas PRO using Fastify 5, Prisma 6, Zod and BullMQ. Use when creating or changing backend modules, routes, services, provider integrations, queues, workers or ledger/consultation flows in this repository.
 ---
 
-# Consultas Pro Backend Canonical
+# Consultas PRO Backend Canonical
 
 ## Objetivo
 
-Padronizar mudancas no backend do Consultas Pro de acordo com a estrutura real do repositorio, priorizando reuso, clareza de camadas, consistencia de dominio e seguranca operacional.
+Padronizar mudancas no backend do Consultas PRO de acordo com a estrutura real do repositorio, priorizando reuso, clareza de camadas, consistencia de dominio e seguranca operacional.
 
 ## Stack e estrutura real
 

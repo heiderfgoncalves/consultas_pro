@@ -1,9 +1,9 @@
 ---
-description: Convenções reais do backend do Consultas Pró
+description: Convenções reais do backend do Consultas PRO
 globs: backend/**/*.ts
 alwaysApply: false
 ---
-# Consultas Pró Backend
+# Consultas PRO Backend
 
 ## Objetivo
 

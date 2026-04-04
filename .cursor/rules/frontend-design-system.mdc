@@ -1,10 +1,10 @@
 ---
-description: Convenções reais do frontend do Consultas Pró
+description: Convenções reais do frontend do Consultas PRO
 globs: frontend/src/**/*.{ts,tsx,css}
 alwaysApply: false
 ---
 
-# Consultas Pró Frontend
+# Consultas PRO Frontend
 
 ## Objetivo
 

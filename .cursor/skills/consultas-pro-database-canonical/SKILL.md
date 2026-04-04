@@ -1,13 +1,13 @@
 ---
 name: consultas-pro-database-canonical
-description: Defines the canonical database workflow of Consultas Pro with Prisma as the source of truth over PostgreSQL. Use when changing models, relations, migrations, money flows, provider structures or backend database integration in this repository.
+description: Defines the canonical database workflow of Consultas PRO with Prisma as the source of truth over PostgreSQL. Use when changing models, relations, migrations, money flows, provider structures or backend database integration in this repository.
 ---
 
-# Consultas Pro Database Canonical
+# Consultas PRO Database Canonical
 
 ## Objetivo
 
-Padronizar alteracoes de banco no Consultas Pro com foco em Prisma, PostgreSQL, compatibilidade com o backend e baixo risco de drift.
+Padronizar alteracoes de banco no Consultas PRO com foco em Prisma, PostgreSQL, compatibilidade com o backend e baixo risco de drift.
 
 ## Fonte de verdade e dominio atual
 

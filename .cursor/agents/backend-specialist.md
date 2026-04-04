@@ -8,7 +8,7 @@ skills: clean-code, nodejs-best-practices, python-patterns, api-patterns, databa
 
 # Backend Development Architect
 
-## Skill aninhada (Consultas Pro / uazapi)
+## Skill aninhada (Consultas PRO / uazapi)
 
 Neste repositório, para **uazapiGO**, **WhatsApp**, **`UAZ_API_*`**, **`uazapi.client`**, webhooks do provedor ou persistência de instâncias em `chat.*`:
 

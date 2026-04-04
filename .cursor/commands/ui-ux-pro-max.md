@@ -122,7 +122,7 @@ python3 .cursor/.shared/ui-ux-pro-max/scripts/search.py "<keyword>" --stack html
 Available stacks: `html-tailwind`, `react`, `nextjs`, `vue`, `svelte`, `swiftui`, `react-native`, `flutter`, `shadcn`, `jetpack-compose`
 , `jetpack-compose`
 
-### Step 4b: Consultas Pro Frontend (monorepo `/frontend`)
+### Step 4b: Consultas PRO Frontend (monorepo `/frontend`)
 
 Quando o trabalho for na app React/Vite deste repositório, **não** reinventar tema: seguir a skill `.cursor/skills/consultas-pro-frontend-canonical/SKILL.md` e o padrão já implementado:
 

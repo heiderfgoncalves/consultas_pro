@@ -1,9 +1,9 @@
 ---
 name: consultas-pro-diagnostics
-description: Diagnostics, API testing and data verification for the Consultas Pro stack. Use when something is not working, when validating business rules, when checking data consistency, or when reproducing API and consultation pipeline issues in this repository.
+description: Diagnostics, API testing and data verification for the Consultas PRO stack. Use when something is not working, when validating business rules, when checking data consistency, or when reproducing API and consultation pipeline issues in this repository.
 ---
 
-# Consultas Pro Diagnostics
+# Consultas PRO Diagnostics
 
 ## Quando usar
 

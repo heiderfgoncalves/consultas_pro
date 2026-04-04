@@ -1,6 +1,6 @@
 ---
 name: tailwind-patterns
-description: Tailwind CSS guidance with version awareness. Default to the version actually installed in the repository; in Consultas Pro, use Tailwind CSS v3 patterns unless a file clearly shows a v4 setup.
+description: Tailwind CSS guidance with version awareness. Default to the version actually installed in the repository; in Consultas PRO, use Tailwind CSS v3 patterns unless a file clearly shows a v4 setup.
 allowed-tools: Read, Write, Edit, Glob, Grep
 ---
 
@@ -12,7 +12,7 @@ allowed-tools: Read, Write, Edit, Glob, Grep
 
 Before suggesting `@theme`, CSS-first config or other v4-only features, confirm the repository is actually on Tailwind v4.
 
-For **Consultas Pro**, the installed version is **Tailwind CSS v3**, so prefer:
+For **Consultas PRO**, the installed version is **Tailwind CSS v3**, so prefer:
 
 - `tailwind.config.*` / PostCSS style setup when relevant
 - existing semantic classes and tokens from `frontend/src/index.css`
