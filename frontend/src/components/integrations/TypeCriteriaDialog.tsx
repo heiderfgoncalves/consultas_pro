@@ -20,12 +20,14 @@ import {
   Calendar,
   CalendarClock,
   DollarSign,
+  Filter,
   GripVertical,
   Hash,
   List,
   Percent,
   Plus,
   SplitSquareVertical,
+  TableProperties,
   ToggleLeft,
   Trash2,
   Type,
@@ -50,7 +52,6 @@ import { Button } from '@/components/ui/button';
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -58,6 +59,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 
 const FILTER_OPS: { value: MappingItemFilterOp; label: string }[] = [
   { value: 'eq', label: 'igual a' },
@@ -161,6 +163,7 @@ export default function TypeCriteriaDialog({
   onSave: () => void;
 }) {
   const [uiModeByRule, setUiModeByRule] = useState<Record<string, { fieldList: boolean; valueList: boolean }>>({});
+  const [criteriaModalEl, setCriteriaModalEl] = useState<HTMLDivElement | null>(null);
   const dialogWasOpenRef = useRef(false);
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
@@ -169,6 +172,7 @@ export default function TypeCriteriaDialog({
 
   useEffect(() => {
     if (!open) {
+      setCriteriaModalEl(null);
       dialogWasOpenRef.current = false;
       return;
     }
@@ -323,40 +327,37 @@ export default function TypeCriteriaDialog({
     });
   };
 
+  const criteriaSubtitle =
+    activeRuleCount > 0
+      ? activeRuleCount === 1
+        ? '1 regra ativa. Dentro da sessão, condições em AND; entre sessões, AND ou OR.'
+        : `${activeRuleCount} regras ativas. Dentro da sessão, condições em AND; entre sessões, AND ou OR.`
+      : 'Nenhuma regra ativa — o preview usa o trecho inteiro até você criar sessões e condições.';
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="flex max-h-[92vh] w-[min(72rem,calc(100vw-1.5rem))] max-w-[min(72rem,95vw)] flex-col gap-0 overflow-hidden border border-border/60 bg-background p-0 shadow-sm sm:rounded-lg">
-        <DialogHeader className="space-y-1.5 border-b border-border/50 px-4 py-3 text-left">
-          <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0 space-y-0.5">
-              <DialogTitle className="text-sm font-semibold leading-snug text-foreground">
-                Critérios e mapeamento do tipo
-              </DialogTitle>
-              <DialogDescription className="text-[11px] leading-relaxed text-muted-foreground">
-                Esquerda: tipo → JSON. Direita: critérios em sessões (AND na sessão; AND ou OR entre sessões).
-              </DialogDescription>
-            </div>
-            <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
-              <Badge variant="secondary" className="h-6 border-0 px-2 text-[10px] font-medium">
-                {fieldType.label}
-              </Badge>
-              <Badge variant="outline" className="h-6 border-border/60 px-2 text-[10px] font-medium text-muted-foreground">
-                {mappedRegionCount} trecho{mappedRegionCount !== 1 ? 's' : ''}
-              </Badge>
-            </div>
-          </div>
+      <DialogContent
+        ref={setCriteriaModalEl}
+        showClose={false}
+        className="flex max-h-[92vh] w-[min(72rem,calc(100vw-1.5rem))] max-w-[min(72rem,95vw)] flex-col gap-0 overflow-hidden border border-border/60 bg-background p-0 shadow-sm sm:rounded-lg"
+        onOpenAutoFocus={(e) => e.preventDefault()}
+      >
+        <DialogHeader className="sr-only">
+          <DialogTitle>Mapeamento e critérios — {fieldType.label}</DialogTitle>
         </DialogHeader>
 
         <ScrollArea className="min-h-0 flex-1">
-          <div className="grid gap-4 px-4 py-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1.05fr)] md:items-start">
-            <section className="min-w-0 space-y-2">
-              <div>
-                <p className="text-xs font-medium text-foreground">Mapeamento de campos</p>
+          <div className="flex flex-col gap-y-4 px-4 pb-4 pt-4 md:flex-row md:items-stretch md:gap-0">
+            <section className="min-w-0 flex-1 space-y-3 md:min-w-0 md:flex-[1_1_0%] md:pr-5">
+              <div className="space-y-0.5">
+                <div className="flex items-center gap-2">
+                  <TableProperties className="h-4 w-4 shrink-0 text-primary" aria-hidden />
+                  <p className="text-sm font-semibold leading-snug text-foreground">Mapeamento de Campos</p>
+                </div>
                 <p className="text-[11px] leading-snug text-muted-foreground">
-                  Campos do tipo → paths no trecho JSON mapeado.
+                  Campos do tipo — paths no trecho JSON mapeado.
                 </p>
               </div>
-
               {reportFields.length === 0 ? (
                 <div className="rounded-md border border-dashed border-border/60 bg-muted/10 px-3 py-4 text-center text-[11px] text-muted-foreground">
                   Este tipo ainda não possui campos definidos.
@@ -380,7 +381,34 @@ export default function TypeCriteriaDialog({
                             >
                               <ReportFieldDataTypeIcon dataType={field.dataType} className="h-3.5 w-3.5 text-foreground/80" />
                             </div>
-                            <p className="truncate text-xs font-medium text-foreground">{field.label || 'Campo sem nome'}</p>
+                            <div className="flex min-w-0 min-h-0 flex-1 items-center justify-start overflow-hidden">
+                              <div className="flex w-fit max-w-full min-w-0 items-center gap-0.5">
+                                <span className="min-w-0 shrink truncate text-xs font-medium text-foreground">
+                                  {field.label || 'Campo sem nome'}
+                                </span>
+                                <Tooltip delayDuration={200}>
+                                  <TooltipTrigger asChild>
+                                    <button
+                                      type="button"
+                                      className="inline-flex size-4 shrink-0 cursor-help items-center justify-center rounded-full border border-border/55 bg-muted/40 text-[9px] font-bold leading-none text-muted-foreground outline-none hover:bg-muted/65 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background"
+                                      aria-label={`Chave: ${field.key}`}
+                                    >
+                                      ?
+                                    </button>
+                                  </TooltipTrigger>
+                                  <TooltipContent
+                                    side="bottom"
+                                    align="center"
+                                    sideOffset={6}
+                                    collisionBoundary={criteriaModalEl ?? undefined}
+                                    collisionPadding={10}
+                                    className="z-[300] max-w-[min(20rem,calc(100vw-2rem))] border-border/80 px-2 py-1.5 font-mono text-[11px] leading-snug text-foreground shadow-md"
+                                  >
+                                    <span className="block break-all select-all">{field.key}</span>
+                                  </TooltipContent>
+                                </Tooltip>
+                              </div>
+                            </div>
                           </div>
                           <Select value={selected} onValueChange={(value) => upsertFieldMapping(field.id, field.label, value)}>
                             <SelectTrigger className="h-8 border-border/50 bg-background text-[11px]">
@@ -410,28 +438,31 @@ export default function TypeCriteriaDialog({
               )}
             </section>
 
-            <section className="min-w-0 space-y-2">
-              <div className="flex items-center justify-between gap-2">
-                <div>
-                  <p className="text-xs font-medium text-foreground">Critérios</p>
-                  <p className="text-[11px] text-muted-foreground">
-                    {activeRuleCount > 0
-                      ? `${activeRuleCount} ativo${activeRuleCount > 1 ? 's' : ''}`
-                      : 'Nenhum ativo'}
-                  </p>
+            <div
+              className="hidden shrink-0 self-stretch border-0 border-l border-dashed border-muted-foreground/25 md:mx-1 md:block dark:border-muted-foreground/20"
+              aria-hidden
+            />
+
+            <section className="min-w-0 flex-1 space-y-3 md:min-w-0 md:flex-[1.05_1_0%] md:pl-5">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0 flex-1 space-y-0.5 pr-1">
+                  <div className="flex items-center gap-2">
+                    <Filter className="h-4 w-4 shrink-0 text-primary" aria-hidden />
+                    <p className="text-sm font-semibold leading-snug text-foreground">Critérios</p>
+                  </div>
+                  <p className="text-[11px] leading-snug text-muted-foreground">{criteriaSubtitle}</p>
                 </div>
                 <Button
                   type="button"
                   variant="outline"
                   size="sm"
-                  className="h-7 gap-1 border-border/50 px-2.5 text-[11px] font-medium"
+                  className="h-7 shrink-0 gap-1 border-border/50 px-2.5 text-[11px] font-medium"
                   onClick={addOrGroup}
                 >
                   <SplitSquareVertical className="h-3 w-3" />
                   Sessão OR
                 </Button>
               </div>
-
               {draftConfig.groups.length === 0 ? (
                 <div className="rounded-md border border-dashed border-border/60 bg-muted/10 px-3 py-4 text-center">
                   <p className="text-xs font-medium text-foreground">Nenhum critério configurado</p>
@@ -674,13 +705,23 @@ export default function TypeCriteriaDialog({
           </div>
         </ScrollArea>
 
-        <DialogFooter className="gap-2 border-t border-border/50 px-4 py-2.5 sm:justify-end">
-          <Button type="button" variant="ghost" className="h-8 text-[11px]" onClick={() => onOpenChange(false)}>
-            Cancelar
-          </Button>
-          <Button type="button" className="h-8 px-4 text-[11px] font-medium" onClick={onSave}>
-            Salvar
-          </Button>
+        <DialogFooter className="flex flex-col gap-3 border-t border-border/50 px-4 py-2.5 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <Badge variant="secondary" className="h-6 border-0 px-2 text-[10px] font-medium">
+              {fieldType.label}
+            </Badge>
+            <Badge variant="outline" className="h-6 border-border/60 px-2 text-[10px] font-medium text-muted-foreground">
+              {mappedRegionCount} trecho{mappedRegionCount !== 1 ? 's' : ''}
+            </Badge>
+          </div>
+          <div className="flex flex-wrap justify-end gap-2">
+            <Button type="button" variant="ghost" className="h-8 text-[11px]" onClick={() => onOpenChange(false)}>
+              Cancelar
+            </Button>
+            <Button type="button" className="h-8 px-4 text-[11px] font-medium" onClick={onSave}>
+              Salvar
+            </Button>
+          </div>
         </DialogFooter>
       </DialogContent>
     </Dialog>
