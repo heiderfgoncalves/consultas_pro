@@ -9,43 +9,14 @@ import type {
   TypeReportFieldConfig,
 } from '@/types/integrations';
 import { PATH_KEY_UI_META } from '@/lib/integrations-constants';
+import { parseTypeItemFiltersRecord } from '@/lib/typeItemFilters';
 
 function tok(t: string | null) {
   return t;
 }
 
-const FILTER_OPS = new Set(['eq', 'contains', 'startsWith', 'endsWith', 'regex']);
-
-export function parseProductTypeItemFilters(raw: unknown): Record<string, MappingItemFilter[]> | undefined {
-  let v: unknown = raw;
-  if (typeof v === 'string') {
-    const t = v.trim();
-    if (!t) return undefined;
-    try {
-      v = JSON.parse(t) as unknown;
-    } catch {
-      return undefined;
-    }
-  }
-  if (v === null || v === undefined) return undefined;
-  if (typeof v !== 'object' || Array.isArray(v)) return undefined;
-  const o = v as Record<string, unknown>;
-  const out: Record<string, MappingItemFilter[]> = {};
-  for (const [key, val] of Object.entries(o)) {
-    if (!Array.isArray(val)) continue;
-    const rules: MappingItemFilter[] = [];
-    for (const item of val) {
-      if (!item || typeof item !== 'object' || Array.isArray(item)) continue;
-      const it = item as Record<string, unknown>;
-      const field = typeof it.field === 'string' ? it.field : '';
-      const opRaw = typeof it.op === 'string' ? it.op : 'eq';
-      const op = FILTER_OPS.has(opRaw) ? (opRaw as MappingItemFilter['op']) : 'eq';
-      const value = it.value == null ? '' : String(it.value);
-      rules.push({ field, op, value });
-    }
-    out[key] = rules;
-  }
-  return Object.keys(out).length > 0 ? out : undefined;
+export function parseProductTypeItemFilters(raw: unknown): ProviderConsultation['typeItemFilters'] {
+  return parseTypeItemFiltersRecord(raw);
 }
 
 export interface ApiCanonicalField {

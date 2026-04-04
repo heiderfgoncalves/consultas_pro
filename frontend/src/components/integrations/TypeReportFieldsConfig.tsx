@@ -33,7 +33,6 @@ import type {
 } from '@/types/integrations';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -90,7 +89,7 @@ function createEmptyField(nextOrder: number): TypeReportFieldDefinition {
     label: '',
     sortOrder: nextOrder,
     dataType: 'text',
-    conditionalRules: [createEmptyRule()],
+    conditionalRules: [],
   };
 }
 
@@ -111,7 +110,7 @@ function normalizeConfig(config?: TypeReportFieldConfig): TypeReportFieldConfig 
   return { version: 1, fields };
 }
 
-function SortableFieldCard({
+function SortableFieldRow({
   field,
   children,
 }: {
@@ -122,23 +121,25 @@ function SortableFieldCard({
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
-    opacity: isDragging ? 0.72 : 1,
+    opacity: isDragging ? 0.65 : 1,
   };
 
   return (
-    <div ref={setNodeRef} style={style}>
-      <div className="group relative">
-        <button
-          type="button"
-          {...attributes}
-          {...listeners}
-          className="absolute left-2 top-3 z-10 rounded-md p-1 text-muted-foreground opacity-0 transition-opacity hover:bg-accent hover:text-foreground group-hover:opacity-100 cursor-grab active:cursor-grabbing"
-          aria-label="Reordenar campo"
-        >
-          <GripVertical className="h-4 w-4" />
-        </button>
-        {children}
-      </div>
+    <div
+      ref={setNodeRef}
+      style={style}
+      className="flex min-h-0 items-center gap-1 rounded-md border border-border/60 bg-background px-1 py-0.5"
+    >
+      <button
+        type="button"
+        {...attributes}
+        {...listeners}
+        className="flex h-7 w-6 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-muted cursor-grab active:cursor-grabbing"
+        aria-label="Reordenar campo"
+      >
+        <GripVertical className="h-3.5 w-3.5" />
+      </button>
+      <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1 sm:flex-nowrap">{children}</div>
     </div>
   );
 }
@@ -222,152 +223,91 @@ export default function TypeReportFieldsConfig({
       current.map((field) => {
         if (field.id !== fieldId) return field;
         const remaining = field.conditionalRules.filter((rule) => rule.id !== ruleId);
-        return {
-          ...field,
-          conditionalRules: remaining.length ? remaining : [createEmptyRule()],
-        };
+        return { ...field, conditionalRules: remaining };
       }),
     );
   };
 
   return (
-    <Card className="border-border/80 shadow-sm">
-      <CardHeader className="px-4 py-4">
-        <div className="flex items-start justify-between gap-3">
-          <div className="space-y-1">
-            <CardTitle className="text-base">Campos da seção</CardTitle>
-            <CardDescription>
-              Defina nome, ordem e tipo de cada campo. As regras de cor ficam no botão por campo.
-            </CardDescription>
-          </div>
-          <Button
-            type="button"
-            size="sm"
-            className="h-9 shrink-0"
-            onClick={() => void onSave(normalizeConfig(draft))}
-            disabled={saving || !dirty}
-          >
-            <Save className="mr-1.5 h-4 w-4" />
-            {saving ? 'Salvando…' : 'Salvar campos'}
-          </Button>
-        </div>
-      </CardHeader>
-      <CardContent className="space-y-3 px-4 pb-4">
+    <div className="rounded-md border border-border/50 bg-muted/10">
+      <div className="space-y-1.5 p-2">
         {draft.fields.length === 0 ? (
-          <div className="rounded-lg border border-dashed border-border bg-muted/15 px-4 py-8 text-center">
-            <p className="text-sm font-medium text-foreground">Nenhum campo configurado</p>
-            <p className="mt-1 text-xs text-muted-foreground">
-              Adicione os campos que serão exibidos nessa seção quando o relatório for montado.
-            </p>
-          </div>
+          <p className="px-1 py-2 text-center text-xs text-muted-foreground">
+            Nenhum campo — use adicionar abaixo.
+          </p>
         ) : (
           <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
             <SortableContext items={fieldIds} strategy={verticalListSortingStrategy}>
-              <div className="space-y-3">
+              <div className="space-y-1">
                 {draft.fields.map((field, index) => (
-                  <SortableFieldCard key={field.id} field={field}>
-                    <div className="rounded-lg border border-border bg-card pl-9 pr-3 py-3">
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <p className="text-sm font-semibold text-foreground">
-                            {field.label.trim() || `Campo ${index + 1}`}
-                          </p>
-                          <p className="text-xs text-muted-foreground">
-                            Ordem {index + 1} no relatório
-                          </p>
-                        </div>
+                  <SortableFieldRow key={field.id} field={field}>
+                    <Input
+                      value={field.label}
+                      onChange={(event) => updateField(field.id, { label: event.target.value })}
+                      placeholder={`Campo ${index + 1}`}
+                      className="h-7 min-w-0 flex-1 border-0 bg-transparent px-2 text-sm shadow-none focus-visible:ring-1 focus-visible:ring-ring sm:max-w-[min(100%,14rem)] md:max-w-[min(100%,18rem)]"
+                      aria-label="Nome do campo"
+                    />
+                    <Select
+                      value={field.dataType}
+                      onValueChange={(value) =>
+                        updateField(field.id, { dataType: value as ReportFieldDataType })
+                      }
+                    >
+                      <SelectTrigger className="h-7 w-[6.75rem] shrink-0 border-0 bg-transparent px-2 text-xs shadow-none focus:ring-1">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {FIELD_TYPE_OPTIONS.map((option) => (
+                          <SelectItem key={option.value} value={option.value} className="text-xs">
+                            {option.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Popover>
+                      <PopoverTrigger asChild>
                         <Button
                           type="button"
                           variant="ghost"
                           size="icon"
-                          className="h-8 w-8 text-muted-foreground hover:text-destructive"
-                          onClick={() => setFields((current) => current.filter((item) => item.id !== field.id))}
-                          aria-label="Remover campo"
+                          className="relative h-7 w-7 shrink-0 text-muted-foreground hover:text-foreground"
+                          aria-label={`Regras de cor — ${field.label.trim() || `Campo ${index + 1}`}`}
                         >
-                          <Trash2 className="h-4 w-4" />
+                          <Palette className="h-3.5 w-3.5" />
+                          <span className="absolute -right-0.5 -top-0.5 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-muted px-0.5 text-[9px] font-medium tabular-nums text-muted-foreground">
+                            {field.conditionalRules.length}
+                          </span>
                         </Button>
-                      </div>
-
-                      <div className="mt-3 grid gap-3 md:grid-cols-[minmax(0,1.3fr)_11rem_auto] md:items-end">
-                        <div className="space-y-1">
-                          <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                            Nome do campo
-                          </label>
-                          <Input
-                            value={field.label}
-                            onChange={(event) => updateField(field.id, { label: event.target.value })}
-                            placeholder="Ex.: Credor, valor, data de vencimento"
-                            className="h-9"
-                          />
-                        </div>
-                        <div className="space-y-1">
-                          <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                            Tipo
-                          </label>
-                          <Select
-                            value={field.dataType}
-                            onValueChange={(value) =>
-                              updateField(field.id, { dataType: value as ReportFieldDataType })
-                            }
+                      </PopoverTrigger>
+                      <PopoverContent
+                        align="end"
+                        className="z-[200] w-[min(22rem,calc(100vw-1.5rem))] max-h-[min(65vh,24rem)] overflow-y-auto p-0"
+                        onOpenAutoFocus={(e) => e.preventDefault()}
+                      >
+                        <div className="space-y-2 p-2.5">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="h-7 w-full text-xs"
+                            onClick={() => addRule(field.id)}
                           >
-                            <SelectTrigger className="h-9">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {FIELD_TYPE_OPTIONS.map((option) => (
-                                <SelectItem key={option.value} value={option.value}>
-                                  {option.label}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </div>
-                        <div className="flex md:justify-end">
-                          <Popover>
-                            <PopoverTrigger asChild>
-                              <Button
-                                type="button"
-                                variant="outline"
-                                size="sm"
-                                className="h-9 w-full shrink-0 gap-1.5 md:w-auto md:min-w-[10.5rem]"
-                                aria-label={`Regras de cor — ${field.label.trim() || `Campo ${index + 1}`}`}
+                            <Plus className="mr-1 h-3 w-3" />
+                            Regra
+                          </Button>
+                          {field.conditionalRules.length === 0 && (
+                            <p className="rounded-md border border-dashed border-border/70 bg-muted/20 px-2 py-2 text-center text-[11px] text-muted-foreground">
+                              Sem regras de cor. Use &quot;Regra&quot; acima para adicionar.
+                            </p>
+                          )}
+                          <div className="space-y-1.5">
+                            {field.conditionalRules.map((rule) => (
+                              <div
+                                key={rule.id}
+                                className="rounded-md border border-border/60 bg-muted/15 p-2"
                               >
-                                <Palette className="h-4 w-4 shrink-0" />
-                                <span className="truncate">Regras de cor</span>
-                                <span className="ml-0.5 rounded-md bg-muted px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-muted-foreground">
-                                  {field.conditionalRules.length}
-                                </span>
-                              </Button>
-                            </PopoverTrigger>
-                            <PopoverContent
-                              align="end"
-                              className="z-[200] w-[min(26rem,calc(100vw-1.5rem))] max-h-[min(70vh,28rem)] overflow-y-auto p-0"
-                              onOpenAutoFocus={(e) => e.preventDefault()}
-                            >
-                              <div className="border-b border-border px-3 py-2.5">
-                                <p className="text-sm font-semibold text-foreground">Regras de cor</p>
-                                <p className="text-xs text-muted-foreground">
-                                  Condição, cor e se aplica ao valor ou à linha inteira no relatório.
-                                </p>
-                              </div>
-                              <div className="space-y-3 p-3">
-                                <Button
-                                  type="button"
-                                  variant="outline"
-                                  size="sm"
-                                  className="h-8 w-full"
-                                  onClick={() => addRule(field.id)}
-                                >
-                                  <Plus className="mr-1 h-3.5 w-3.5" />
-                                  Adicionar regra
-                                </Button>
-                                <div className="space-y-2">
-                                  {field.conditionalRules.map((rule) => (
-                                    <div
-                                      key={rule.id}
-                                      className="rounded-lg border border-border/70 bg-muted/20 p-3"
-                                    >
-                                      <div className="grid gap-3 sm:grid-cols-[10.5rem_minmax(0,1fr)]">
+                                      <div className="grid gap-2 sm:grid-cols-[9.5rem_minmax(0,1fr)]">
                                         <div className="space-y-1">
                                           <label className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
                                             Condição
@@ -380,12 +320,12 @@ export default function TypeReportFieldsConfig({
                                               })
                                             }
                                           >
-                                            <SelectTrigger className="h-9">
+                                            <SelectTrigger className="h-8 text-xs">
                                               <SelectValue />
                                             </SelectTrigger>
-                                            <SelectContent className="z-[300] max-h-60">
+                                            <SelectContent className="z-[300] max-h-56">
                                               {CONDITION_OPTIONS.map((option) => (
-                                                <SelectItem key={option.value} value={option.value}>
+                                                <SelectItem key={option.value} value={option.value} className="text-xs">
                                                   {option.label}
                                                 </SelectItem>
                                               ))}
@@ -406,17 +346,17 @@ export default function TypeReportFieldsConfig({
                                               rule.operator === 'empty' || rule.operator === 'notEmpty'
                                             }
                                             placeholder="Ex.: 0, true, ALTO"
-                                            className="h-9"
+                                            className="h-8 text-xs"
                                           />
                                         </div>
                                       </div>
 
-                                      <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                                      <div className="mt-2 grid gap-2 sm:grid-cols-2">
                                         <div className="space-y-1">
                                           <label className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
                                             Cor
                                           </label>
-                                          <div className="flex h-9 items-center gap-2 rounded-md border border-input bg-background px-2">
+                                          <div className="flex h-8 items-center gap-2 rounded-md border border-input bg-background px-2">
                                             <input
                                               type="color"
                                               value={rule.color}
@@ -435,7 +375,7 @@ export default function TypeReportFieldsConfig({
                                           <label className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
                                             Onde colorir
                                           </label>
-                                          <div className="flex h-9 items-center gap-2 rounded-md border border-border bg-background px-2">
+                                          <div className="flex h-8 items-center gap-2 rounded-md border border-border bg-background px-2">
                                             <Baseline className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
                                             <span className="text-[11px] text-foreground">Valor</span>
                                             <Switch
@@ -452,14 +392,14 @@ export default function TypeReportFieldsConfig({
                                         </div>
                                       </div>
 
-                                      <div className="mt-3 flex flex-wrap items-center gap-2">
-                                        <div className="flex flex-wrap gap-1.5">
+                                      <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                                        <div className="flex flex-wrap gap-1">
                                           {DEFAULT_FIELD_COLORS.map((preset) => (
                                             <button
                                               key={preset}
                                               type="button"
                                               className={cn(
-                                                'h-6 w-6 rounded-full border transition-transform hover:scale-105',
+                                                'h-5 w-5 rounded-full border transition-transform hover:scale-105',
                                                 rule.color.toLowerCase() === preset.toLowerCase()
                                                   ? 'border-foreground ring-2 ring-foreground/15'
                                                   : 'border-border',
@@ -473,40 +413,61 @@ export default function TypeReportFieldsConfig({
                                         <Button
                                           type="button"
                                           variant="ghost"
-                                          size="sm"
-                                          className="h-8 ml-auto text-muted-foreground hover:text-destructive"
+                                          size="icon"
+                                          className="ml-auto h-7 w-7 text-muted-foreground hover:text-destructive"
                                           onClick={() => removeRule(field.id, rule.id)}
+                                          aria-label="Remover regra"
                                         >
-                                          <Trash2 className="mr-1 h-3.5 w-3.5" />
-                                          Remover
+                                          <Trash2 className="h-3.5 w-3.5" />
                                         </Button>
                                       </div>
                                     </div>
                                   ))}
                                 </div>
-                              </div>
-                            </PopoverContent>
-                          </Popover>
                         </div>
-                      </div>
-                    </div>
-                  </SortableFieldCard>
+                      </PopoverContent>
+                    </Popover>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7 shrink-0 text-muted-foreground hover:text-destructive"
+                      onClick={() => setFields((current) => current.filter((item) => item.id !== field.id))}
+                      aria-label="Remover campo"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  </SortableFieldRow>
                 ))}
               </div>
             </SortableContext>
           </DndContext>
         )}
+      </div>
 
+      <div className="flex items-center gap-2 border-t border-border/40 px-2 py-1.5">
         <Button
           type="button"
-          variant="outline"
-          className="h-9 w-full border-dashed"
+          variant="ghost"
+          size="sm"
+          className="h-7 flex-1 justify-center border border-dashed border-border/80 text-xs text-muted-foreground hover:text-foreground sm:flex-none sm:px-3"
           onClick={() => setFields((current) => [...current, createEmptyField(current.length)])}
         >
-          <Plus className="mr-1.5 h-4 w-4" />
-          Adicionar campo
+          <Plus className="mr-1 h-3 w-3" />
+          Campo
         </Button>
-      </CardContent>
-    </Card>
+        <Button
+          type="button"
+          size="sm"
+          variant="secondary"
+          className="h-7 shrink-0 gap-1 px-2 text-xs"
+          onClick={() => void onSave(normalizeConfig(draft))}
+          disabled={saving || !dirty}
+        >
+          <Save className="h-3 w-3" />
+          {saving ? '…' : 'Salvar'}
+        </Button>
+      </div>
+    </div>
   );
 }

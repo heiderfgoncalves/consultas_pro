@@ -33,11 +33,18 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import type {
   Provider, ProviderConsultation, ConsultationFieldType, FieldMapping,
-  MappingItemFilter, MappingItemFilterOp,
+  MappingItemFilter, MappingItemFilterOp, TypeItemFilterConfig,
 } from '@/types/integrations';
 import JsonFieldMapper from '@/components/integrations/JsonFieldMapper';
 import TypeReportFieldsConfig from '@/components/integrations/TypeReportFieldsConfig';
 import { formatDeepFilteredValueAtPath } from '@/lib/providerResponseMapping';
+import {
+  buildSingleGroupTypeItemFilterConfig,
+  cloneTypeItemFilterConfig,
+  countActiveTypeItemRules,
+  flattenTypeItemFilterRules,
+  normalizeTypeItemFilterConfig,
+} from '@/lib/typeItemFilters';
 import { toast } from 'sonner';
 import { slugify } from '@/lib/slug';
 import {
@@ -150,7 +157,7 @@ function linkedConsultationInitialFilters(
   const blob = pc.typeItemFilters;
   if (blob && Object.prototype.hasOwnProperty.call(blob, fieldTypeKey)) {
     const row = blob[fieldTypeKey];
-    return Array.isArray(row) ? row : EMPTY_LINKED_FILTERS;
+    return flattenTypeItemFilterRules(row) || EMPTY_LINKED_FILTERS;
   }
   const ft = catalogTypes.find((f) => f.key === fieldTypeKey);
   return ft?.typeItemFilters ?? EMPTY_LINKED_FILTERS;
@@ -408,30 +415,36 @@ const sectionRailStyle: CSSProperties = {
 
 function MinimalExpandSection({
   title,
+  icon,
   open,
   onOpenChange,
   headerExtra,
   children,
 }: {
   title: string;
+  icon: ReactNode;
   open: boolean;
   onOpenChange: (next: boolean) => void;
   headerExtra?: ReactNode;
   children: ReactNode;
 }) {
   return (
-    <div className="flex items-stretch gap-3">
-      <div
-        className="shrink-0 self-stretch rounded-full"
-        style={sectionRailStyle}
-        aria-hidden
-      />
+    <div className="flex items-stretch gap-4">
+      <div className="flex w-8 shrink-0 flex-col items-center self-stretch pt-0.5">
+        <div
+          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-primary/25 bg-card text-primary shadow-sm"
+          aria-hidden
+        >
+          {icon}
+        </div>
+        <div className="mt-2 min-h-[0.5rem] w-px flex-1 rounded-full" style={sectionRailStyle} aria-hidden />
+      </div>
       <div className="min-w-0 flex-1 space-y-2">
         <div className="flex w-full items-center justify-between gap-3">
           <button
             type="button"
             onClick={() => onOpenChange(!open)}
-            className="flex min-w-0 cursor-pointer items-center gap-1.5 text-left transition-colors hover:text-foreground"
+            className="flex min-w-0 cursor-pointer items-center gap-2 text-left transition-colors hover:text-foreground"
           >
             <span className="text-sm font-semibold text-foreground">{title}</span>
             {open
@@ -515,22 +528,22 @@ const ConsultationEditor = forwardRef(function ConsultationEditor(
 
   const typeFiltersForMapper = useMemo(() => {
     const stored = form.typeItemFilters ?? {};
-    const out: Record<string, MappingItemFilter[]> = {};
+    const out: Record<string, TypeItemFilterConfig> = {};
     for (const ft of fieldTypes) {
       const own = stored[ft.key];
       if (own !== undefined) {
-        out[ft.key] = own.map((r) => ({ ...r }));
+        out[ft.key] = cloneTypeItemFilterConfig(own);
       } else {
-        out[ft.key] = (ft.typeItemFilters ?? []).map((r) => ({ ...r }));
+        out[ft.key] = normalizeTypeItemFilterConfig(ft.typeItemFilters ?? []);
       }
     }
     return out;
   }, [fieldTypes, form.typeItemFilters]);
 
-  const handleMapperTypeFiltersChange = useCallback((next: Record<string, MappingItemFilter[]>) => {
-    const cloned: Record<string, MappingItemFilter[]> = {};
-    for (const [k, rules] of Object.entries(next)) {
-      cloned[k] = rules.map((r) => ({ ...r }));
+  const handleMapperTypeFiltersChange = useCallback((next: Record<string, TypeItemFilterConfig>) => {
+    const cloned: Record<string, TypeItemFilterConfig> = {};
+    for (const [k, config] of Object.entries(next)) {
+      cloned[k] = cloneTypeItemFilterConfig(config);
     }
     setForm((f) => ({ ...f, typeItemFilters: cloned }));
   }, []);
@@ -600,12 +613,7 @@ const ConsultationEditor = forwardRef(function ConsultationEditor(
     setBodyTemplateJson(consultation.bodyTemplateJson || '');
     setCurlInput('');
   }, [
-    consultation.id,
-    JSON.stringify(consultation.typeItemFilters ?? null),
-    consultation.sampleResponse,
-    consultation.bodyTemplateJson,
-    consultation.cost,
-    consultation.consultationPrice,
+    consultation,
   ]);
 
   const handleSave = useCallback(() => {
@@ -640,6 +648,7 @@ const ConsultationEditor = forwardRef(function ConsultationEditor(
     <div className="space-y-4">
       <MinimalExpandSection
         title="Parâmetros"
+        icon={<Code2 className="h-3.5 w-3.5" />}
         open={paramsSectionOpen}
         onOpenChange={setParamsSectionOpen}
       >
@@ -745,6 +754,7 @@ const ConsultationEditor = forwardRef(function ConsultationEditor(
 
       <MinimalExpandSection
         title="Mapeamento de retorno"
+        icon={<Database className="h-3.5 w-3.5" />}
         open={mappingSectionOpen}
         onOpenChange={setMappingSectionOpen}
       >
@@ -893,7 +903,8 @@ function LinkedConsultationCard({
   const [filters, setFilters] = useState<MappingItemFilter[]>(() => (initialFilters ?? []).map((rule) => ({ ...rule })));
   const [savingFilters, setSavingFilters] = useState(false);
   const maps = pc.fieldMappings.filter((m) => m.fieldTypeKey === fieldTypeKey);
-  const filterActive = (filters ?? []).some((f) => f.field.trim().length > 0);
+  const filterConfigForType = normalizeTypeItemFilterConfig(pc.typeItemFilters?.[fieldTypeKey]);
+  const filterActive = countActiveTypeItemRules(buildSingleGroupTypeItemFilterConfig(filters, filterConfigForType)) > 0;
 
   const initialSignature = JSON.stringify(initialFilters ?? []);
 
@@ -929,7 +940,10 @@ function LinkedConsultationCard({
   const persistFilters = async () => {
     setSavingFilters(true);
     try {
-      const merged: Record<string, MappingItemFilter[]> = { ...(pc.typeItemFilters ?? {}), [fieldTypeKey]: filters };
+      const merged: Record<string, TypeItemFilterConfig> = {
+        ...(pc.typeItemFilters ?? {}),
+        [fieldTypeKey]: buildSingleGroupTypeItemFilterConfig(filters, filterConfigForType),
+      };
       await patchProductApi(accessToken, pc.id, { typeItemFilters: merged });
       toast.success('Critérios salvos nesta consulta');
       onFiltersPersisted();
@@ -1084,6 +1098,7 @@ export default function IntegrationsPage() {
   const cardTestFnsRef = useRef<Record<string, () => Promise<void>>>({});
   const newConsultationTestRef = useRef<(() => Promise<void>) | null>(null);
   const consultationEditorRef = useRef<ConsultationEditorHandle | null>(null);
+  const [selectedTestLogId, setSelectedTestLogId] = useState<string | undefined>(undefined);
   const [testLogSelectKey, setTestLogSelectKey] = useState(0);
 
   const registerCardTestFn = useCallback((productId: string, fn: (() => Promise<void>) | null) => {
@@ -1188,9 +1203,34 @@ export default function IntegrationsPage() {
     return sorted.filter((t) => t.productId === consultationPicker);
   }, [consultationPicker, testLog]);
 
+  const selectedTestLog = useMemo(
+    () => testLogForPicker.find((entry) => entry.id === selectedTestLogId),
+    [selectedTestLogId, testLogForPicker],
+  );
+
+  const prevConsultationPickerForLogsRef = useRef<string | null>(null);
+
   useEffect(() => {
-    setTestLogSelectKey((k) => k + 1);
-  }, [consultationPicker]);
+    const consultationChanged = prevConsultationPickerForLogsRef.current !== consultationPicker;
+    prevConsultationPickerForLogsRef.current = consultationPicker;
+
+    if (!testLogForPicker.length) {
+      setSelectedTestLogId(undefined);
+      if (consultationChanged) setTestLogSelectKey((k) => k + 1);
+      return;
+    }
+
+    if (consultationChanged) {
+      setSelectedTestLogId(testLogForPicker[0].id);
+      setTestLogSelectKey((k) => k + 1);
+      return;
+    }
+
+    setSelectedTestLogId((prev) => {
+      if (prev && testLogForPicker.some((e) => e.id === prev)) return prev;
+      return testLogForPicker[0].id;
+    });
+  }, [consultationPicker, testLogForPicker]);
 
   const findApiProvider = (id: string) => apiProviders.find((p) => p.id === id);
   const findConsultation = (id: string) => consultations.find((c) => c.id === id);
@@ -1682,15 +1722,24 @@ export default function IntegrationsPage() {
                     </Select>
                     <Select
                       key={testLogSelectKey}
+                      value={selectedTestLogId}
                       disabled={testLogForPicker.length === 0}
                       onValueChange={(logId) => {
                         const entry = testLogForPicker.find((t) => t.id === logId);
-                        if (entry) consultationEditorRef.current?.loadResponseFromLog(entry);
-                        setTestLogSelectKey((k) => k + 1);
+                        if (entry) {
+                          consultationEditorRef.current?.loadResponseFromLog(entry);
+                          setSelectedTestLogId(logId);
+                        }
                       }}
                     >
                       <SelectTrigger className="h-9 w-full min-w-[11rem] sm:w-[min(100%,16rem)] cursor-pointer disabled:cursor-not-allowed">
-                        <SelectValue placeholder="Carregar retorno do histórico…" />
+                        <SelectValue
+                          placeholder={
+                            selectedTestLog
+                              ? `${selectedTestLog.consultationName} · ${new Date(selectedTestLog.testedAt).toLocaleString('pt-BR')}`
+                              : 'Carregar retorno do histórico…'
+                          }
+                        />
                       </SelectTrigger>
                       <SelectContent>
                         {testLogForPicker.map((entry) => {
@@ -1842,50 +1891,49 @@ export default function IntegrationsPage() {
 
         </TabsContent>
 
-        <TabsContent value="types" className="space-y-2">
-          <div className="flex min-h-[360px] max-h-[min(70vh,40rem)] gap-3">
-            <div className="flex w-64 shrink-0 flex-col border-r border-border/60 pr-2 min-h-0">
-              <div className="min-h-0 flex-1 space-y-1 overflow-y-auto overflow-x-hidden [scrollbar-width:thin] pr-1">
-              {fieldTypes.map((ft, i) => {
-                const linked = getLinkedConsultations(ft.key);
-                const isSelected = selectedFieldType === ft.key;
+        <TabsContent value="types" className="mt-2 outline-none focus-visible:ring-0">
+          <div className="flex overflow-hidden rounded-lg border border-border bg-card shadow-sm h-[clamp(22rem,calc(100vh-11.5rem),52rem)]">
+            <aside className="flex w-[17.5rem] shrink-0 flex-col border-r border-border/80 bg-muted/20 sm:w-72">
+              <div className="shrink-0 border-b border-border/70 px-3 py-2.5">
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Tipos canônicos</p>
+                <p className="mt-0.5 text-[11px] leading-snug text-muted-foreground">
+                  {fieldTypes.length} item{fieldTypes.length !== 1 ? 's' : ''} · lista rolável
+                </p>
+              </div>
+              <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-contain px-2 py-2.5 [scrollbar-width:thin]">
+                <div className="flex flex-col gap-2">
+                  {fieldTypes.map((ft, i) => {
+                    const linked = getLinkedConsultations(ft.key);
+                    const isSelected = selectedFieldType === ft.key;
 
-                return (
-                  <motion.div key={ft.id} initial={{ opacity: 0, x: -4 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.02 }}>
-                    <div
-                      onClick={() => setSelectedFieldType(isSelected ? null : ft.key)}
-                      onKeyDown={(e) => e.key === 'Enter' && setSelectedFieldType(isSelected ? null : ft.key)}
-                      role="button"
-                      tabIndex={0}
-                      className={`rounded-md border p-2.5 cursor-pointer transition-all group ${
-                        isSelected
-                          ? `${ftColorClass(ft.color, 'bg')} ${ftColorClass(ft.color, 'border')} border-2`
-                          : 'bg-card border-border hover:border-primary/20'
-                      }`}
-                    >
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-1.5">
-                          <div className={`w-6 h-6 rounded-md flex items-center justify-center ${ftColorClass(ft.color, 'bg')}`}>
-                            <Tag className={`w-3.5 h-3.5 ${ftColorClass(ft.color, 'text')}`} />
-                          </div>
-                          <div>
-                            <span className="text-sm font-semibold text-foreground">{ft.label}</span>
-                            <code className="text-xs font-mono text-muted-foreground block mt-0.5">{ft.key}</code>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-1.5">
-                          <span className="text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded tabular-nums">{linked.length}</span>
-                          <div className="flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                    return (
+                      <motion.div key={ft.id} initial={{ opacity: 0, x: -4 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.02 }}>
+                        <div
+                          onClick={() => setSelectedFieldType(isSelected ? null : ft.key)}
+                          onKeyDown={(e) => e.key === 'Enter' && setSelectedFieldType(isSelected ? null : ft.key)}
+                          role="button"
+                          tabIndex={0}
+                          className={`group/card relative flex cursor-pointer flex-col rounded-lg border text-left transition-all duration-200 ${
+                            isSelected
+                              ? `${ftColorClass(ft.color, 'bg')} ${ftColorClass(ft.color, 'border')} border-2 shadow-sm ring-1 ring-primary/10 hover:ring-primary/20`
+                              : 'border-border/60 bg-card/90 hover:border-primary/25 hover:bg-background hover:shadow-sm'
+                          } p-2.5`}
+                        >
+                          <div className="pointer-events-none absolute right-1 top-1 z-10 flex items-center gap-px rounded-md border border-border/40 bg-background/90 p-px opacity-0 shadow-sm backdrop-blur-sm transition-all duration-200 group-hover/card:pointer-events-auto group-hover/card:opacity-100 group-focus-within/card:pointer-events-auto group-focus-within/card:opacity-100">
                             <button
                               type="button"
-                              className="w-7 h-7 flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors rounded"
-                              onClick={(e) => { e.stopPropagation(); setFieldTypeModal({ open: true, ft }); }}
+                              className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setFieldTypeModal({ open: true, ft });
+                              }}
+                              aria-label={`Editar ${ft.label}`}
                             >
-                              <Pencil className="w-3.5 h-3.5" />
+                              <Pencil className="h-3 w-3" />
                             </button>
                             <button
                               type="button"
-                              className="w-7 h-7 flex items-center justify-center text-muted-foreground hover:text-destructive transition-colors rounded"
+                              className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
                               onClick={async (e) => {
                                 e.stopPropagation();
                                 try {
@@ -1896,21 +1944,56 @@ export default function IntegrationsPage() {
                                   toast.error('Não foi possível remover (pode haver mapeamentos)');
                                 }
                               }}
+                              aria-label={`Remover ${ft.label}`}
                             >
-                              <Trash2 className="w-3.5 h-3.5" />
+                              <Trash2 className="h-3 w-3" />
                             </button>
                           </div>
-                        </div>
-                      </div>
-                      {ft.description && <p className="text-xs text-muted-foreground mt-1.5 leading-snug">{ft.description}</p>}
-                    </div>
-                  </motion.div>
-                );
-              })}
-              </div>
-            </div>
 
-            <div className="min-h-0 min-w-0 flex-1 overflow-y-auto [scrollbar-width:thin]">
+                          <div className="flex gap-2.5 pr-11">
+                            <div
+                              className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-md ${ftColorClass(ft.color, 'bg')}`}
+                              aria-hidden
+                            >
+                              <Tag className={`h-3.5 w-3.5 ${ftColorClass(ft.color, 'text')}`} />
+                            </div>
+                            <div className="min-w-0 flex-1 space-y-0.5">
+                              <p className="text-sm font-medium leading-tight text-foreground line-clamp-2">{ft.label}</p>
+                              <code
+                                className="block truncate font-mono text-[10px] leading-none text-muted-foreground/90"
+                                title={ft.key}
+                              >
+                                {ft.key}
+                              </code>
+                            </div>
+                          </div>
+
+                          {ft.description ? (
+                            <p className="mt-1.5 line-clamp-2 pl-[2.75rem] text-[11px] leading-relaxed text-muted-foreground/85">
+                              {ft.description}
+                            </p>
+                          ) : null}
+
+                          <div className="mt-2 flex justify-end">
+                            <Badge
+                              variant="secondary"
+                              className="h-5 gap-1 border-0 px-2 py-0 text-[10px] font-medium tabular-nums text-muted-foreground transition-colors duration-200 group-hover/card:bg-secondary/90 group-hover/card:text-secondary-foreground"
+                              title={`${linked.length} ${linked.length === 1 ? 'consulta vinculada' : 'consultas vinculadas'}`}
+                            >
+                              <Database className="h-3 w-3 shrink-0 opacity-70" aria-hidden />
+                              {linked.length}
+                            </Badge>
+                          </div>
+                        </div>
+                      </motion.div>
+                    );
+                  })}
+                </div>
+              </div>
+            </aside>
+
+            <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-background/40">
+              <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-contain p-4 sm:p-5 [scrollbar-width:thin]">
               {selectedFieldType ? (() => {
                 const ft = fieldTypes.find((f) => f.key === selectedFieldType);
                 const linked = getLinkedConsultations(selectedFieldType);
@@ -1953,11 +2036,15 @@ export default function IntegrationsPage() {
                   </div>
                 );
               })() : (
-                <div className="flex flex-col items-center justify-center h-full text-center bg-card rounded-md border border-border py-8">
-                  <Tag className="w-10 h-10 text-muted-foreground/15 mb-3" />
-                  <p className="text-sm text-muted-foreground">Selecione um tipo à esquerda</p>
+                <div className="flex min-h-[min(18rem,calc(100%-1rem))] flex-col items-center justify-center rounded-md border border-dashed border-border/70 bg-muted/10 px-4 py-12 text-center">
+                  <Tag className="mb-3 h-10 w-10 text-muted-foreground/20" aria-hidden />
+                  <p className="text-sm font-medium text-foreground">Nenhum tipo selecionado</p>
+                  <p className="mt-1 max-w-xs text-xs leading-relaxed text-muted-foreground">
+                    Escolha um tipo na barra lateral para editar campos de relatório e ver consultas vinculadas.
+                  </p>
                 </div>
               )}
+              </div>
             </div>
           </div>
         </TabsContent>

@@ -3,26 +3,24 @@ import {
   Tag, GripVertical, Pencil, Check, X, ChevronUp, ChevronDown,
   Move, Code2, Eye, Trash2, User, AlertTriangle, Gauge, FileWarning,
   Building2, FileX, Users, DollarSign, TrendingUp, Award, Hash,
-  Filter, Copy, CheckSquare, Plus, List,
+  Settings2, Copy, CheckSquare, Plus, Info,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from '@/components/ui/dialog';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from '@/components/ui/resizable';
-import type { ConsultationFieldType, FieldMapping, MappingItemFilter, MappingItemFilterOp } from '@/types/integrations';
+import type { ConsultationFieldType, FieldMapping, TypeItemFilterConfig } from '@/types/integrations';
 import { formatDeepFilteredValueAtPath, getValueAtJsonPath } from '@/lib/providerResponseMapping';
+import {
+  cloneTypeItemFilterConfig,
+  countActiveTypeItemRules,
+  emptyTypeItemFilterConfig,
+  normalizeTypeItemFilterConfig,
+} from '@/lib/typeItemFilters';
+import TypeCriteriaDialog from '@/components/integrations/TypeCriteriaDialog';
 
 interface JsonSection {
   path: string;
@@ -41,14 +39,25 @@ interface MappedRegion {
   path: string;
 }
 
+type PreviewPartRow = { regionId: string; path: string; text: string; hasData: boolean };
+
+type PreviewDisplayRow = {
+  fieldTypeKey: string;
+  ft: ConsultationFieldType;
+  parts: PreviewPartRow[];
+  filters: TypeItemFilterConfig;
+  /** `filtered`: critérios ativos sem itens no retorno (sempre listado). `unmapped`: tipo selecionado sem trecho mapeado. */
+  emptyPreviewReason?: 'unmapped' | 'filtered';
+};
+
 interface JsonFieldMapperProps {
   json: string;
   onJsonChange: (json: string) => void;
   fieldTypes: ConsultationFieldType[];
   mappings: FieldMapping[];
   onMappingsChange: (mappings: FieldMapping[]) => void;
-  typeFilters?: Record<string, MappingItemFilter[]>;
-  onTypeFiltersChange?: (next: Record<string, MappingItemFilter[]>) => void;
+  typeFilters?: Record<string, TypeItemFilterConfig>;
+  onTypeFiltersChange?: (next: Record<string, TypeItemFilterConfig>) => void;
   /** Título da coluna esquerda (JSON de retorno do provedor) */
   jsonColumnTitle?: string;
 }
@@ -160,14 +169,10 @@ function getColors(color: string) {
   return colorMap[color] || colorMap.primary;
 }
 
-function cloneFilters(filters: MappingItemFilter[] | undefined): MappingItemFilter[] {
-  return (filters ?? []).map((filter) => ({ ...filter }));
-}
-
 function getMappedValuePreview(
   rootJson: string,
   jsonPath: string,
-  filters: MappingItemFilter[] | undefined,
+  filters: TypeItemFilterConfig | undefined,
   lineFallback: string,
 ): { text: string; hasData: boolean } {
   return formatDeepFilteredValueAtPath(rootJson, jsonPath, filters, lineFallback);
@@ -209,17 +214,7 @@ function extractJsonKeys(jsonStr: string): string[] {
 const LINE_HEIGHT = 24; // px por linha (alinhado a text-sm / leading-6)
 const REGION_DRAG_THRESHOLD_PX = 5; // evita confundir clique de seleção com arraste
 
-const FILTER_OPS: { value: MappingItemFilterOp; label: string }[] = [
-  { value: 'eq', label: 'igual a' },
-  { value: 'contains', label: 'contém' },
-  { value: 'startsWith', label: 'começa com' },
-  { value: 'endsWith', label: 'termina com' },
-  { value: 'regex', label: 'regex' },
-];
-
 const SENTINEL_EMPTY = '__empty__';
-const SENTINEL_FREE_FIELD = '__add_campo_livre__';
-const SENTINEL_FREE_VALUE = '__add_valor_livre__';
 
 function cellToSuggestionString(val: unknown): string {
   if (val == null) return '';
@@ -277,7 +272,7 @@ function tryParseJsonValueFromSlice(slice: string): unknown | null {
   let body = t;
   const keyPrefix = body.match(/^\s*"(?:[^"\\]|\\.)*"\s*:\s*/);
   if (keyPrefix) body = body.slice(keyPrefix[0].length).trimStart();
-  const relStart = body.search(/[\[{]/);
+  const relStart = body.search(/[[{]/);
   if (relStart < 0) return null;
   const balanced = extractBalancedJsonFragment(body, relStart);
   if (!balanced) return null;
@@ -297,34 +292,38 @@ function collectFilterSuggestionsForMappedRegions(
   fields: string[];
   valuesByField: Record<string, string[]>;
   allValues: string[];
+  allPaths: string[];
 } {
   const fieldSet = new Set<string>();
   const valueMap = new Map<string, Set<string>>();
+  const pathSet = new Set<string>();
 
-  const scanObject = (obj: Record<string, unknown>) => {
+  const scanObject = (obj: Record<string, unknown>, prefix = '') => {
     for (const [k, val] of Object.entries(obj)) {
       fieldSet.add(k);
+      const nextPath = prefix ? `${prefix}.${k}` : k;
+      pathSet.add(nextPath);
       if (!valueMap.has(k)) valueMap.set(k, new Set());
       const s = cellToSuggestionString(val);
       if (s) valueMap.get(k)!.add(s);
+      deepCollect(val, nextPath);
     }
   };
 
-  const scanArrayOfObjects = (arr: unknown[]) => {
+  const scanArrayOfObjects = (arr: unknown[], prefix = '') => {
     for (const el of arr) {
       if (!el || typeof el !== 'object' || Array.isArray(el)) continue;
-      scanObject(el as Record<string, unknown>);
+      scanObject(el as Record<string, unknown>, prefix);
     }
   };
 
-  const deepCollect = (value: unknown) => {
+  const deepCollect = (value: unknown, prefix = '') => {
     if (value == null) return;
     if (Array.isArray(value)) {
-      scanArrayOfObjects(value);
-      for (const el of value) deepCollect(el);
+      scanArrayOfObjects(value, prefix);
+      for (const el of value) deepCollect(el, prefix);
     } else if (typeof value === 'object') {
-      scanObject(value as Record<string, unknown>);
-      for (const v of Object.values(value as Record<string, unknown>)) deepCollect(v);
+      scanObject(value as Record<string, unknown>, prefix);
     }
   };
 
@@ -362,6 +361,7 @@ function collectFilterSuggestionsForMappedRegions(
     fields: [...fieldSet].sort((a, b) => a.localeCompare(b, 'pt-BR')),
     valuesByField,
     allValues,
+    allPaths: [...pathSet].sort((a, b) => a.localeCompare(b, 'pt-BR')),
   };
 }
 
@@ -382,22 +382,25 @@ export default function JsonFieldMapper({
   const [hoveredSection, setHoveredSection] = useState<JsonSection | null>(null);
   const [mappedRegions, setMappedRegions] = useState<MappedRegion[]>(() => {
     const { sections } = parseJsonSections(json);
-    return mappings.map((m, i) => {
-      const bounds = resolveRegionBounds(sections, m);
-      return {
-        regionId: `${m.fieldTypeKey}::${m.jsonPath}::${i}`,
-        fieldTypeKey: m.fieldTypeKey,
-        startLine: bounds?.startLine ?? 0,
-        endLine: bounds?.endLine ?? 0,
-        path: m.jsonPath,
-      };
-    }).filter(r => r.endLine > 0);
+    return mappings
+      .map((m, i) => {
+        const bounds = resolveRegionBounds(sections, m);
+        if (!bounds) return null;
+        return {
+          regionId: `${m.fieldTypeKey}::${m.jsonPath}::${i}`,
+          fieldTypeKey: m.fieldTypeKey,
+          startLine: bounds.startLine,
+          endLine: bounds.endLine,
+          path: m.jsonPath,
+        };
+      })
+      .filter((r): r is MappedRegion => r !== null);
   });
   const [selectedRegion, setSelectedRegion] = useState<string | null>(null);
   const [dedupEnabled, setDedupEnabled] = useState(false);
   const [dedupFields, setDedupFields] = useState<string[]>([]);
   const [openFilterTypeKey, setOpenFilterTypeKey] = useState<string | null>(null);
-  const [draftTypeFilters, setDraftTypeFilters] = useState<Record<string, MappingItemFilter[]>>({});
+  const [draftTypeFilters, setDraftTypeFilters] = useState<Record<string, TypeItemFilterConfig>>({});
   const jsonContainerRef = useRef<HTMLDivElement>(null);
   const skipNextRegionLineClick = useRef(false);
   const prevMappingsSigRef = useRef<string | null>(null);
@@ -418,11 +421,6 @@ export default function JsonFieldMapper({
       setIsEditing(true);
     }
   }, [json]);
-
-  /** Por tipo: modo lista vs texto livre para campo/valor em cada critério (índice alinhado a `rules`). */
-  const [criterionUiByType, setCriterionUiByType] = useState<
-    Record<string, { fieldList: boolean; valueList: boolean }[]>
-  >({});
 
   const mappingsSig = useMemo(
     () => JSON.stringify(mappings.map(m => ({
@@ -483,76 +481,42 @@ export default function JsonFieldMapper({
 
   useEffect(() => {
     const { sections: nextSections } = parseJsonSections(json);
-    setMappedRegions(prev => {
-      if (prevMappingsSigRef.current !== mappingsSig) {
-        prevMappingsSigRef.current = mappingsSig;
-        return mappings
-          .map((m, i) => {
-            const bounds = resolveRegionBounds(nextSections, m);
-            return {
-              regionId: `${m.fieldTypeKey}::${m.jsonPath}::${i}`,
-              fieldTypeKey: m.fieldTypeKey,
-              startLine: bounds?.startLine ?? 0,
-              endLine: bounds?.endLine ?? 0,
-              path: m.jsonPath,
-            };
-          })
-          .filter(r => r.endLine > 0);
-      }
-      return prev
-        .map(r => {
-          const section = nextSections.find(s => s.path === r.path);
-          if (!section) return { ...r, startLine: 0, endLine: 0 };
-          return { ...r, startLine: section.startLine, endLine: section.endLine };
+    prevMappingsSigRef.current = mappingsSig;
+    setMappedRegions(
+      mappings
+        .map((m, i) => {
+          const bounds = resolveRegionBounds(nextSections, m);
+          if (!bounds) return null;
+          return {
+            regionId: `${m.fieldTypeKey}::${m.jsonPath}::${i}`,
+            fieldTypeKey: m.fieldTypeKey,
+            startLine: bounds.startLine,
+            endLine: bounds.endLine,
+            path: m.jsonPath,
+          };
         })
-        .filter(r => r.endLine > 0);
-    });
+        .filter((r): r is MappedRegion => r !== null),
+    );
   }, [json, mappingsSig, mappings]);
 
-  useEffect(() => {
-    setCriterionUiByType(prev => {
-      let changed = false;
-      const next = { ...prev };
-      for (const ft of fieldTypes) {
-        const len = typeFilters[ft.key]?.length ?? 0;
-        const cur = next[ft.key] ?? [];
-        if (cur.length === len) continue;
-        changed = true;
-        const padded = [...cur];
-        while (padded.length < len) padded.push({ fieldList: true, valueList: true });
-        padded.length = len;
-        next[ft.key] = padded;
-      }
-      return changed ? next : prev;
-    });
-  }, [typeFilters, fieldTypes]);
-
   const setFiltersForType = useCallback(
-    (fieldTypeKey: string, nextRules: MappingItemFilter[]) => {
-      onTypeFiltersChange({ ...typeFilters, [fieldTypeKey]: nextRules });
+    (fieldTypeKey: string, nextConfig: TypeItemFilterConfig) => {
+      onTypeFiltersChange({ ...typeFilters, [fieldTypeKey]: nextConfig });
     },
     [typeFilters, onTypeFiltersChange],
   );
 
   const setDraftFiltersForType = useCallback(
-    (fieldTypeKey: string, nextRules: MappingItemFilter[]) => {
-      setDraftTypeFilters((prev) => ({ ...prev, [fieldTypeKey]: nextRules }));
+    (fieldTypeKey: string, nextConfig: TypeItemFilterConfig) => {
+      setDraftTypeFilters((prev) => ({ ...prev, [fieldTypeKey]: nextConfig }));
     },
     [],
   );
 
   const openFilterDialog = useCallback(
     (fieldTypeKey: string) => {
-      const nextRules = cloneFilters(typeFilters[fieldTypeKey]);
-      setDraftTypeFilters((prev) => ({ ...prev, [fieldTypeKey]: nextRules }));
-      setCriterionUiByType((prev) => {
-        const cur = [...(prev[fieldTypeKey] ?? [])];
-        while (cur.length < nextRules.length) {
-          cur.push({ fieldList: true, valueList: true });
-        }
-        cur.length = nextRules.length;
-        return { ...prev, [fieldTypeKey]: cur };
-      });
+      const nextConfig = cloneTypeItemFilterConfig(typeFilters[fieldTypeKey] ?? emptyTypeItemFilterConfig());
+      setDraftTypeFilters((prev) => ({ ...prev, [fieldTypeKey]: nextConfig }));
       setOpenFilterTypeKey(fieldTypeKey);
     },
     [typeFilters],
@@ -571,7 +535,10 @@ export default function JsonFieldMapper({
 
   const saveFilterDialog = useCallback(
     (fieldTypeKey: string) => {
-      setFiltersForType(fieldTypeKey, cloneFilters(draftTypeFilters[fieldTypeKey]));
+      setFiltersForType(
+        fieldTypeKey,
+        cloneTypeItemFilterConfig(draftTypeFilters[fieldTypeKey] ?? emptyTypeItemFilterConfig()),
+      );
       setOpenFilterTypeKey(null);
     },
     [draftTypeFilters, setFiltersForType],
@@ -754,7 +721,7 @@ export default function JsonFieldMapper({
       setSelectedRegion(null);
     }
     if (removed && !newRegions.some(r => r.fieldTypeKey === removed.fieldTypeKey)) {
-      setFiltersForType(removed.fieldTypeKey, []);
+      setFiltersForType(removed.fieldTypeKey, emptyTypeItemFilterConfig());
     }
     syncMappings(newRegions);
   };
@@ -764,7 +731,7 @@ export default function JsonFieldMapper({
     setMappedRegions(newRegions);
     if (selectedRegion === fieldTypeKey) setSelectedRegion(null);
     syncMappings(newRegions);
-    setFiltersForType(fieldTypeKey, []);
+    setFiltersForType(fieldTypeKey, emptyTypeItemFilterConfig());
   };
 
   const getRegionsForLine = (lineIdx: number) =>
@@ -791,8 +758,10 @@ export default function JsonFieldMapper({
     }
   };
 
-  const lineSlicePreview = (region: MappedRegion): string =>
-    lines.slice(region.startLine, region.endLine + 1).join('\n');
+  const lineSlicePreview = useCallback(
+    (region: MappedRegion): string => lines.slice(region.startLine, region.endLine + 1).join('\n'),
+    [lines],
+  );
 
   const typeKeysInOrder = useMemo(() => {
     const seen = new Set<string>();
@@ -828,25 +797,53 @@ export default function JsonFieldMapper({
         const fallback = lineSlicePreview(region);
         const preview = getMappedValuePreview(json, region.path, filters, fallback);
         return { regionId: region.regionId, path: region.path, text: preview.text, hasData: preview.hasData };
-      }).filter(part => !filters?.length || part.hasData);
-      if (filters?.length && parts.length === 0) return null;
-      return { fieldTypeKey, ft, parts, filters: filters ?? [] };
-    }).filter(Boolean) as {
-      fieldTypeKey: string;
-      ft: ConsultationFieldType;
-      parts: { regionId: string; path: string; text: string; hasData: boolean }[];
-      filters: MappingItemFilter[];
-    }[];
-  }, [typeKeysInOrder, mappedRegions, fieldTypes, lines, json, typeFilters, openFilterTypeKey, draftTypeFilters]);
+      }).filter(part => countActiveTypeItemRules(filters) === 0 || part.hasData);
+      const filterCfg = filters ?? emptyTypeItemFilterConfig();
+      if (countActiveTypeItemRules(filters) > 0 && parts.length === 0) {
+        return { fieldTypeKey, ft, parts: [], filters: filterCfg, emptyPreviewReason: 'filtered' as const };
+      }
+      return { fieldTypeKey, ft, parts, filters: filterCfg };
+    }).filter(Boolean) as PreviewDisplayRow[];
+  }, [typeKeysInOrder, mappedRegions, fieldTypes, json, typeFilters, openFilterTypeKey, draftTypeFilters, lineSlicePreview]);
+
+  const previewDisplayItems = useMemo((): PreviewDisplayRow[] => {
+    const base: PreviewDisplayRow[] = previewByType.map((p) => ({ ...p }));
+    if (!selectedRegion) return base;
+    if (base.some((p) => p.fieldTypeKey === selectedRegion)) return base;
+    const ft = fieldTypes.find((f) => f.key === selectedRegion);
+    if (!ft) return base;
+    const regions = mappedRegions.filter((r) => r.fieldTypeKey === selectedRegion);
+    if (regions.length > 0) return base;
+    const filters =
+      openFilterTypeKey === selectedRegion
+        ? (draftTypeFilters[selectedRegion] ?? typeFilters[selectedRegion])
+        : typeFilters[selectedRegion];
+    const filterCfg = filters ?? emptyTypeItemFilterConfig();
+    return [
+      { fieldTypeKey: selectedRegion, ft, parts: [], filters: filterCfg, emptyPreviewReason: 'unmapped' },
+      ...base,
+    ];
+  }, [
+    previewByType,
+    selectedRegion,
+    fieldTypes,
+    mappedRegions,
+    openFilterTypeKey,
+    draftTypeFilters,
+    typeFilters,
+  ]);
 
   return (
     <div className="h-[460px] border border-border rounded-md overflow-hidden bg-card"
       style={{ cursor: edgeDrag ? 'ns-resize' : regionDrag || regionDragPending ? 'grabbing' : undefined }}>
-      <ResizablePanelGroup direction="horizontal">
+      <ResizablePanelGroup
+        direction="horizontal"
+        autoSaveId="consultas-pro-json-field-mapper-panels"
+      >
         {/* LEFT: JSON with line numbers */}
-        <ResizablePanel defaultSize={50} minSize={25} className="min-h-0 min-w-0">
+        <ResizablePanel defaultSize={50} minSize={22} className="min-h-0 min-w-0">
           <div className="flex min-h-0 min-w-0 flex-col h-full">
-            <div className="flex items-center justify-between px-3 h-9 border-b border-border bg-muted/40">
+            <div className="flex shrink-0 items-center justify-between px-3 h-9 border-b border-border bg-muted/40">
               <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-2 min-w-0">
                 <Code2 className="w-4 h-4 shrink-0" /> <span className="truncate">{jsonColumnTitle}</span>
               </span>
@@ -1026,24 +1023,24 @@ export default function JsonFieldMapper({
         <ResizableHandle withHandle />
 
         {/* MIDDLE: Field Types catalog */}
-        <ResizablePanel defaultSize={22} minSize={15}>
-          <div className="flex flex-col h-full">
-            <div className="flex items-center px-3 h-9 border-b border-border bg-muted/40">
+        <ResizablePanel defaultSize={22} minSize={20} className="min-h-0 min-w-[17.5rem]">
+          <div className="flex min-h-0 min-w-0 flex-col h-full">
+            <div className="flex items-center px-3 h-9 border-b border-border bg-muted/40 shrink-0">
               <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-2">
                 <Tag className="w-4 h-4" /> Tipos
               </span>
             </div>
-            <ScrollArea className="flex-1">
-              <div className="p-1.5 space-y-2">
+            <ScrollArea className="flex-1 min-h-0 min-w-0">
+              <div className="space-y-2 py-1.5 pl-1.5 pr-4 pb-1.5">
                 {fieldTypes.map(ft => {
                   const colors = getColors(ft.color);
                   const regionsForType = mappedRegions.filter(r => r.fieldTypeKey === ft.key);
                   const isMapped = regionsForType.length > 0;
-                  const rules = openFilterTypeKey === ft.key
-                    ? (draftTypeFilters[ft.key] ?? [])
-                    : (typeFilters[ft.key] ?? []);
                   const suggest = suggestionsByType[ft.key] ?? { fields: [], valuesByField: {}, allValues: [] };
-                  const uiModes = criterionUiByType[ft.key] ?? [];
+                  const filterConfig = openFilterTypeKey === ft.key
+                    ? (draftTypeFilters[ft.key] ?? typeFilters[ft.key] ?? emptyTypeItemFilterConfig())
+                    : (typeFilters[ft.key] ?? emptyTypeItemFilterConfig());
+                  const activeCriteriaCount = countActiveTypeItemRules(filterConfig);
 
                   return (
                     <div
@@ -1059,13 +1056,13 @@ export default function JsonFieldMapper({
                         setHoveredSection(null);
                       }}
                       onClick={() => {
-                        if (isMapped) setSelectedRegion(ft.key === selectedRegion ? null : ft.key);
+                        setSelectedRegion(ft.key === selectedRegion ? null : ft.key);
                       }}
                       className={`
                         rounded-md border text-sm transition-all
                         ${isMapped
                           ? `${colors.bg} ${colors.border} shadow-elevated cursor-pointer`
-                          : 'border-border/60 bg-background hover:border-primary/30 cursor-grab active:cursor-grabbing'
+                          : 'border-border/60 bg-background hover:border-primary/30 cursor-grab active:cursor-grabbing cursor-pointer'
                         }
                         ${selectedRegion === ft.key ? 'ring-1 ring-primary/40' : ''}
                         ${draggedType?.key === ft.key ? 'opacity-70' : ''}
@@ -1078,299 +1075,40 @@ export default function JsonFieldMapper({
                         </div>
                         <span className="min-w-0 flex-1 truncate font-medium text-foreground">{ft.label}</span>
                         {isMapped && (
-                          <Dialog
-                            open={openFilterTypeKey === ft.key}
-                            onOpenChange={(open) => {
-                              if (open) {
+                          <>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7 shrink-0 text-muted-foreground hover:text-foreground"
+                              onClick={e => {
+                                e.stopPropagation();
                                 openFilterDialog(ft.key);
-                              } else {
-                                closeFilterDialog(ft.key);
-                              }
-                            }}
-                          >
-                            <DialogTrigger asChild>
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="icon"
-                                className="h-7 w-7 shrink-0 text-muted-foreground hover:text-foreground"
-                                onClick={e => {
-                                  e.stopPropagation();
-                                  openFilterDialog(ft.key);
-                                }}
-                                aria-label="Critérios de filtro do tipo"
-                              >
-                                <Filter className="w-3.5 h-3.5" />
-                              </Button>
-                            </DialogTrigger>
-                            <DialogContent
-                              className="flex max-h-[min(90vh,880px)] w-[min(36rem,calc(100vw-1.5rem))] max-w-[min(36rem,95vw)] flex-col gap-0 overflow-hidden border bg-background p-0 sm:max-w-[min(36rem,95vw)]"
-                              onClick={e => e.stopPropagation()}
+                              }}
+                              aria-label="Configurar critérios do tipo"
                             >
-                              <DialogHeader className="space-y-2 border-b border-border px-5 py-4 text-left">
-                                <DialogTitle className="text-base">Critérios do tipo</DialogTitle>
-                                <DialogDescription className="text-xs leading-relaxed">
-                                  Valem para todos os trechos JSON deste tipo. Em arrays de objetos, os critérios combinam com AND.
-                                  Campos e valores são inferidos do trecho grifado (linhas) e do path JSON, sem duplicar entradas.
-                                </DialogDescription>
-                              </DialogHeader>
-                              <div className="min-h-0 flex-1 space-y-2.5 overflow-y-auto px-5 py-4">
-                                {rules.length === 0 && (
-                                  <p className="text-xs italic text-muted-foreground">Nenhum critério</p>
-                                )}
-                                {rules.map((rule, idx) => {
-                                  const uiRow = uiModes[idx] ?? { fieldList: true, valueList: true };
-                                  const valueOpts = rule.field.trim()
-                                    ? (suggest.valuesByField[rule.field] ?? [])
-                                    : suggest.allValues;
-                                  const showFieldSelect =
-                                    uiRow.fieldList &&
-                                    (suggest.fields.length > 0 || rule.field === '');
-                                  const showValueSelect =
-                                    uiRow.valueList &&
-                                    (valueOpts.length > 0 || rule.value === '');
-
-                                  const patchRule = (patch: Partial<MappingItemFilter>) => {
-                                    const base = draftTypeFilters[ft.key] ?? [];
-                                    setDraftFiltersForType(
-                                      ft.key,
-                                      base.map((x, i) => (i === idx ? { ...x, ...patch } : x)),
-                                    );
-                                  };
-
-                                  const setMode = (patch: Partial<{ fieldList: boolean; valueList: boolean }>) => {
-                                    setCriterionUiByType(prev => {
-                                      const cur = [...(prev[ft.key] ?? [])];
-                                      while (cur.length < rules.length) {
-                                        cur.push({ fieldList: true, valueList: true });
-                                      }
-                                      const row = cur[idx] ?? { fieldList: true, valueList: true };
-                                      cur[idx] = { ...row, ...patch };
-                                      return { ...prev, [ft.key]: cur };
-                                    });
-                                  };
-
-                                  return (
-                                    <div
-                                      key={idx}
-                                      className="space-y-2 rounded-lg border border-border/80 bg-muted/20 p-3"
-                                    >
-                                      <div className="flex flex-wrap items-end gap-2">
-                                        {showFieldSelect ? (
-                                          <Select
-                                            value={
-                                              rule.field && suggest.fields.includes(rule.field)
-                                                ? rule.field
-                                                : SENTINEL_EMPTY
-                                            }
-                                            onValueChange={v => {
-                                              if (v === SENTINEL_FREE_FIELD) {
-                                                setMode({ fieldList: false });
-                                                return;
-                                              }
-                                              if (v === SENTINEL_EMPTY) {
-                                                patchRule({ field: '' });
-                                                return;
-                                              }
-                                              patchRule({ field: v });
-                                            }}
-                                          >
-                                            <SelectTrigger className="h-9 min-w-[7rem] max-w-[11rem] flex-1 bg-background text-xs">
-                                              <SelectValue placeholder="Campo" />
-                                            </SelectTrigger>
-                                            <SelectContent className="max-h-60 z-[200]">
-                                              <SelectItem value={SENTINEL_EMPTY} className="text-xs text-muted-foreground">
-                                                Selecione o campo…
-                                              </SelectItem>
-                                              {suggest.fields.length === 0 && (
-                                                <div className="px-2 py-1.5 text-[10px] leading-snug text-muted-foreground">
-                                                  Nenhum campo detectado nos trechos — use texto livre ou mapeie um array de objetos.
-                                                </div>
-                                              )}
-                                              {suggest.fields.map(f => (
-                                                <SelectItem key={f} value={f} className="font-mono text-xs">
-                                                  {f}
-                                                </SelectItem>
-                                              ))}
-                                              <SelectItem
-                                                value={SENTINEL_FREE_FIELD}
-                                                className="text-xs font-medium text-primary"
-                                              >
-                                                + Texto livre (add campo)
-                                              </SelectItem>
-                                            </SelectContent>
-                                          </Select>
-                                        ) : (
-                                          <div className="flex min-w-0 flex-1 items-center gap-1.5">
-                                            <Input
-                                              value={rule.field}
-                                              onChange={e => patchRule({ field: e.target.value })}
-                                              placeholder="Campo (livre)"
-                                              className="h-9 min-w-0 flex-1 bg-background font-mono text-xs"
-                                            />
-                                            <Button
-                                              type="button"
-                                              variant="outline"
-                                              size="icon"
-                                              className="h-9 w-9 shrink-0 cursor-pointer"
-                                              title={
-                                                suggest.fields.length > 0
-                                                  ? 'Abrir lista de campos'
-                                                  : 'Abrir seletor (lista vazia até haver objeto/array no trecho)'
-                                              }
-                                              aria-label="Abrir lista de campos"
-                                              onClick={() => setMode({ fieldList: true })}
-                                            >
-                                              <List className="h-4 w-4" />
-                                            </Button>
-                                          </div>
-                                        )}
-
-                                        <Select
-                                          value={rule.op}
-                                          onValueChange={v =>
-                                            patchRule({ op: v as MappingItemFilterOp })
-                                          }
-                                        >
-                                          <SelectTrigger className="h-9 w-[9.5rem] shrink-0 bg-background text-xs">
-                                            <SelectValue />
-                                          </SelectTrigger>
-                                          <SelectContent>
-                                            {FILTER_OPS.map(op => (
-                                              <SelectItem key={op.value} value={op.value} className="text-xs">
-                                                {op.label}
-                                              </SelectItem>
-                                            ))}
-                                          </SelectContent>
-                                        </Select>
-
-                                        {showValueSelect ? (
-                                          <Select
-                                            value={
-                                              rule.value && valueOpts.includes(rule.value)
-                                                ? rule.value
-                                                : SENTINEL_EMPTY
-                                            }
-                                            onValueChange={v => {
-                                              if (v === SENTINEL_FREE_VALUE) {
-                                                setMode({ valueList: false });
-                                                return;
-                                              }
-                                              if (v === SENTINEL_EMPTY) {
-                                                patchRule({ value: '' });
-                                                return;
-                                              }
-                                              patchRule({ value: v });
-                                            }}
-                                          >
-                                            <SelectTrigger className="h-9 min-w-[7rem] max-w-[11rem] flex-1 bg-background text-xs">
-                                              <SelectValue placeholder="Valor" />
-                                            </SelectTrigger>
-                                            <SelectContent className="max-h-60 z-[200]">
-                                              <SelectItem value={SENTINEL_EMPTY} className="text-xs text-muted-foreground">
-                                                Selecione o valor…
-                                              </SelectItem>
-                                              {valueOpts.length === 0 && (
-                                                <div className="px-2 py-1.5 text-[10px] leading-snug text-muted-foreground">
-                                                  {rule.field.trim()
-                                                    ? 'Sem valores amostrados para este campo — texto livre.'
-                                                    : 'Escolha um campo primeiro ou use texto livre.'}
-                                                </div>
-                                              )}
-                                              {valueOpts.slice(0, 200).map(v => (
-                                                <SelectItem key={v} value={v} className="text-xs">
-                                                  <span className="line-clamp-2">{v}</span>
-                                                </SelectItem>
-                                              ))}
-                                              {valueOpts.length > 200 && (
-                                                <p className="px-2 py-1 text-[10px] text-muted-foreground">
-                                                  Lista limitada a 200 — use texto livre para outros.
-                                                </p>
-                                              )}
-                                              <SelectItem
-                                                value={SENTINEL_FREE_VALUE}
-                                                className="text-xs font-medium text-primary"
-                                              >
-                                                + Texto livre (add valor)
-                                              </SelectItem>
-                                            </SelectContent>
-                                          </Select>
-                                        ) : (
-                                          <div className="flex min-w-0 flex-1 items-center gap-1.5">
-                                            <Input
-                                              value={rule.value}
-                                              onChange={e => patchRule({ value: e.target.value })}
-                                              placeholder="Valor (livre)"
-                                              className="h-9 min-w-0 flex-1 bg-background text-xs"
-                                            />
-                                            <Button
-                                              type="button"
-                                              variant="outline"
-                                              size="icon"
-                                              className="h-9 w-9 shrink-0 cursor-pointer"
-                                              title={
-                                                valueOpts.length > 0
-                                                  ? 'Abrir lista de valores'
-                                                  : 'Abrir seletor (escolha um campo ou mapeie trecho com dados)'
-                                              }
-                                              aria-label="Abrir lista de valores"
-                                              onClick={() => setMode({ valueList: true })}
-                                            >
-                                              <List className="h-4 w-4" />
-                                            </Button>
-                                          </div>
-                                        )}
-
-                                        <button
-                                          type="button"
-                                          className="shrink-0 cursor-pointer p-1.5 text-muted-foreground hover:text-destructive"
-                                          aria-label="Remover critério"
-                                          onClick={() => {
-                                            const base = draftTypeFilters[ft.key] ?? [];
-                                            setDraftFiltersForType(ft.key, base.filter((_, i) => i !== idx));
-                                          }}
-                                        >
-                                          <Trash2 className="h-3.5 w-3.5" />
-                                        </button>
-                                      </div>
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                              <div className="border-t border-border px-5 py-3">
-                                <Button
-                                  type="button"
-                                  variant="outline"
-                                  size="sm"
-                                  className="h-9 w-full cursor-pointer text-xs"
-                                  onClick={() => {
-                                    const base = draftTypeFilters[ft.key] ?? [];
-                                    setDraftFiltersForType(ft.key, [...base, { field: '', op: 'eq', value: '' }]);
-                                  }}
-                                >
-                                  <Plus className="mr-1 h-3 w-3" />
-                                  Adicionar critério
-                                </Button>
-                              </div>
-                              <DialogFooter className="border-t border-border px-5 py-3">
-                                <Button
-                                  type="button"
-                                  variant="ghost"
-                                  className="h-9"
-                                  onClick={() => closeFilterDialog(ft.key)}
-                                >
-                                  Cancelar
-                                </Button>
-                                <Button
-                                  type="button"
-                                  className="h-9"
-                                  onClick={() => saveFilterDialog(ft.key)}
-                                >
-                                  Salvar
-                                </Button>
-                              </DialogFooter>
-                            </DialogContent>
-                          </Dialog>
+                              <Settings2 className="w-3.5 h-3.5" />
+                            </Button>
+                            {activeCriteriaCount > 0 && (
+                              <Badge variant="secondary" className="h-5 px-1.5 text-[10px]">
+                                {activeCriteriaCount}
+                              </Badge>
+                            )}
+                            <TypeCriteriaDialog
+                              open={openFilterTypeKey === ft.key}
+                              fieldType={ft}
+                              draftConfig={draftTypeFilters[ft.key] ?? filterConfig}
+                              suggestions={suggest}
+                              jsonFieldOptions={suggest.allPaths.length > 0 ? suggest.allPaths : allJsonKeys}
+                              mappedRegionCount={regionsForType.length}
+                              onOpenChange={(open) => {
+                                if (open) openFilterDialog(ft.key);
+                                else closeFilterDialog(ft.key);
+                              }}
+                              onDraftChange={(nextConfig) => setDraftFiltersForType(ft.key, nextConfig)}
+                              onSave={() => saveFilterDialog(ft.key)}
+                            />
+                          </>
                         )}
                         {isMapped && (
                           <button
@@ -1458,9 +1196,9 @@ export default function JsonFieldMapper({
         <ResizableHandle withHandle />
 
         {/* RIGHT: Preview — all data summary + dedup */}
-        <ResizablePanel defaultSize={28} minSize={15}>
-          <div className="flex flex-col h-full">
-            <div className="flex items-center justify-between px-3 h-9 border-b border-border bg-muted/40">
+        <ResizablePanel defaultSize={28} minSize={18} className="min-h-0 min-w-[12rem]">
+          <div className="flex min-h-0 min-w-0 flex-col h-full">
+            <div className="flex shrink-0 items-center justify-between px-3 h-9 border-b border-border bg-muted/40">
               <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-2">
                 <Eye className="w-4 h-4" /> Preview
               </span>
@@ -1471,9 +1209,9 @@ export default function JsonFieldMapper({
                 </span>
               )}
             </div>
-            <ScrollArea className="flex-1">
-              {previewByType.length > 0 ? (
-                <div className="space-y-2 p-2">
+            <ScrollArea className="flex-1 min-h-0 min-w-0">
+              {previewDisplayItems.length > 0 ? (
+                <div className="space-y-2 p-2 pr-4">
                   <div className="rounded border border-border bg-muted/20 p-2 space-y-1.5">
                     <div className="flex items-center gap-1.5">
                       <Checkbox
@@ -1483,7 +1221,7 @@ export default function JsonFieldMapper({
                         className="w-4 h-4"
                       />
                       <label htmlFor="dedup" className="text-sm font-medium text-foreground cursor-pointer flex items-center gap-1.5">
-                        <Filter className="w-3.5 h-3.5 text-muted-foreground" />
+                        <Settings2 className="w-3.5 h-3.5 text-muted-foreground" />
                         Remover duplicidade
                       </label>
                     </div>
@@ -1521,9 +1259,10 @@ export default function JsonFieldMapper({
                     Somente leitura — edite trechos e critérios na coluna Tipos.
                   </p>
 
-                  {previewByType.map(({ fieldTypeKey, ft, parts, filters }) => {
+                  {previewDisplayItems.map(({ fieldTypeKey, ft, parts, filters, emptyPreviewReason }) => {
                     const colors = getColors(ft.color);
                     const isSelected = selectedRegion === ft.key;
+                    const activeRules = countActiveTypeItemRules(filters);
 
                     return (
                       <div
@@ -1540,13 +1279,32 @@ export default function JsonFieldMapper({
                           <span className={`min-w-0 flex-1 truncate text-sm font-semibold ${colors.text}`}>
                             {ft.label}
                           </span>
-                          {filters.length > 0 && (
+                          {activeRules > 0 && (
                             <Badge variant="secondary" className="h-5 shrink-0 px-1.5 py-0 text-[10px] font-normal">
-                              {filters.length} critério{filters.length > 1 ? 's' : ''}
+                              {activeRules} critério{activeRules > 1 ? 's' : ''}
                             </Badge>
                           )}
                         </div>
                         <div className="border-t border-border bg-background/40">
+                          {emptyPreviewReason && parts.length === 0 && (
+                            emptyPreviewReason === 'filtered' ? (
+                              <div className="flex items-start gap-2 px-2.5 py-3">
+                                <Info
+                                  className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground"
+                                  aria-hidden
+                                />
+                                <p className="text-xs leading-relaxed text-muted-foreground">
+                                  Nenhum campo corresponde aos critérios configurados
+                                </p>
+                              </div>
+                            ) : (
+                              <div className="px-2.5 py-3">
+                                <p className="text-xs leading-relaxed text-muted-foreground">
+                                  Sem trecho mapeado. Arraste o tipo até o bloco desejado no JSON à esquerda.
+                                </p>
+                              </div>
+                            )
+                          )}
                           {parts.map(p => (
                             <div key={p.regionId} className="border-b border-border/60 last:border-b-0">
                               <div className="px-2 py-1">

@@ -70,6 +70,29 @@ export interface MappingItemFilter {
   value: string;
 }
 
+export interface TypeItemFieldMapping {
+  id: string;
+  reportFieldId: string;
+  reportFieldLabel: string;
+  jsonPath: string;
+}
+
+export interface TypeItemFilterRule extends MappingItemFilter {
+  id: string;
+}
+
+export interface TypeItemFilterGroup {
+  id: string;
+  joinOperator: 'and' | 'or';
+  rules: TypeItemFilterRule[];
+}
+
+export interface TypeItemFilterConfig {
+  version: 2;
+  groups: TypeItemFilterGroup[];
+  fieldMappings: TypeItemFieldMapping[];
+}
+
 export interface Provider {
   id: string;
   name: string;
@@ -97,8 +120,8 @@ export interface ProviderConsultation {
   /** Valor debitado do cliente (carteira) nesta consulta */
   consultationPrice: number;
   fieldMappings: FieldMapping[];
-  /** Critérios por chave do tipo canônico; persistidos em ProviderProduct.typeItemFilters. */
-  typeItemFilters?: Record<string, MappingItemFilter[]>;
+  /** Critérios avançados e mapeamento de campos por chave do tipo canônico; persistidos em ProviderProduct.typeItemFilters. */
+  typeItemFilters?: Record<string, TypeItemFilterConfig>;
   sampleRequest?: string;
   sampleResponse?: string;
   /** JSON do corpo da requisição (mapeado para bodyTemplate na API) */
