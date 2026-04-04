@@ -1,4 +1,4 @@
-# Consultas Pró — Documentação Técnica de Back-end
+# Consultas PRO — Documentação Técnica de Back-end
 
 ## Índice
 1. [Objetivo do back-end](#1-objetivo-do-back-end)
@@ -24,7 +24,7 @@
 
 ## 1. Objetivo do back-end
 
-O back-end do **Consultas Pró** deve sustentar uma plataforma SaaS multi-tenant preparada para:
+O back-end do **Consultas PRO** deve sustentar uma plataforma SaaS multi-tenant preparada para:
 
 - consultas modulares de crédito;
 - gestão de saldo e cobrança;
@@ -69,7 +69,7 @@ Esse modelo entrega:
 Usar **Fastify + arquitetura própria modular** se quiser máxima performance e controle.
 Usar **NestJS** se preferir convenções enterprise e DI nativa.
 
-Para o Consultas Pró, a melhor combinação é:
+Para o Consultas PRO, a melhor combinação é:
 - **Node.js + TypeScript + Fastify + Zod + Prisma/Drizzle**
 - arquitetura de módulos e casos de uso explícitos.
 
@@ -574,6 +574,8 @@ Módulo para admin controlar:
 ---
 
 ## 14. APIs e contratos
+
+Especificação OpenAPI 3 e notas de uso: [docs/api/openapi.md](./api/openapi.md).
 
 ## 14.1 Recursos principais
 - `/auth`

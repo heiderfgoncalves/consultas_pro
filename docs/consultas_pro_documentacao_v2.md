@@ -1,4 +1,4 @@
-# Consultas Pró — Documentação Geral do Sistema
+# Consultas PRO — Documentação Geral do Sistema
 
 ## Índice
 1. [Visão geral](#1-visão-geral)
@@ -22,7 +22,7 @@
 
 ## 1. Visão geral
 
-O **Consultas Pró** é uma plataforma SaaS web responsiva para emissão de consultas de crédito e restrições em formato **self-service**, permitindo que o cliente monte o relatório que deseja a partir de blocos modulares de dados, acompanhe custo em tempo real, utilize saldo pré-pago, salve templates e reutilize suas configurações em novas emissões.
+O **Consultas PRO** é uma plataforma SaaS web responsiva para emissão de consultas de crédito e restrições em formato **self-service**, permitindo que o cliente monte o relatório que deseja a partir de blocos modulares de dados, acompanhe custo em tempo real, utilize saldo pré-pago, salve templates e reutilize suas configurações em novas emissões.
 
 O sistema foi pensado para operar em três níveis principais:
 

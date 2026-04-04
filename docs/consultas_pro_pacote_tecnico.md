@@ -1,8 +1,8 @@
-# Consultas Pró — Pacote Técnico para Desenvolvimento
+# Consultas PRO — Pacote Técnico para Desenvolvimento
 
 ## 1. Resumo executivo
 
-**Consultas Pró** é uma plataforma SaaS web responsiva para consulta modular de dívidas, restrições e dados de crédito, com experiência self-service. O usuário monta a própria consulta escolhendo blocos de informação, visualiza uma prévia em tempo real, consome saldo da carteira ao emitir e pode reutilizar layouts salvos em consultas futuras.
+**Consultas PRO** é uma plataforma SaaS web responsiva para consulta modular de dívidas, restrições e dados de crédito, com experiência self-service. O usuário monta a própria consulta escolhendo blocos de informação, visualiza uma prévia em tempo real, consome saldo da carteira ao emitir e pode reutilizar layouts salvos em consultas futuras.
 
 A plataforma deve suportar operação direta, operação com conta mestre e usuários subordinados com saldo compartilhado, além de expansão via white-label, embed e APIs.
 
@@ -941,7 +941,7 @@ Interface em tabela responsiva com:
 
 ## 21. Prompt resumido para Cursor/Lovable
 
-Desenvolver o produto **Consultas Pró**, uma plataforma SaaS web responsiva para consultas modulares de crédito e restrições. O sistema deve ter login, cadastro e recuperação de acesso. No cadastro, exigir nome completo ou razão social, telefone do responsável, e-mail e CPF/CNPJ com validação. Se e-mail ou documento já existirem, informar isso e oferecer recuperação de acesso.
+Desenvolver o produto **Consultas PRO**, uma plataforma SaaS web responsiva para consultas modulares de crédito e restrições. O sistema deve ter login, cadastro e recuperação de acesso. No cadastro, exigir nome completo ou razão social, telefone do responsável, e-mail e CPF/CNPJ com validação. Se e-mail ou documento já existirem, informar isso e oferecer recuperação de acesso.
 
 A plataforma deve permitir dois modelos de uso: conta individual e conta mestre. A conta mestre deve poder criar usuários subordinados, que entram com login próprio e usam o saldo compartilhado da carteira principal para emitir consultas, respeitando permissões.
 
@@ -953,4 +953,4 @@ O sistema deve ter painel administrativo para gestão de usuários, saldo, tabel
 
 ## 22. Resultado esperado
 
-O Consultas Pró deve ser percebido como uma plataforma profissional, moderna e flexível, que não apenas emite consultas, mas oferece uma experiência comercializável de configuração, operação e distribuição de dados de crédito.
+O Consultas PRO deve ser percebido como uma plataforma profissional, moderna e flexível, que não apenas emite consultas, mas oferece uma experiência comercializável de configuração, operação e distribuição de dados de crédito.

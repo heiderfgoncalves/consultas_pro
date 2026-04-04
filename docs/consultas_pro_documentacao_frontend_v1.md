@@ -1,7 +1,7 @@
-Crie o front-end completo de uma aplicação web responsiva chamada **Consultas Pró**, com foco na **área do usuário cliente**. Não criar o painel administrativo neste momento. O objetivo é desenvolver uma experiência premium, moderna, clara e extremamente intuitiva para emissão de consultas de crédito e restrições em formato self-service.
+Crie o front-end completo de uma aplicação web responsiva chamada **Consultas PRO**, com foco na **área do usuário cliente**. Não criar o painel administrativo neste momento. O objetivo é desenvolver uma experiência premium, moderna, clara e extremamente intuitiva para emissão de consultas de crédito e restrições em formato self-service.
 
 ## CONTEXTO DO PRODUTO
-O Consultas Pró é uma plataforma onde o cliente pode:
+O Consultas PRO é uma plataforma onde o cliente pode:
 - fazer login e acessar sua conta;
 - recarregar saldo via PIX ou cartão;
 - montar consultas personalizadas selecionando blocos de dados;
@@ -63,7 +63,7 @@ Não quero visual genérico nem datado.
 ---
 
 ## CORES E IDENTIDADE
-Criar identidade visual para a marca **Consultas Pró**.
+Criar identidade visual para a marca **Consultas PRO**.
 
 Sugestão:
 - base clara com aparência sofisticada;
@@ -224,7 +224,7 @@ Criar sidebar elegante com:
 - Perfil
 
 No topo da sidebar:
-- logo Consultas Pró
+- logo Consultas PRO
 - identificação da conta
 
 No rodapé:
@@ -252,7 +252,7 @@ Se a conta for do tipo mestre:
 Criar uma tela de login premium, limpa e profissional.
 
 Elementos:
-- logo Consultas Pró;
+- logo Consultas PRO;
 - título forte;
 - subtítulo explicando a proposta;
 - campos de e-mail e senha;

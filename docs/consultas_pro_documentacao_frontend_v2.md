@@ -1,4 +1,4 @@
-# Consultas Pró — Documentação Técnica de Front-end
+# Consultas PRO — Documentação Técnica de Front-end
 
 ## Índice
 1. [Objetivo do front-end](#1-objetivo-do-front-end)
@@ -26,7 +26,7 @@
 
 ## 1. Objetivo do front-end
 
-O front-end do **Consultas Pró** deve entregar uma experiência SaaS premium, moderna e intuitiva, com foco em:
+O front-end do **Consultas PRO** deve entregar uma experiência SaaS premium, moderna e intuitiva, com foco em:
 
 - clareza do fluxo de emissão de consultas;
 - transparência de saldo e custo;
