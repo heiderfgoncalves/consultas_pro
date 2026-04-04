@@ -16,14 +16,19 @@ import NewConsultationPage from "@/pages/NewConsultationPage";
 
 import HistoryPage from "@/pages/HistoryPage";
 import FinancialPage from "@/pages/FinancialPage";
-import RechargePage from "@/pages/RechargePage";
 import TeamPage from "@/pages/TeamPage";
 import ProfilePage from "@/pages/ProfilePage";
 import AdminPage from "@/pages/AdminPage";
-import AdminCanvasPage from "@/pages/AdminCanvasPage";
 import IntegrationsPage from "@/pages/IntegrationsPage";
 import ApiDocsPage from "@/pages/ApiDocsPage";
 import NotFound from "@/pages/NotFound";
+import { openRechargeModal } from "@/stores/rechargeModalStore";
+
+function RechargeRouteRedirect() {
+  const access = useAuthStore.getState().user?.accessLevel ?? 2;
+  if (access <= 1) openRechargeModal();
+  return <Navigate to="/financeiro" replace />;
+}
 
 const queryClient = new QueryClient({});
 
@@ -60,12 +65,12 @@ const App = () => (
               
               <Route path="/consulta/historico" element={<HistoryPage />} />
               <Route path="/financeiro" element={<FinancialPage />} />
-              <Route path="/financeiro/recarga" element={<RechargePage />} />
+              <Route path="/financeiro/recarga" element={<RechargeRouteRedirect />} />
               <Route path="/equipe" element={<TeamPage />} />
               <Route path="/perfil" element={<ProfilePage />} />
               <Route path="/configuracoes" element={<ProfilePage />} />
               <Route path="/admin" element={<AdminPage />} />
-              <Route path="/admin/canvas" element={<AdminCanvasPage />} />
+              <Route path="/admin/canvas" element={<Navigate to="/admin" replace />} />
               <Route path="/admin/integracoes" element={<IntegrationsPage />} />
               <Route path="/documentacao/api" element={<ApiDocsPage />} />
             </Route>

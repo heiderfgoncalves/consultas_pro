@@ -5,7 +5,7 @@ import { useAuthStore } from '@/stores/authStore';
 import { mockFinancialEntries } from '@/stores/consultationStore';
 import StatCard, { PageHeader } from '@/components/shared/StatCard';
 import { Button } from '@/components/ui/button';
-import { Link } from 'react-router-dom';
+import { openRechargeModal } from '@/stores/rechargeModalStore';
 
 const typeLabels: Record<string, string> = { credit: 'Recarga', debit: 'Consulta', adjustment: 'Ajuste', bonus: 'Bônus' };
 const typeIcons: Record<string, any> = { credit: ArrowUpRight, debit: ArrowDownRight, adjustment: Settings, bonus: Gift };
@@ -16,11 +16,9 @@ export default function FinancialPage() {
   return (
     <div className="space-y-6">
       <PageHeader title="Financeiro" subtitle="Saldo, recargas e extrato de movimentações">
-        <Link to="/financeiro/recarga">
-          <Button className="gradient-primary text-primary-foreground">
-            <Wallet className="w-4 h-4 mr-2" /> Recarregar Saldo
-          </Button>
-        </Link>
+        <Button className="gradient-primary text-primary-foreground" onClick={() => openRechargeModal()}>
+          <Wallet className="w-4 h-4 mr-2" /> Recarregar saldo
+        </Button>
       </PageHeader>
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
