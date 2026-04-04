@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Eye, EyeOff, ArrowRight } from 'lucide-react';
@@ -21,7 +21,13 @@ export default function LoginPage() {
   const [remember, setRemember] = useState(false);
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
-  const { login } = useAuthStore();
+  const { login, hydrated, isAuthenticated } = useAuthStore();
+
+  useEffect(() => {
+    if (hydrated && isAuthenticated) {
+      navigate("/dashboard", { replace: true });
+    }
+  }, [hydrated, isAuthenticated, navigate]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -36,6 +42,17 @@ export default function LoginPage() {
       setLoading(false);
     }
   };
+
+  if (!hydrated) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div
+          className="h-9 w-9 rounded-full border-2 border-muted-foreground/25 border-t-primary animate-spin"
+          aria-hidden
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen flex">
