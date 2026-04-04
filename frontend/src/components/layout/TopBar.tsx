@@ -1,6 +1,7 @@
 import { Bell, Wallet, Plus, User, ChevronDown } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useAuthStore, accessLevelLabels, type AccessLevel } from '@/stores/authStore';
+import { openRechargeModal } from '@/stores/rechargeModalStore';
 import { Badge } from '@/components/ui/badge';
 import { useState, useRef, useEffect } from 'react';
 
@@ -41,14 +42,17 @@ export default function TopBar() {
           </span>
         </Link>
 
-        {/* Recharge */}
-        <Link
-          to="/financeiro/recarga"
-          className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg gradient-primary text-primary-foreground text-xs font-medium hover:opacity-90 hover:shadow-glow transition-all duration-200"
-        >
-          <Plus className="w-3.5 h-3.5" />
-          <span className="hidden sm:inline">Recarregar</span>
-        </Link>
+        {/* Recharge — mesmo critério da sidebar (nível ≤ 1) */}
+        {(user?.accessLevel ?? 2) <= 1 && (
+          <button
+            type="button"
+            onClick={() => openRechargeModal()}
+            className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg gradient-primary text-primary-foreground text-xs font-medium hover:opacity-90 hover:shadow-glow transition-all duration-200"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Recarregar</span>
+          </button>
+        )}
 
         {/* Notifications */}
         <button className="relative p-2 rounded-lg hover:bg-accent transition-all duration-200 group">
