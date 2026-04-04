@@ -36,6 +36,7 @@ export const createProviderProductSchema = z.object({
   cost: z.coerce.number().nonnegative(),
   sampleRequest: z.any().optional(),
   sampleResponse: z.any().optional(),
+  typeItemFilters: z.any().optional(),
 });
 
 export const createMappingSchema = z.object({
@@ -87,6 +88,7 @@ export const updateProviderProductSchema = z.object({
   isActive: z.boolean().optional(),
   sampleRequest: z.any().nullable().optional(),
   sampleResponse: z.any().nullable().optional(),
+  typeItemFilters: z.any().nullable().optional(),
 });
 
 export const updateMappingSchema = z.object({
