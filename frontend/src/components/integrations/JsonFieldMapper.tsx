@@ -1,9 +1,9 @@
 import { useState, useRef, useCallback, useMemo, useEffect } from 'react';
 import {
-  Tag, GripVertical, Pencil, Check, X, ChevronUp, ChevronDown,
+  Tag, GripVertical, Pencil, Check, X,
   Move, Code2, Eye, Trash2, User, AlertTriangle, Gauge, FileWarning,
   Building2, FileX, Users, DollarSign, TrendingUp, Award, Hash,
-  Settings2, Copy, CheckSquare, Plus, Info,
+  Settings2, CheckSquare, Plus,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -21,6 +21,7 @@ import {
   normalizeTypeItemFilterConfig,
 } from '@/lib/typeItemFilters';
 import TypeCriteriaDialog from '@/components/integrations/TypeCriteriaDialog';
+import { cn } from '@/lib/utils';
 
 interface JsonSection {
   path: string;
@@ -365,6 +366,55 @@ function collectFilterSuggestionsForMappedRegions(
   };
 }
 
+function parsePreviewPartText(text: string): unknown {
+  const t = text.trim();
+  if (!t || t === '—') return null;
+  try {
+    return JSON.parse(t) as unknown;
+  } catch {
+    return t;
+  }
+}
+
+function dedupeObjectArrayByPaths(arr: unknown[], fieldPaths: string[]): unknown[] {
+  if (fieldPaths.length === 0 || arr.length <= 1) return arr;
+  const seen = new Set<string>();
+  const out: unknown[] = [];
+  for (const el of arr) {
+    if (!el || typeof el !== 'object' || Array.isArray(el)) {
+      out.push(el);
+      continue;
+    }
+    const sig = fieldPaths
+      .map((p) => JSON.stringify(getValueAtJsonPath(el, p) ?? null))
+      .join('\x1e');
+    if (seen.has(sig)) continue;
+    seen.add(sig);
+    out.push(el);
+  }
+  return out;
+}
+
+function dedupeArraysDeep(value: unknown, fieldPaths: string[]): unknown {
+  if (fieldPaths.length === 0) return value;
+  if (Array.isArray(value)) {
+    const mapped = value.map((v) => dedupeArraysDeep(v, fieldPaths));
+    const allRecords = mapped.every(
+      (x) => x !== null && typeof x === 'object' && !Array.isArray(x),
+    );
+    if (allRecords && mapped.length > 0) {
+      return dedupeObjectArrayByPaths(mapped, fieldPaths);
+    }
+    return mapped;
+  }
+  if (value && typeof value === 'object' && !Array.isArray(value)) {
+    const o = value as Record<string, unknown>;
+    return Object.fromEntries(
+      Object.entries(o).map(([k, v]) => [k, dedupeArraysDeep(v, fieldPaths)]),
+    );
+  }
+  return value;
+}
 
 export default function JsonFieldMapper({
   json,
@@ -806,32 +856,29 @@ export default function JsonFieldMapper({
     }).filter(Boolean) as PreviewDisplayRow[];
   }, [typeKeysInOrder, mappedRegions, fieldTypes, json, typeFilters, openFilterTypeKey, draftTypeFilters, lineSlicePreview]);
 
-  const previewDisplayItems = useMemo((): PreviewDisplayRow[] => {
-    const base: PreviewDisplayRow[] = previewByType.map((p) => ({ ...p }));
-    if (!selectedRegion) return base;
-    if (base.some((p) => p.fieldTypeKey === selectedRegion)) return base;
-    const ft = fieldTypes.find((f) => f.key === selectedRegion);
-    if (!ft) return base;
-    const regions = mappedRegions.filter((r) => r.fieldTypeKey === selectedRegion);
-    if (regions.length > 0) return base;
-    const filters =
-      openFilterTypeKey === selectedRegion
-        ? (draftTypeFilters[selectedRegion] ?? typeFilters[selectedRegion])
-        : typeFilters[selectedRegion];
-    const filterCfg = filters ?? emptyTypeItemFilterConfig();
-    return [
-      { fieldTypeKey: selectedRegion, ft, parts: [], filters: filterCfg, emptyPreviewReason: 'unmapped' },
-      ...base,
-    ];
-  }, [
-    previewByType,
-    selectedRegion,
-    fieldTypes,
-    mappedRegions,
-    openFilterTypeKey,
-    draftTypeFilters,
-    typeFilters,
-  ]);
+  const mergedPreviewObject = useMemo((): Record<string, unknown> => {
+    const out: Record<string, unknown> = {};
+    for (const row of previewByType) {
+      if (row.parts.length === 0) {
+        out[row.fieldTypeKey] = null;
+        continue;
+      }
+      const inner: Record<string, unknown> = {};
+      for (const p of row.parts) {
+        inner[p.path] = parsePreviewPartText(p.text);
+      }
+      out[row.fieldTypeKey] = inner;
+    }
+    if (dedupEnabled && dedupFields.length > 0) {
+      return dedupeArraysDeep(out, dedupFields) as Record<string, unknown>;
+    }
+    return out;
+  }, [previewByType, dedupEnabled, dedupFields]);
+
+  const mergedPreviewJson = useMemo(
+    () => JSON.stringify(mergedPreviewObject, null, 2),
+    [mergedPreviewObject],
+  );
 
   return (
     <div className="h-[460px] border border-border rounded-md overflow-hidden bg-card"
@@ -1210,123 +1257,132 @@ export default function JsonFieldMapper({
               )}
             </div>
             <ScrollArea className="flex-1 min-h-0 min-w-0">
-              {previewDisplayItems.length > 0 ? (
-                <div className="space-y-2 p-2 pr-4">
-                  <div className="rounded border border-border bg-muted/20 p-2 space-y-1.5">
+              {previewByType.length > 0 ? (
+                <div className="flex min-h-0 flex-col gap-2 p-2 pr-4">
+                  <div className="shrink-0 rounded-md border border-border bg-muted/15 p-2">
                     <div className="flex items-center gap-1.5">
                       <Checkbox
                         id="dedup"
                         checked={dedupEnabled}
-                        onCheckedChange={v => setDedupEnabled(!!v)}
-                        className="w-4 h-4"
+                        onCheckedChange={(v) => setDedupEnabled(!!v)}
+                        className="h-4 w-4 shrink-0"
                       />
-                      <label htmlFor="dedup" className="text-sm font-medium text-foreground cursor-pointer flex items-center gap-1.5">
-                        <Settings2 className="w-3.5 h-3.5 text-muted-foreground" />
-                        Remover duplicidade
+                      <label
+                        htmlFor="dedup"
+                        className="flex cursor-pointer items-center gap-1.5 text-xs font-medium text-foreground"
+                      >
+                        <Settings2 className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                        Remover duplicidade em arrays
                       </label>
                     </div>
                     {dedupEnabled && (
-                      <div className="space-y-1.5 pl-1">
-                        <p className="text-xs text-muted-foreground">Campos para identificar duplicatas:</p>
-                        <div className="flex flex-wrap gap-1.5">
-                          {allJsonKeys.slice(0, 20).map(key => (
+                      <div className="mt-2 space-y-1.5 border-t border-border/60 pt-2">
+                        <p className="text-[10px] text-muted-foreground">
+                          Campos que identificam a mesma linha (valores do JSON à esquerda):
+                        </p>
+                        <div className="flex max-h-24 flex-wrap gap-1 overflow-y-auto [scrollbar-width:thin]">
+                          {allJsonKeys.slice(0, 24).map((key) => (
                             <button
                               key={key}
-                              onClick={() => setDedupFields(prev =>
-                                prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key]
-                              )}
-                              className={`text-xs font-mono px-2 py-1 rounded-md border transition-all ${
+                              type="button"
+                              onClick={() =>
+                                setDedupFields((prev) =>
+                                  prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key],
+                                )
+                              }
+                              className={cn(
+                                'cursor-pointer rounded-md border px-1.5 py-0.5 font-mono text-[10px] transition-colors',
                                 dedupFields.includes(key)
-                                  ? 'bg-primary/15 border-primary/40 text-primary'
-                                  : 'border-border text-muted-foreground hover:border-primary/20'
-                              }`}
+                                  ? 'border-primary/40 bg-primary/12 text-primary'
+                                  : 'border-border text-muted-foreground hover:border-primary/25',
+                              )}
                             >
-                              {dedupFields.includes(key) && <CheckSquare className="w-3 h-3 inline mr-0.5" />}
+                              {dedupFields.includes(key) && (
+                                <CheckSquare className="mr-0.5 inline h-3 w-3 align-text-bottom" />
+                              )}
                               {key.split('.').pop()}
                             </button>
                           ))}
                         </div>
-                        {dedupFields.length > 0 && (
-                          <p className="text-xs text-primary font-mono break-all">
-                            Chaves: {dedupFields.join(', ')}
-                          </p>
-                        )}
                       </div>
                     )}
                   </div>
 
-                  <p className="px-0.5 text-[11px] text-muted-foreground">
-                    Somente leitura — edite trechos e critérios na coluna Tipos.
-                  </p>
+                  <div className="shrink-0 space-y-1">
+                    <div className="flex flex-wrap items-center gap-1">
+                      <span className="w-full text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                        Tipos no JSON
+                      </span>
+                      {previewByType.map(({ fieldTypeKey, ft, filters, parts, emptyPreviewReason }) => {
+                        const colors = getColors(ft.color);
+                        const isSelected = selectedRegion === ft.key;
+                        const rules = countActiveTypeItemRules(filters);
+                        const muted = parts.length === 0;
+                        return (
+                          <button
+                            key={fieldTypeKey}
+                            type="button"
+                            onClick={() => setSelectedRegion(ft.key === selectedRegion ? null : ft.key)}
+                            className={cn(
+                              'inline-flex cursor-pointer items-center gap-1 rounded-full border bg-background/90 py-0.5 pl-0.5 pr-2 text-[10px] font-medium transition-all',
+                              colors.border,
+                              'border-l-[3px]',
+                              isSelected ? 'ring-1 ring-primary/45 shadow-sm' : 'opacity-95 hover:opacity-100',
+                              muted ? 'opacity-60' : '',
+                            )}
+                            title={`${ft.label} · chave ${ft.key}${
+                              rules > 0 ? ` · ${rules} critério(s)` : ''
+                            }${emptyPreviewReason === 'filtered' ? ' · nada passou no filtro' : ''}`}
+                          >
+                            <span
+                              className={cn(
+                                'flex h-5 w-5 shrink-0 items-center justify-center rounded-full',
+                                colors.bg,
+                              )}
+                            >
+                              <FieldIcon icon={ft.icon} className={cn('h-3 w-3 shrink-0', colors.text)} />
+                            </span>
+                            <span className="max-w-[7rem] truncate text-foreground">{ft.key}</span>
+                            {rules > 0 && (
+                              <span className="tabular-nums text-muted-foreground">·{rules}</span>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <p className="text-[10px] leading-snug text-muted-foreground">
+                      Cada chave de 1º nível é o tipo; dentro, cada chave é o <code className="text-foreground/80">jsonPath</code> do trecho
+                      (já filtrado). <span className="text-foreground/70">null</span> quando nenhum item passa nos critérios.
+                    </p>
+                  </div>
 
-                  {previewDisplayItems.map(({ fieldTypeKey, ft, parts, filters, emptyPreviewReason }) => {
-                    const colors = getColors(ft.color);
-                    const isSelected = selectedRegion === ft.key;
-                    const activeRules = countActiveTypeItemRules(filters);
-
-                    return (
-                      <div
-                        key={fieldTypeKey}
-                        className={`overflow-hidden rounded-md border transition-all ${
-                          isSelected ? `${colors.border} border-2` : 'border-border'
-                        }`}
-                        onClick={() => setSelectedRegion(ft.key === selectedRegion ? null : ft.key)}
-                      >
-                        <div className={`flex cursor-pointer items-center gap-2 px-2.5 py-2 ${colors.bg}`}>
-                          <div className={`flex h-5 w-5 shrink-0 items-center justify-center rounded ${colors.bg}`}>
-                            <FieldIcon icon={ft.icon} className={`h-3.5 w-3.5 ${colors.text}`} />
-                          </div>
-                          <span className={`min-w-0 flex-1 truncate text-sm font-semibold ${colors.text}`}>
-                            {ft.label}
-                          </span>
-                          {activeRules > 0 && (
-                            <Badge variant="secondary" className="h-5 shrink-0 px-1.5 py-0 text-[10px] font-normal">
-                              {activeRules} critério{activeRules > 1 ? 's' : ''}
-                            </Badge>
-                          )}
-                        </div>
-                        <div className="border-t border-border bg-background/40">
-                          {emptyPreviewReason && parts.length === 0 && (
-                            emptyPreviewReason === 'filtered' ? (
-                              <div className="flex items-start gap-2 px-2.5 py-3">
-                                <Info
-                                  className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground"
-                                  aria-hidden
-                                />
-                                <p className="text-xs leading-relaxed text-muted-foreground">
-                                  Nenhum campo corresponde aos critérios configurados
-                                </p>
-                              </div>
-                            ) : (
-                              <div className="px-2.5 py-3">
-                                <p className="text-xs leading-relaxed text-muted-foreground">
-                                  Sem trecho mapeado. Arraste o tipo até o bloco desejado no JSON à esquerda.
-                                </p>
-                              </div>
-                            )
-                          )}
-                          {parts.map(p => (
-                            <div key={p.regionId} className="border-b border-border/60 last:border-b-0">
-                              <div className="px-2 py-1">
-                                <code className="block truncate text-[10px] font-mono text-muted-foreground">
-                                  {p.path}
-                                </code>
-                              </div>
-                              <pre className="max-h-28 overflow-auto whitespace-pre border-t border-border/40 bg-background p-2 font-mono text-[11px] leading-relaxed text-foreground/85 [scrollbar-width:thin]">
-                                {p.text}
-                              </pre>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    );
-                  })}
+                  <div
+                    className={cn(
+                      'flex min-h-0 flex-1 flex-col overflow-hidden rounded-md border border-border bg-background/90',
+                      mappedRegions.length > 0 ? 'min-h-[12rem]' : '',
+                    )}
+                  >
+                    <div className="flex items-center justify-between border-b border-border/70 px-2 py-1">
+                      <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                        JSON consolidado
+                      </span>
+                      <Badge variant="outline" className="h-5 px-1.5 font-mono text-[9px] font-normal text-muted-foreground">
+                        somente leitura
+                      </Badge>
+                    </div>
+                    <pre
+                      className="m-0 max-h-[min(20rem,45vh)] flex-1 overflow-auto whitespace-pre p-2.5 font-mono text-[11px] leading-relaxed text-foreground/90 [scrollbar-width:thin]"
+                      tabIndex={0}
+                    >
+                      {mergedPreviewJson}
+                    </pre>
+                  </div>
                 </div>
               ) : (
-                <div className="flex flex-col items-center justify-center h-full p-4 text-center">
-                  <Move className="w-6 h-6 text-muted-foreground/20 mb-2" />
-                  <p className="text-sm text-muted-foreground leading-relaxed px-2">
-                    Arraste um tipo para o JSON
+                <div className="flex h-full flex-col items-center justify-center p-4 text-center">
+                  <Move className="mb-2 h-6 w-6 text-muted-foreground/20" />
+                  <p className="px-2 text-sm leading-relaxed text-muted-foreground">
+                    Arraste um tipo para o JSON — o preview mostrará um único objeto com cada tipo e os caminhos mapeados
                   </p>
                 </div>
               )}
