@@ -29,7 +29,7 @@ export async function createConsultation(app: FastifyInstance, input: {
     ? await app.prisma.wallet.findUnique({ where: { companyId: input.companyId } })
     : null;
 
-  const totalCost = products.reduce((acc, item) => acc.add(item.cost), new Prisma.Decimal(0));
+  const totalCost = products.reduce((acc, item) => acc.add(item.consultationPrice), new Prisma.Decimal(0));
 
   if (input.companyId && (!companyWallet || companyWallet.balance.lessThan(totalCost))) {
     throw new ConflictError('Saldo insuficiente para emitir a consulta');
@@ -50,7 +50,7 @@ export async function createConsultation(app: FastifyInstance, input: {
             data: products.map((product, index) => ({
               providerProductId: product.id,
               sortOrder: index,
-              requestedCost: product.cost,
+              requestedCost: product.consultationPrice,
             })),
           },
         },
