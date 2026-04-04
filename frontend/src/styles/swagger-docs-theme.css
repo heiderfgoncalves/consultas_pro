@@ -1,0 +1,260 @@
+/**
+ * Overrides for swagger-ui-react inside the app shell.
+ * Loaded after swagger-ui.css so tokens from index.css (via .dark on html) apply correctly.
+ */
+
+.dark .swagger-docs-wrap .swagger-ui {
+  color: hsl(var(--foreground));
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+}
+
+.dark .swagger-docs-wrap .swagger-ui .information-container,
+.dark .swagger-docs-wrap .swagger-ui .scheme-container,
+.dark .swagger-docs-wrap .swagger-ui .wrapper {
+  background: transparent;
+}
+
+.dark .swagger-docs-wrap .swagger-ui .info .title,
+.dark .swagger-docs-wrap .swagger-ui .info h1,
+.dark .swagger-docs-wrap .swagger-ui .info h2,
+.dark .swagger-docs-wrap .swagger-ui .info h3,
+.dark .swagger-docs-wrap .swagger-ui .info h4,
+.dark .swagger-docs-wrap .swagger-ui .info h5 {
+  color: hsl(var(--foreground));
+}
+
+.dark .swagger-docs-wrap .swagger-ui .info .base-url,
+.dark .swagger-docs-wrap .swagger-ui .info .description,
+.dark .swagger-docs-wrap .swagger-ui .info p,
+.dark .swagger-docs-wrap .swagger-ui .info li,
+.dark .swagger-docs-wrap .swagger-ui .info table {
+  color: hsl(var(--muted-foreground));
+}
+
+.dark .swagger-docs-wrap .swagger-ui .info a,
+.dark .swagger-docs-wrap .swagger-ui a.nostyle {
+  color: hsl(var(--primary));
+}
+
+.dark .swagger-docs-wrap .swagger-ui .info a:hover {
+  color: hsl(var(--primary) / 0.85);
+}
+
+.dark .swagger-docs-wrap .swagger-ui .scheme-container {
+  margin: 0 0 1rem;
+  padding: 0.75rem 1rem;
+  background: hsl(var(--muted));
+  border: 1px solid hsl(var(--border));
+  border-radius: calc(var(--radius) - 2px);
+  box-shadow: none;
+}
+
+.dark .swagger-docs-wrap .swagger-ui .scheme-container .schemes-title {
+  color: hsl(var(--foreground));
+}
+
+.dark .swagger-docs-wrap .swagger-ui .btn {
+  color: hsl(var(--foreground));
+  background: hsl(var(--secondary));
+  border: 1px solid hsl(var(--border));
+  box-shadow: none;
+}
+
+.dark .swagger-docs-wrap .swagger-ui .btn:hover {
+  background: hsl(var(--accent));
+}
+
+.dark .swagger-docs-wrap .swagger-ui .btn.authorize {
+  background: transparent;
+  border-color: hsl(var(--success));
+  color: hsl(var(--success));
+}
+
+.dark .swagger-docs-wrap .swagger-ui .btn.authorize svg {
+  fill: hsl(var(--success));
+}
+
+.dark .swagger-docs-wrap .swagger-ui .btn.cancel {
+  border-color: hsl(var(--border));
+  color: hsl(var(--muted-foreground));
+}
+
+.dark .swagger-docs-wrap .swagger-ui select {
+  background: hsl(var(--card));
+  color: hsl(var(--foreground));
+  border: 1px solid hsl(var(--border));
+  border-radius: calc(var(--radius) - 2px);
+}
+
+.dark .swagger-docs-wrap .swagger-ui input[type='text'],
+.dark .swagger-docs-wrap .swagger-ui input[type='password'],
+.dark .swagger-docs-wrap .swagger-ui input[type='search'],
+.dark .swagger-docs-wrap .swagger-ui input[type='email'],
+.dark .swagger-docs-wrap .swagger-ui input[type='file'],
+.dark .swagger-docs-wrap .swagger-ui textarea {
+  background: hsl(var(--background));
+  color: hsl(var(--foreground));
+  border: 1px solid hsl(var(--border));
+  border-radius: calc(var(--radius) - 2px);
+}
+
+.dark .swagger-docs-wrap .swagger-ui input[disabled],
+.dark .swagger-docs-wrap .swagger-ui textarea[disabled] {
+  opacity: 0.65;
+}
+
+.dark .swagger-docs-wrap .swagger-ui .opblock-tag,
+.dark .swagger-docs-wrap .swagger-ui .opblock-tag small {
+  color: hsl(var(--foreground));
+}
+
+.dark .swagger-docs-wrap .swagger-ui .opblock {
+  border-color: hsl(var(--border));
+  background: hsl(var(--card));
+  box-shadow: none;
+}
+
+.dark .swagger-docs-wrap .swagger-ui .opblock .opblock-summary {
+  border-color: hsl(var(--border));
+}
+
+.dark .swagger-docs-wrap .swagger-ui .opblock .opblock-summary-description,
+.dark .swagger-docs-wrap .swagger-ui .opblock .opblock-summary-path__deprecated {
+  color: hsl(var(--muted-foreground));
+}
+
+.dark .swagger-docs-wrap .swagger-ui .opblock-body {
+  background: hsl(var(--card));
+}
+
+.dark .swagger-docs-wrap .swagger-ui .opblock .opblock-section-header {
+  background: hsl(var(--secondary));
+  box-shadow: none;
+}
+
+.dark .swagger-docs-wrap .swagger-ui .opblock .opblock-section-header h4,
+.dark .swagger-docs-wrap .swagger-ui .opblock .opblock-section-header label {
+  color: hsl(var(--foreground));
+}
+
+.dark .swagger-docs-wrap .swagger-ui .opblock-description-wrapper,
+.dark .swagger-docs-wrap .swagger-ui .opblock-description-wrapper p,
+.dark .swagger-docs-wrap .swagger-ui .renderedMarkdown,
+.dark .swagger-docs-wrap .swagger-ui .renderedMarkdown p,
+.dark .swagger-docs-wrap .swagger-ui .renderedMarkdown li {
+  color: hsl(var(--muted-foreground));
+}
+
+.dark .swagger-docs-wrap .swagger-ui .parameter__name,
+.dark .swagger-docs-wrap .swagger-ui .parameter__type,
+.dark .swagger-docs-wrap .swagger-ui .property-name,
+.dark .swagger-docs-wrap .swagger-ui .model-title,
+.dark .swagger-docs-wrap .swagger-ui .prop-type {
+  color: hsl(var(--foreground));
+}
+
+.dark .swagger-docs-wrap .swagger-ui .parameter__in,
+.dark .swagger-docs-wrap .swagger-ui .parameter__deprecated,
+.dark .swagger-docs-wrap .swagger-ui .property--deprecated {
+  color: hsl(var(--muted-foreground));
+}
+
+.dark .swagger-docs-wrap .swagger-ui table thead tr th,
+.dark .swagger-docs-wrap .swagger-ui table thead tr td {
+  color: hsl(var(--foreground));
+  background: hsl(var(--secondary));
+  border-color: hsl(var(--border));
+}
+
+.dark .swagger-docs-wrap .swagger-ui table tbody tr th,
+.dark .swagger-docs-wrap .swagger-ui table tbody tr td {
+  color: hsl(var(--foreground));
+  background: hsl(var(--card));
+  border-color: hsl(var(--border));
+}
+
+.dark .swagger-docs-wrap .swagger-ui .response-col_status,
+.dark .swagger-docs-wrap .swagger-ui .response-col_links {
+  color: hsl(var(--foreground));
+}
+
+.dark .swagger-docs-wrap .swagger-ui .microlight,
+.dark .swagger-docs-wrap .swagger-ui code,
+.dark .swagger-docs-wrap .swagger-ui .model-toggle::after {
+  color: hsl(var(--foreground));
+}
+
+.dark .swagger-docs-wrap .swagger-ui .highlight-code,
+.dark .swagger-docs-wrap .swagger-ui .example {
+  background: hsl(var(--muted)) !important;
+  border: 1px solid hsl(var(--border));
+  border-radius: calc(var(--radius) - 2px);
+}
+
+.dark .swagger-docs-wrap .swagger-ui .model-box,
+.dark .swagger-docs-wrap .swagger-ui .model-box-control,
+.dark .swagger-docs-wrap .swagger-ui section.models {
+  background: hsl(var(--muted));
+  border-color: hsl(var(--border));
+}
+
+.dark .swagger-docs-wrap .swagger-ui section.models h4,
+.dark .swagger-docs-wrap .swagger-ui section.models h4 button {
+  color: hsl(var(--foreground));
+}
+
+.dark .swagger-docs-wrap .swagger-ui section.models .model-container {
+  background: hsl(var(--card));
+  border-color: hsl(var(--border));
+  border-radius: calc(var(--radius) - 2px);
+}
+
+.dark .swagger-docs-wrap .swagger-ui .dialog-ux .modal-ux {
+  background: hsl(var(--popover));
+  color: hsl(var(--popover-foreground));
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--radius);
+}
+
+.dark .swagger-docs-wrap .swagger-ui .dialog-ux .modal-ux-header {
+  border-color: hsl(var(--border));
+}
+
+.dark .swagger-docs-wrap .swagger-ui .dialog-ux .modal-ux-header h3,
+.dark .swagger-docs-wrap .swagger-ui .dialog-ux .modal-ux-content h4,
+.dark .swagger-docs-wrap .swagger-ui .dialog-ux .modal-ux-content p {
+  color: hsl(var(--foreground));
+}
+
+.dark .swagger-docs-wrap .swagger-ui .dialog-ux .modal-ux-content {
+  background: hsl(var(--popover));
+}
+
+.dark .swagger-docs-wrap .swagger-ui .auth-wrapper .wrapper {
+  background: hsl(var(--card));
+  border-color: hsl(var(--border));
+  border-radius: calc(var(--radius) - 2px);
+}
+
+.dark .swagger-docs-wrap .swagger-ui .errors-wrapper {
+  background: hsl(var(--destructive) / 0.12);
+  border-color: hsl(var(--destructive) / 0.35);
+}
+
+.dark .swagger-docs-wrap .swagger-ui .errors-wrapper hgroup h4 {
+  color: hsl(var(--destructive));
+}
+
+.dark .swagger-docs-wrap .swagger-ui .version-stamp .version {
+  background: hsl(var(--secondary));
+  color: hsl(var(--foreground));
+}
+
+/* Scrollbars inside code blocks */
+.dark .swagger-docs-wrap .swagger-ui .highlight-code::-webkit-scrollbar-thumb {
+  background: hsl(var(--border));
+}
+
+.dark .swagger-docs-wrap .swagger-ui .curl-command .copy-to-clipboard {
+  opacity: 0.85;
+}

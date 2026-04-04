@@ -41,68 +41,75 @@ export default function LoginPage() {
     <div className="min-h-screen flex">
       {/* Left - Branding */}
       <div className="hidden min-h-screen lg:flex lg:w-1/2 gradient-primary relative overflow-hidden">
-        <BackgroundRippleEffect
-          cover
-          rows={11}
-          cols={26}
-          cellSize={44}
-          masked={false}
-          className="z-0 [--cell-border-color:rgba(255,255,255,0.22)] [--cell-fill-color:rgba(255,255,255,0.08)] [--cell-shadow-color:rgba(255,255,255,0.18)]"
-        />
+        <div className="absolute inset-0 z-0">
+          <BackgroundRippleEffect
+            cover
+            coverPosition="top-left"
+            rows={13}
+            cols={10}
+            cellSize={60}
+            masked={false}
+            className="[--cell-border-color:hsl(var(--primary-foreground)_/_0.18)] [--cell-fill-color:hsl(var(--primary-foreground)_/_0.06)] [--cell-shadow-color:hsl(var(--primary-foreground)_/_0.12)]"
+            gridClassName="opacity-50"
+          />
+        </div>
         <div className="absolute inset-0 z-[1] opacity-10 pointer-events-none">
           <div className="absolute top-20 left-20 w-64 h-64 rounded-full bg-primary-foreground blur-3xl" />
           <div className="absolute bottom-20 right-20 w-96 h-96 rounded-full bg-primary-foreground blur-3xl" />
         </div>
-        <div className="relative z-10 flex flex-col justify-center px-16">
-          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
-            <div className="w-12 h-12 rounded-xl bg-primary-foreground/20 flex items-center justify-center text-primary-foreground font-bold text-xl mb-10">CP</div>
-            <HeroTypewriterHeading className="text-4xl font-bold text-primary-foreground leading-tight mb-4" />
-            <div className="text-lg text-primary-foreground/70 max-w-md leading-relaxed">
-              Monte seu relatório{" "}
-              <PointerHighlight
-                effectDelaySec={getHeroTypewriterCursorStartMs() / 1000}
-                rectangleClassName="border-primary-foreground/40"
-                pointerClassName="text-primary-foreground"
-              >
-                <span className="relative z-[1] font-medium text-primary-foreground/90">personalizado</span>
-              </PointerHighlight>
-              , escolha os blocos de dados que precisa e pague apenas pelo que usar.
-            </div>
-          </motion.div>
+        <div className="relative z-10 flex w-full items-center justify-center px-16 py-14 pointer-events-none">
           <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ delay: 0.6 }}
-            className="mt-12 flex items-center gap-6"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.2 }}
+            className="flex w-full max-w-[620px] flex-col"
           >
-            {['SPC', 'Serasa', 'Score', 'Bacen', '+8'].map((item, i) => (
-              <div key={i} className="px-3 py-1.5 rounded-full border border-primary-foreground/20 text-sm text-primary-foreground/60">
-                {item}
+            <HeroTypewriterHeading className="text-4xl font-bold text-primary-foreground leading-tight mb-4" />
+            <div className="flex flex-col gap-5">
+              <div className="text-lg text-primary-foreground/70 max-w-md leading-relaxed">
+                Monte seu relatório{" "}
+                <PointerHighlight
+                  effectDelaySec={getHeroTypewriterCursorStartMs() / 1000}
+                  rectangleClassName="border-primary-foreground/40"
+                  pointerClassName="text-primary-foreground"
+                >
+                  <span className="relative z-[1] font-medium text-primary-foreground/90">personalizado</span>
+                </PointerHighlight>
+                , escolha os blocos de dados que precisa e pague apenas pelo que usar.
               </div>
-            ))}
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ delay: 0.6 }}
+                className="flex flex-wrap items-center gap-3"
+              >
+                {['SPC', 'Serasa', 'Score', 'Bacen', '+8'].map((item, i) => (
+                  <div
+                    key={i}
+                    className="rounded-full border border-primary-foreground/20 bg-primary-foreground/5 px-4 py-1.5 text-center text-sm text-primary-foreground/70 backdrop-blur-[2px]"
+                  >
+                    {item}
+                  </div>
+                ))}
+              </motion.div>
+            </div>
           </motion.div>
         </div>
       </div>
 
       {/* Right - Form */}
-      <div className="relative flex min-h-screen flex-1 items-center justify-center overflow-hidden bg-background px-6 py-12">
-        <BackgroundRippleEffect
-          rows={14}
-          cols={28}
-          cellSize={44}
-          masked={false}
-          className="z-0 [--cell-border-color:hsl(var(--border)_/_0.85)] [--cell-fill-color:hsl(var(--muted)_/_0.55)] [--cell-shadow-color:hsl(var(--muted-foreground)_/_0.25)] dark:[--cell-border-color:hsl(var(--border)_/_0.6)] dark:[--cell-fill-color:hsl(var(--muted)_/_0.4)]"
-        />
+      <div className="relative flex min-h-screen flex-1 items-center justify-center bg-background px-6 py-12">
         <motion.div
           initial={{ opacity: 0, x: 20 }}
           animate={{ opacity: 1, x: 0 }}
           className="relative z-10 w-full max-w-[420px]"
         >
-          <div className="lg:hidden mb-8">
-            <div className="w-10 h-10 rounded-xl gradient-primary flex items-center justify-center text-primary-foreground font-bold text-lg">CP</div>
-          </div>
-          <div className="mb-8">
-            <h2 className="text-2xl font-bold text-foreground">Bem-vindo de volta</h2>
+          <div className="mb-8 flex flex-col items-center text-center">
+            <img
+              src="/logo.png"
+              alt="Consultas PRO"
+              className="mb-3 h-24 w-auto object-contain sm:h-28"
+            />
             <p className="text-sm text-muted-foreground mt-1">Acesse sua conta para continuar</p>
           </div>
 
@@ -111,10 +118,13 @@ export default function LoginPage() {
               <Label htmlFor="email">E-mail</Label>
               <Input
                 id="email"
+                name="email"
                 type="email"
                 placeholder="seu@email.com.br"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
+                autoComplete="email"
+                spellCheck={false}
                 required
                 className="h-11"
               />
@@ -130,17 +140,20 @@ export default function LoginPage() {
               <div className="relative">
                 <Input
                   id="password"
+                  name="password"
                   type={showPassword ? 'text' : 'password'}
                   placeholder="••••••••"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
+                  autoComplete={showPassword ? 'current-password' : 'current-password'}
                   required
                   className="h-11 pr-10"
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  aria-label={showPassword ? 'Ocultar senha' : 'Mostrar senha'}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1.5 text-muted-foreground transition-[color,transform] duration-150 hover:bg-accent hover:text-foreground active:scale-90"
                 >
                   {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>

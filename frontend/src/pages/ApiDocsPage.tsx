@@ -3,6 +3,7 @@ import { Navigate } from 'react-router-dom';
 import { useAuthStore } from '@/stores/authStore';
 import { apiBase } from '@/lib/api';
 import 'swagger-ui-react/swagger-ui.css';
+import '@/styles/swagger-docs-theme.css';
 
 const SwaggerUI = lazy(() => import('swagger-ui-react'));
 
