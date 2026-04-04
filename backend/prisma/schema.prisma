@@ -288,6 +288,7 @@ model CanonicalFieldCatalog {
   dataType      String
   description   String?
   uiItemFilters Json?
+  reportFieldConfig Json?
   isActive      Boolean              @default(true)
   createdAt     DateTime             @default(now())
   updatedAt     DateTime             @updatedAt
@@ -347,7 +348,10 @@ model ProviderProduct {
   bodyTemplate       Json?
   headersTemplate    Json?
   timeoutMs          Int?
+  /// Tarifa admin → provedor (custo na integração)
   cost               Decimal                @db.Decimal(14, 2)
+  /// Valor debitado do cliente (carteira) por consulta deste produto
+  consultationPrice  Decimal                @db.Decimal(14, 2)
   isActive           Boolean                @default(true)
   sampleRequest      Json?
   sampleResponse     Json?
