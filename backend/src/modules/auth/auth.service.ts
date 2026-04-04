@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import { Role } from '@prisma/client';
+import { Prisma, Role } from '@prisma/client';
 import { ConflictError, NotFoundError, ValidationError } from '../../core/errors';
 import { comparePassword, generateOpaqueToken, hashPassword, sha256 } from '../../lib/hash';
 import { normalizeDocument } from '../../lib/documents';
@@ -12,7 +12,7 @@ export async function login(app: FastifyInstance, email: string, password: strin
     include: { company: true },
   });
 
-  if (!user || !user.isActive) {
+  if (!user || !user.isActive || user.accountStatus !== 'ACTIVE') {
     throw new ValidationError('Credenciais inválidas');
   }
 
@@ -268,7 +268,7 @@ export async function createInvite(app: FastifyInstance, data: {
   companyId?: string;
   roleToAssign?: Role;
   invitedByUserId?: string;
-  metadata?: Record<string, unknown>;
+  metadata?: Prisma.InputJsonValue;
 }) {
   const rawToken = generateOpaqueToken(24);
 
@@ -292,6 +292,49 @@ export async function createInvite(app: FastifyInstance, data: {
   };
 }
 
+export async function revokeInviteById(app: FastifyInstance, inviteId: string) {
+  const invite = await app.prisma.invite.findUnique({ where: { id: inviteId } });
+  if (!invite) throw new NotFoundError('Convite não encontrado');
+  if (invite.status !== 'PENDING') {
+    throw new ConflictError('Apenas convites pendentes podem ser revogados');
+  }
+  return app.prisma.invite.update({
+    where: { id: inviteId },
+    data: { status: 'REVOKED' },
+  });
+}
+
+/** Revoga o convite anterior (se pendente) e emite novo token com os mesmos dados. */
+export async function resendInviteById(
+  app: FastifyInstance,
+  inviteId: string,
+  invitedByUserId?: string,
+) {
+  const old = await app.prisma.invite.findUnique({ where: { id: inviteId } });
+  if (!old) throw new NotFoundError('Convite não encontrado');
+  if (old.status === 'ACCEPTED') {
+    throw new ConflictError('Convite já foi aceito');
+  }
+
+  if (old.status === 'PENDING') {
+    await app.prisma.invite.update({
+      where: { id: inviteId },
+      data: { status: 'REVOKED' },
+    });
+  }
+
+  return createInvite(app, {
+    type: old.type,
+    email: old.email,
+    companyId: old.companyId ?? undefined,
+    roleToAssign: old.roleToAssign ?? undefined,
+    invitedByUserId,
+    metadata: old.metadata === null || old.metadata === undefined
+      ? undefined
+      : (old.metadata as Prisma.InputJsonValue),
+  });
+}
+
 export function sanitizeUser<T extends {
   id: string;
   fullName: string;
@@ -301,6 +344,7 @@ export function sanitizeUser<T extends {
   role: Role;
   companyId?: string | null;
   isActive?: boolean;
+  accountStatus?: 'ACTIVE' | 'SUSPENDED' | 'BLOCKED';
   lastLoginAt?: Date | null;
   createdAt?: Date;
 }>(user: T) {
@@ -313,6 +357,7 @@ export function sanitizeUser<T extends {
     role: user.role,
     companyId: user.companyId ?? null,
     isActive: user.isActive ?? true,
+    accountStatus: user.accountStatus ?? 'ACTIVE',
     lastLoginAt: user.lastLoginAt ?? null,
     createdAt: user.createdAt ?? null,
   };

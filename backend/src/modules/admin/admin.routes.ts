@@ -3,7 +3,11 @@ import { Prisma, Role } from '@prisma/client';
 import { authenticate, requireRoles } from '../../core/auth';
 import { ConflictError, NotFoundError } from '../../core/errors';
 import { ok } from '../../core/http';
-import { createInvite } from '../auth/auth.service';
+import {
+  createInvite,
+  resendInviteById,
+  revokeInviteById,
+} from '../auth/auth.service';
 import { hashPassword } from '../../lib/hash';
 import { normalizeDocument } from '../../lib/documents';
 import { slugify } from '../../lib/slug';
@@ -18,7 +22,12 @@ import {
   createProviderProductSchema,
   createProviderSchema,
   createTokenSchema,
+  adminCompanyCreditSchema,
   linkUserToCompanySchema,
+  listAdminAuditQuerySchema,
+  listAdminInvitesQuerySchema,
+  listCompanyLedgerQuerySchema,
+  patchAdminTokenSchema,
   previewMergeSchema,
   testProductDraftSchema,
   testProductSchema,
@@ -26,8 +35,16 @@ import {
   updateMappingSchema,
   updateProviderOperationSchema,
   updateProviderProductSchema,
+  updateAdminCompanySchema,
+  updateAdminUserSchema,
   updateProviderSchema,
+  putRoleEndpointAccessSchema,
 } from './admin.schemas';
+import { logAdminAudit } from './admin.service';
+import {
+  getEndpointAccessSnapshot,
+  replaceEndpointAccessMatrix,
+} from './endpoint-access.service';
 import {
   createApiToken,
   createProvider,
@@ -37,8 +54,31 @@ import {
   testProviderProductDraft,
 } from '../providers/providers.service';
 
+function stripPassword<T extends { passwordHash: string }>(user: T): Omit<T, 'passwordHash'> {
+  const { passwordHash: _p, ...rest } = user;
+  return rest;
+}
+
 export async function registerAdminRoutes(app: FastifyInstance) {
   const adminOnly = { preHandler: [authenticate, requireRoles(['PLATFORM_ADMIN'])] };
+
+  app.get('/admin/access/endpoints', adminOnly, async (_request, reply) => {
+    return ok(reply, await getEndpointAccessSnapshot(app));
+  });
+
+  app.put('/admin/access/endpoints', adminOnly, async (request, reply) => {
+    const payload = putRoleEndpointAccessSchema.parse(request.body);
+    await replaceEndpointAccessMatrix(app, payload.matrix);
+
+    await logAdminAudit(app, {
+      actorUserId: request.authUser?.userId,
+      action: 'ENDPOINT_ACCESS_MATRIX_UPDATED',
+      entityType: 'ROLE_ENDPOINT_POLICY',
+      metadata: { cells: payload.matrix.length },
+    });
+
+    return ok(reply, await getEndpointAccessSnapshot(app));
+  });
 
   app.get('/admin/dashboard', adminOnly, async (_request, reply) => {
     const [companyCount, userCount, consultationCount, providerCount, totals] = await Promise.all([
@@ -84,7 +124,17 @@ export async function registerAdminRoutes(app: FastifyInstance) {
       take: 200,
     });
 
-    return ok(reply, users);
+    return ok(reply, users.map((u) => stripPassword(u)));
+  });
+
+  app.get('/admin/users/:userId', adminOnly, async (request, reply) => {
+    const params = request.params as { userId: string };
+    const user = await app.prisma.user.findUnique({
+      where: { id: params.userId },
+      include: { company: true },
+    });
+    if (!user) throw new NotFoundError('Usuário não encontrado');
+    return ok(reply, stripPassword(user));
   });
 
   app.post('/admin/users', adminOnly, async (request, reply) => {
@@ -100,9 +150,110 @@ export async function registerAdminRoutes(app: FastifyInstance) {
         role: payload.role as Role,
         companyId: payload.companyId ?? null,
       },
+      include: { company: true },
     });
 
-    return ok(reply, user, 201);
+    await logAdminAudit(app, {
+      actorUserId: request.authUser?.userId,
+      action: 'USER_CREATED',
+      entityType: 'USER',
+      entityId: user.id,
+      metadata: { email: user.email },
+    });
+
+    return ok(reply, stripPassword(user), 201);
+  });
+
+  app.patch('/admin/users/:userId', adminOnly, async (request, reply) => {
+    const params = request.params as { userId: string };
+    const payload = updateAdminUserSchema.parse(request.body);
+
+    const existing = await app.prisma.user.findUnique({ where: { id: params.userId } });
+    if (!existing) throw new NotFoundError('Usuário não encontrado');
+    if (existing.role === 'PLATFORM_ADMIN' && payload.role !== undefined) {
+      throw new ConflictError('Não é permitido alterar o papel de administradores da plataforma');
+    }
+
+    if (payload.email && payload.email !== existing.email) {
+      const taken = await app.prisma.user.findUnique({ where: { email: payload.email } });
+      if (taken) throw new ConflictError('E-mail já em uso');
+    }
+
+    if (payload.document !== undefined && payload.document !== null) {
+      const doc = normalizeDocument(payload.document);
+      if (doc !== existing.document) {
+        const taken = await app.prisma.user.findUnique({ where: { document: doc } });
+        if (taken) throw new ConflictError('Documento já em uso');
+      }
+    }
+
+    const data: Prisma.UserUpdateInput = {};
+    if (payload.fullName !== undefined) data.fullName = payload.fullName;
+    if (payload.email !== undefined) data.email = payload.email;
+    if (payload.document !== undefined) {
+      data.document = payload.document === null ? null : normalizeDocument(payload.document);
+    }
+    if (payload.phone !== undefined) data.phone = payload.phone;
+    if (payload.role !== undefined) data.role = payload.role;
+    if (payload.companyId !== undefined) {
+      if (payload.companyId === null) {
+        data.company = { disconnect: true };
+      } else {
+        data.company = { connect: { id: payload.companyId } };
+      }
+    }
+    if (payload.accountStatus !== undefined) {
+      data.accountStatus = payload.accountStatus;
+      data.isActive = payload.accountStatus === 'ACTIVE';
+    }
+    if (payload.password) data.passwordHash = await hashPassword(payload.password);
+
+    const updated = await app.prisma.user.update({
+      where: { id: params.userId },
+      data,
+      include: { company: true },
+    });
+
+    await logAdminAudit(app, {
+      actorUserId: request.authUser?.userId,
+      action: 'USER_UPDATED',
+      entityType: 'USER',
+      entityId: params.userId,
+      metadata: { fields: Object.keys(payload) },
+    });
+
+    return ok(reply, stripPassword(updated));
+  });
+
+  app.delete('/admin/users/:userId', adminOnly, async (request, reply) => {
+    const params = request.params as { userId: string };
+    if (request.authUser?.userId === params.userId) {
+      throw new ConflictError('Não é possível excluir o próprio usuário');
+    }
+
+    const existing = await app.prisma.user.findUnique({ where: { id: params.userId } });
+    if (!existing) throw new NotFoundError('Usuário não encontrado');
+    if (existing.role === 'PLATFORM_ADMIN') {
+      throw new ConflictError('Não é possível excluir administradores da plataforma');
+    }
+
+    try {
+      await app.prisma.user.delete({ where: { id: params.userId } });
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2003') {
+        throw new ConflictError('Não é possível excluir: existem registros vinculados ao usuário');
+      }
+      throw error;
+    }
+
+    await logAdminAudit(app, {
+      actorUserId: request.authUser?.userId,
+      action: 'USER_DELETED',
+      entityType: 'USER',
+      entityId: params.userId,
+    });
+
+    return ok(reply, { deleted: true });
   });
 
   app.patch('/admin/users/:userId/company', adminOnly, async (request, reply) => {
@@ -112,9 +263,18 @@ export async function registerAdminRoutes(app: FastifyInstance) {
     const updated = await app.prisma.user.update({
       where: { id: params.userId },
       data: { companyId: payload.companyId },
+      include: { company: true },
     });
 
-    return ok(reply, updated);
+    await logAdminAudit(app, {
+      actorUserId: request.authUser?.userId,
+      action: 'USER_COMPANY_LINKED',
+      entityType: 'USER',
+      entityId: params.userId,
+      metadata: { companyId: payload.companyId },
+    });
+
+    return ok(reply, stripPassword(updated));
   });
 
   app.get('/admin/companies', adminOnly, async (_request, reply) => {
@@ -154,17 +314,96 @@ export async function registerAdminRoutes(app: FastifyInstance) {
       include: { wallet: true },
     });
 
+    await logAdminAudit(app, {
+      actorUserId: request.authUser?.userId,
+      action: 'COMPANY_CREATED',
+      entityType: 'COMPANY',
+      entityId: company.id,
+      metadata: { name: company.name },
+    });
+
     return ok(reply, company, 201);
+  });
+
+  app.patch('/admin/companies/:companyId', adminOnly, async (request, reply) => {
+    const params = request.params as { companyId: string };
+    const payload = updateAdminCompanySchema.parse(request.body);
+
+    const existing = await app.prisma.company.findUnique({ where: { id: params.companyId } });
+    if (!existing) throw new NotFoundError('Empresa não encontrada');
+
+    if (payload.document !== undefined) {
+      const doc = normalizeDocument(payload.document);
+      if (doc !== existing.document) {
+        const taken = await app.prisma.company.findUnique({ where: { document: doc } });
+        if (taken) throw new ConflictError('Já existe empresa com este documento');
+      }
+    }
+
+    const data: Prisma.CompanyUpdateInput = {};
+    if (payload.name !== undefined) data.name = payload.name;
+    if (payload.document !== undefined) data.document = normalizeDocument(payload.document);
+    if (payload.email !== undefined) data.email = payload.email;
+    if (payload.phone !== undefined) data.phone = payload.phone;
+    if (payload.tenantId !== undefined) {
+      data.tenant = payload.tenantId
+        ? { connect: { id: payload.tenantId } }
+        : { disconnect: true };
+    }
+    if (payload.isActive !== undefined) data.isActive = payload.isActive;
+
+    const updated = await app.prisma.company.update({
+      where: { id: params.companyId },
+      data,
+      include: {
+        wallet: true,
+        _count: { select: { users: true, consultations: true } },
+      },
+    });
+
+    await logAdminAudit(app, {
+      actorUserId: request.authUser?.userId,
+      action: 'COMPANY_UPDATED',
+      entityType: 'COMPANY',
+      entityId: params.companyId,
+      metadata: { fields: Object.keys(payload) },
+    });
+
+    return ok(reply, updated);
+  });
+
+  app.get('/admin/companies/:companyId/ledger', adminOnly, async (request, reply) => {
+    const params = request.params as { companyId: string };
+    const q = listCompanyLedgerQuerySchema.parse(request.query);
+
+    const company = await app.prisma.company.findUnique({ where: { id: params.companyId } });
+    if (!company) throw new NotFoundError('Empresa não encontrada');
+
+    const entries = await app.prisma.ledgerEntry.findMany({
+      where: { companyId: params.companyId },
+      orderBy: { createdAt: 'desc' },
+      take: q.take,
+    });
+
+    return ok(reply, entries);
   });
 
   app.post('/admin/invites/company', adminOnly, async (request, reply) => {
     const payload = createCompanyInviteSchema.parse(request.body);
-    return ok(reply, await createInvite(app, {
+    const created = await createInvite(app, {
       type: 'COMPANY',
       email: payload.email,
       invitedByUserId: request.authUser?.userId,
-      metadata: payload.metadata,
-    }), 201);
+      metadata: payload.metadata as Prisma.InputJsonValue | undefined,
+    });
+    await logAdminAudit(app, {
+      actorUserId: request.authUser?.userId,
+      action: 'INVITE_COMPANY_CREATED',
+      entityType: 'INVITE',
+      entityId: created.inviteId,
+      metadata: { email: payload.email },
+    });
+    return ok(reply, created, 201);
   });
 
   app.post('/admin/invites/user', adminOnly, async (request, reply) => {
@@ -175,14 +414,75 @@ export async function registerAdminRoutes(app: FastifyInstance) {
       metadata?: Record<string, unknown>;
     };
 
-    return ok(reply, await createInvite(app, {
+    const created = await createInvite(app, {
       type: 'USER',
       email: body.email,
       companyId: body.companyId,
       roleToAssign: body.roleToAssign,
       invitedByUserId: request.authUser?.userId,
-      metadata: body.metadata,
-    }), 201);
+      metadata: body.metadata as Prisma.InputJsonValue | undefined,
+    });
+    await logAdminAudit(app, {
+      actorUserId: request.authUser?.userId,
+      action: 'INVITE_USER_CREATED',
+      entityType: 'INVITE',
+      entityId: created.inviteId,
+      metadata: { email: body.email, companyId: body.companyId },
+    });
+    return ok(reply, created, 201);
+  });
+
+  app.get('/admin/invites', adminOnly, async (request, reply) => {
+    const q = listAdminInvitesQuerySchema.parse(request.query);
+    const where: Prisma.InviteWhereInput = {};
+    if (q.companyId) where.companyId = q.companyId;
+    if (q.status) where.status = q.status;
+
+    const invites = await app.prisma.invite.findMany({
+      where,
+      include: { company: { select: { id: true, name: true, slug: true } } },
+      orderBy: { createdAt: 'desc' },
+      take: q.take,
+    });
+
+    return ok(reply, invites);
+  });
+
+  app.post('/admin/invites/:inviteId/revoke', adminOnly, async (request, reply) => {
+    const params = request.params as { inviteId: string };
+    const revoked = await revokeInviteById(app, params.inviteId);
+    await logAdminAudit(app, {
+      actorUserId: request.authUser?.userId,
+      action: 'INVITE_REVOKED',
+      entityType: 'INVITE',
+      entityId: params.inviteId,
+    });
+    return ok(reply, revoked);
+  });
+
+  app.post('/admin/invites/:inviteId/resend', adminOnly, async (request, reply) => {
+    const params = request.params as { inviteId: string };
+    const next = await resendInviteById(app, params.inviteId, request.authUser?.userId);
+    await logAdminAudit(app, {
+      actorUserId: request.authUser?.userId,
+      action: 'INVITE_RESENT',
+      entityType: 'INVITE',
+      entityId: next.inviteId,
+      metadata: { previousInviteId: params.inviteId },
+    });
+    return ok(reply, next, 201);
+  });
+
+  app.get('/admin/audit', adminOnly, async (request, reply) => {
+    const q = listAdminAuditQuerySchema.parse(request.query);
+    const logs = await app.prisma.adminAuditLog.findMany({
+      include: {
+        actor: { select: { id: true, fullName: true, email: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: q.take,
+    });
+    return ok(reply, logs);
   });
 
   app.get('/admin/catalog/consultation-types', adminOnly, async (_request, reply) => {
@@ -204,7 +504,14 @@ export async function registerAdminRoutes(app: FastifyInstance) {
 
   app.post('/admin/catalog/canonical-fields', adminOnly, async (request, reply) => {
     const payload = createCanonicalFieldSchema.parse(request.body);
-    return ok(reply, await app.prisma.canonicalFieldCatalog.create({ data: payload }), 201);
+    return ok(reply, await app.prisma.canonicalFieldCatalog.create({
+      data: {
+        ...payload,
+        ...(payload.uiItemFilters !== undefined
+          ? { uiItemFilters: payload.uiItemFilters as Prisma.InputJsonValue }
+          : {}),
+      },
+    }), 201);
   });
 
   app.patch('/admin/catalog/canonical-fields/:fieldId', adminOnly, async (request, reply) => {
@@ -216,7 +523,12 @@ export async function registerAdminRoutes(app: FastifyInstance) {
 
     const updated = await app.prisma.canonicalFieldCatalog.update({
       where: { id: params.fieldId },
-      data: payload,
+      data: {
+        ...payload,
+        ...(payload.uiItemFilters !== undefined
+          ? { uiItemFilters: payload.uiItemFilters === null ? Prisma.JsonNull : (payload.uiItemFilters as Prisma.InputJsonValue) }
+          : {}),
+      },
     });
     return ok(reply, updated);
   });
@@ -599,7 +911,7 @@ export async function registerAdminRoutes(app: FastifyInstance) {
 
   app.get('/admin/tokens', adminOnly, async (_request, reply) => {
     return ok(reply, await app.prisma.apiToken.findMany({
-      include: { tenant: true },
+      include: { tenant: true, company: { select: { id: true, name: true, slug: true } } },
       orderBy: { createdAt: 'desc' },
       take: 100,
     }));
@@ -608,18 +920,56 @@ export async function registerAdminRoutes(app: FastifyInstance) {
   app.post('/admin/tokens', adminOnly, async (request, reply) => {
     const payload = createTokenSchema.parse(request.body);
 
-    return ok(reply, await createApiToken(app, {
+    const result = await createApiToken(app, {
       tenantId: payload.tenantId,
+      companyId: payload.companyId,
       label: payload.label,
       scopes: payload.scopes,
       expiresAt: payload.expiresAt ? new Date(payload.expiresAt) : null,
       createdById: request.authUser?.userId,
-    }), 201);
+    });
+
+    await logAdminAudit(app, {
+      actorUserId: request.authUser?.userId,
+      action: 'API_TOKEN_CREATED',
+      entityType: 'API_TOKEN',
+      entityId: result.apiToken.id,
+      metadata: {
+        label: payload.label,
+        companyId: payload.companyId ?? null,
+        tenantId: payload.tenantId ?? null,
+      },
+    });
+
+    return ok(reply, result, 201);
+  });
+
+  app.patch('/admin/tokens/:tokenId', adminOnly, async (request, reply) => {
+    const params = request.params as { tokenId: string };
+    const payload = patchAdminTokenSchema.parse(request.body);
+
+    const existing = await app.prisma.apiToken.findUnique({ where: { id: params.tokenId } });
+    if (!existing) throw new NotFoundError('Token não encontrado');
+
+    const updated = await app.prisma.apiToken.update({
+      where: { id: params.tokenId },
+      data: { isActive: payload.isActive },
+      include: { tenant: true, company: { select: { id: true, name: true, slug: true } } },
+    });
+
+    await logAdminAudit(app, {
+      actorUserId: request.authUser?.userId,
+      action: payload.isActive ? 'API_TOKEN_ACTIVATED' : 'API_TOKEN_REVOKED',
+      entityType: 'API_TOKEN',
+      entityId: params.tokenId,
+    });
+
+    return ok(reply, updated);
   });
 
   app.post('/admin/companies/:companyId/credit', adminOnly, async (request, reply) => {
     const params = request.params as { companyId: string };
-    const body = request.body as { amount: number; description?: string };
+    const body = adminCompanyCreditSchema.parse(request.body);
 
     const wallet = await app.prisma.wallet.findUnique({
       where: { companyId: params.companyId },
@@ -649,6 +999,18 @@ export async function registerAdminRoutes(app: FastifyInstance) {
           metadata: { source: 'ADMIN_PANEL' },
         },
       });
+    });
+
+    await logAdminAudit(app, {
+      actorUserId: request.authUser?.userId,
+      action: 'COMPANY_CREDIT',
+      entityType: 'COMPANY',
+      entityId: params.companyId,
+      metadata: {
+        amount: String(body.amount),
+        ledgerEntryId: updated.id,
+        description: body.description ?? null,
+      },
     });
 
     return ok(reply, updated, 201);

@@ -2,7 +2,7 @@
   "name": "consultas-pro-backend",
   "version": "0.1.0",
   "private": true,
-  "description": "Backend base para o Consultas Pró",
+  "description": "Backend base para o Consultas PRO",
   "license": "UNLICENSED",
   "engines": {
     "node": ">=20.0.0"
@@ -22,6 +22,7 @@
     "@fastify/cors": "^10.0.0",
     "@fastify/helmet": "^13.0.0",
     "@fastify/jwt": "^10.0.0",
+    "@fastify/swagger": "^9.7.0",
     "@prisma/client": "^6.0.0",
     "bcryptjs": "^2.4.3",
     "bullmq": "^5.71.1",
@@ -32,7 +33,8 @@
     "mustache": "^4.2.0",
     "pino": "^9.5.0",
     "ulid": "^2.3.0",
-    "zod": "^3.23.8"
+    "zod": "^3.23.8",
+    "zod-to-json-schema": "^3.25.2"
   },
   "devDependencies": {
     "@types/node": "^22.7.4",

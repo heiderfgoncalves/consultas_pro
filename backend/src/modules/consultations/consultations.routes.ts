@@ -1,12 +1,14 @@
 import type { FastifyInstance } from 'fastify';
-import { authenticate } from '../../core/auth';
+import { authenticate, requireEndpointAccess } from '../../core/auth';
 import { ok } from '../../core/http';
 import { createConsultationSchema, mergePreviewSchema } from './consultations.schemas';
 import { createConsultation } from './consultations.service';
 import { previewMerge } from '../providers/providers.service';
 
 export async function registerConsultationRoutes(app: FastifyInstance) {
-  app.post('/consultations', { preHandler: [authenticate] }, async (request, reply) => {
+  app.post('/consultations', {
+    preHandler: [authenticate, requireEndpointAccess('api.consultations.create')],
+  }, async (request, reply) => {
     const payload = createConsultationSchema.parse(request.body);
 
     return ok(reply, await createConsultation(app, {
@@ -19,7 +21,9 @@ export async function registerConsultationRoutes(app: FastifyInstance) {
     }), 201);
   });
 
-  app.get('/consultations', { preHandler: [authenticate] }, async (request, reply) => {
+  app.get('/consultations', {
+    preHandler: [authenticate, requireEndpointAccess('api.consultations.list')],
+  }, async (request, reply) => {
     const consultations = await app.prisma.consultation.findMany({
       where: request.authUser?.companyId
         ? { companyId: request.authUser.companyId }
@@ -40,7 +44,20 @@ export async function registerConsultationRoutes(app: FastifyInstance) {
     return ok(reply, consultations);
   });
 
-  app.get('/consultations/:id', { preHandler: [authenticate] }, async (request, reply) => {
+  app.post('/consultations/merge-preview', {
+    preHandler: [authenticate, requireEndpointAccess('api.consultations.mergePreview')],
+  }, async (request, reply) => {
+    const payload = mergePreviewSchema.parse(request.body);
+    return ok(reply, await previewMerge(app, {
+      actorUserId: request.authUser?.userId,
+      executionIds: payload.executionIds,
+      testLogIds: payload.testLogIds,
+    }));
+  });
+
+  app.get('/consultations/:id', {
+    preHandler: [authenticate, requireEndpointAccess('api.consultations.get')],
+  }, async (request, reply) => {
     const params = request.params as { id: string };
 
     const consultation = await app.prisma.consultation.findUnique({
@@ -58,14 +75,5 @@ export async function registerConsultationRoutes(app: FastifyInstance) {
     });
 
     return ok(reply, consultation);
-  });
-
-  app.post('/consultations/merge-preview', { preHandler: [authenticate] }, async (request, reply) => {
-    const payload = mergePreviewSchema.parse(request.body);
-    return ok(reply, await previewMerge(app, {
-      actorUserId: request.authUser?.userId,
-      executionIds: payload.executionIds,
-      testLogIds: payload.testLogIds,
-    }));
   });
 }

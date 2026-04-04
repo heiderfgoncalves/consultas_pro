@@ -1,6 +1,6 @@
-# Consultas Pró — Backend
+# Consultas PRO — Backend
 
-Base backend modular em Node.js + Fastify + Prisma + PostgreSQL + Redis + BullMQ para o sistema **Consultas Pró**.
+Base backend modular em Node.js + Fastify + Prisma + PostgreSQL + Redis + BullMQ para o sistema **Consultas PRO**.
 
 ## O que esta base já cobre
 

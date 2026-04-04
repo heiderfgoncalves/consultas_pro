@@ -1,12 +1,8 @@
 import type { FastifyInstance } from 'fastify';
 import { ok } from '../../core/http';
 import { authenticate } from '../../core/auth';
-import {
-  acceptInviteSchema,
-  loginSchema,
-  registerCompanySchema,
-  registerUserSchema,
-} from './auth.schemas';
+import { acceptInviteSchema } from './auth.schemas';
+import { authOpenApiBodies, authOpenApiResponses } from '../../openapi/schemas';
 import {
   acceptInvite,
   createInvite,
@@ -17,20 +13,79 @@ import {
 import { sha256 } from '../../lib/hash';
 
 export async function registerAuthRoutes(app: FastifyInstance) {
-  app.post('/auth/login', async (request, reply) => {
-    const payload = loginSchema.parse(request.body);
-    return ok(reply, await login(app, payload.email, payload.password));
-  });
+  app.post(
+    '/auth/login',
+    {
+      schema: {
+        tags: ['Auth'],
+        summary: 'Login',
+        description: 'Autenticação por e-mail e senha; retorna JWT de acesso.',
+        body: authOpenApiBodies.login,
+        response: {
+          200: authOpenApiResponses.login200,
+        },
+      },
+    },
+    async (request, reply) => {
+      const body = request.body as { email: string; password: string };
+      return ok(reply, await login(app, body.email, body.password));
+    },
+  );
 
-  app.post('/auth/register-user', async (request, reply) => {
-    const payload = registerUserSchema.parse(request.body);
-    return ok(reply, await registerStandaloneUser(app, payload), 201);
-  });
+  app.post(
+    '/auth/register-user',
+    {
+      schema: {
+        tags: ['Auth'],
+        summary: 'Cadastro de usuário avulso',
+        description: 'Cria conta individual (sem empresa).',
+        body: authOpenApiBodies.registerUser,
+        response: {
+          201: authOpenApiResponses.registerUser201,
+        },
+      },
+    },
+    async (request, reply) => {
+      const body = request.body as {
+        fullName: string;
+        email: string;
+        document: string;
+        phone: string;
+        password: string;
+      };
+      return ok(reply, await registerStandaloneUser(app, body), 201);
+    },
+  );
 
-  app.post('/auth/register-company', async (request, reply) => {
-    const payload = registerCompanySchema.parse(request.body);
-    return ok(reply, await registerCompanyOwner(app, payload), 201);
-  });
+  app.post(
+    '/auth/register-company',
+    {
+      schema: {
+        tags: ['Auth'],
+        summary: 'Cadastro de empresa',
+        description: 'Cria empresa, carteira e usuário dono (COMPANY_OWNER).',
+        body: authOpenApiBodies.registerCompany,
+        response: {
+          201: authOpenApiResponses.registerCompany201,
+        },
+      },
+    },
+    async (request, reply) => {
+      const body = request.body as {
+        companyName: string;
+        companyDocument: string;
+        companyEmail?: string;
+        companyPhone?: string;
+        ownerFullName: string;
+        ownerEmail: string;
+        ownerDocument: string;
+        ownerPhone: string;
+        password: string;
+        tenantSlug?: string;
+      };
+      return ok(reply, await registerCompanyOwner(app, body), 201);
+    },
+  );
 
   app.post('/auth/accept-invite', async (request, reply) => {
     const payload = acceptInviteSchema.parse(request.body);

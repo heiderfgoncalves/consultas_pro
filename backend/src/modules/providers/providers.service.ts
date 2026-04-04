@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import type { HttpMethod, ProviderAuthType, ProviderProduct } from '@prisma/client';
+import type { HttpMethod, Prisma, ProviderAuthType, ProviderProduct } from '@prisma/client';
 import { ConflictError, NotFoundError } from '../../core/errors';
 import { callProviderOperation, callProviderProduct } from './provider-client.service';
 import { normalizeProviderPayload } from './normalization.service';
@@ -211,23 +211,46 @@ export async function previewMerge(app: FastifyInstance, input: {
 
 export async function createApiToken(app: FastifyInstance, input: {
   tenantId?: string;
+  companyId?: string;
   createdById?: string;
   label: string;
   scopes?: Record<string, unknown>;
   expiresAt?: Date | null;
 }) {
+  if (input.companyId && input.tenantId) {
+    throw new ConflictError('Informe apenas tenantId ou companyId para o token');
+  }
+
+  let ownerType: 'TENANT' | 'COMPANY' | 'INTERNAL' = 'INTERNAL';
+  let tenantId: string | undefined;
+  let companyId: string | undefined;
+
+  if (input.companyId) {
+    const company = await app.prisma.company.findUnique({ where: { id: input.companyId } });
+    if (!company) throw new NotFoundError('Empresa não encontrada');
+    ownerType = 'COMPANY';
+    companyId = company.id;
+    tenantId = company.tenantId ?? undefined;
+  } else if (input.tenantId) {
+    const tenant = await app.prisma.tenant.findUnique({ where: { id: input.tenantId } });
+    if (!tenant) throw new NotFoundError('Tenant não encontrado');
+    ownerType = 'TENANT';
+    tenantId = tenant.id;
+  }
+
   const rawToken = generateOpaqueToken(24);
   const tokenHash = sha256(rawToken);
 
   const apiToken = await app.prisma.apiToken.create({
     data: {
-      ownerType: input.tenantId ? 'TENANT' : 'INTERNAL',
-      tenantId: input.tenantId,
+      ownerType,
+      tenantId,
+      companyId,
       createdById: input.createdById,
       label: input.label,
       tokenHash,
       last4: rawToken.slice(-4),
-      scopes: input.scopes,
+      scopes: input.scopes as Prisma.InputJsonValue | undefined,
       expiresAt: input.expiresAt ?? null,
     },
   });

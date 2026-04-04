@@ -42,6 +42,8 @@ export const createMappingSchema = z.object({
   productId: z.string().min(1),
   canonicalFieldId: z.string().min(1),
   sourcePath: z.string().min(1),
+  uiStartLine: z.number().int().nonnegative().optional(),
+  uiEndLine: z.number().int().nonnegative().optional(),
   transformName: z.string().optional(),
   fallbackValue: z.string().optional(),
   notes: z.string().optional(),
@@ -90,6 +92,8 @@ export const updateProviderProductSchema = z.object({
 export const updateMappingSchema = z.object({
   canonicalFieldId: z.string().min(1).optional(),
   sourcePath: z.string().min(1).optional(),
+  uiStartLine: z.number().int().nonnegative().nullable().optional(),
+  uiEndLine: z.number().int().nonnegative().nullable().optional(),
   transformName: z.string().nullable().optional(),
   fallbackValue: z.string().nullable().optional(),
   notes: z.string().nullable().optional(),
@@ -101,6 +105,7 @@ export const updateCanonicalFieldSchema = z.object({
   label: z.string().min(2).optional(),
   dataType: z.string().min(2).optional(),
   description: z.string().nullable().optional(),
+  uiItemFilters: z.any().nullable().optional(),
   isActive: z.boolean().optional(),
 });
 
@@ -116,6 +121,7 @@ export const createCanonicalFieldSchema = z.object({
   label: z.string().min(2),
   dataType: z.string().min(2),
   description: z.string().optional(),
+  uiItemFilters: z.any().optional(),
 });
 
 export const testProductSchema = z.object({
@@ -167,9 +173,70 @@ export const linkUserToCompanySchema = z.object({
   companyId: z.string().nullable(),
 });
 
-export const createTokenSchema = z.object({
-  tenantId: z.string().optional(),
-  label: z.string().min(2),
-  scopes: z.record(z.any()).optional(),
-  expiresAt: z.string().datetime().optional(),
+export const createTokenSchema = z
+  .object({
+    tenantId: z.string().optional(),
+    companyId: z.string().optional(),
+    label: z.string().min(2),
+    /** Alinhar com `routeKey` do catálogo externo, ex.: `{ "api.consultations.create": true }` — ver `docs/integration/api-route-keys.md`. */
+    scopes: z.record(z.any()).optional(),
+    expiresAt: z.string().datetime().optional(),
+  })
+  .refine((d) => !(d.tenantId && d.companyId), {
+    message: 'Informe apenas tenantId ou companyId',
+  });
+
+export const updateAdminUserSchema = z.object({
+  fullName: z.string().min(3).optional(),
+  email: z.string().email().optional(),
+  document: z.string().min(11).optional().nullable(),
+  phone: z.string().min(8).optional().nullable(),
+  role: z.enum(['USER', 'COMPANY_MANAGER', 'COMPANY_OWNER']).optional(),
+  companyId: z.string().nullable().optional(),
+  accountStatus: z.enum(['ACTIVE', 'SUSPENDED', 'BLOCKED']).optional(),
+  password: z.string().min(8).optional(),
+});
+
+export const updateAdminCompanySchema = z.object({
+  name: z.string().min(3).optional(),
+  document: z.string().min(14).optional(),
+  email: z.string().email().optional().nullable(),
+  phone: z.string().min(8).optional().nullable(),
+  tenantId: z.string().nullable().optional(),
+  isActive: z.boolean().optional(),
+});
+
+export const adminCompanyCreditSchema = z.object({
+  amount: z.coerce.number().positive(),
+  description: z.string().optional(),
+});
+
+export const listAdminInvitesQuerySchema = z.object({
+  companyId: z.string().optional(),
+  status: z.enum(['PENDING', 'ACCEPTED', 'EXPIRED', 'REVOKED']).optional(),
+  take: z.coerce.number().int().min(1).max(200).optional().default(100),
+});
+
+export const listAdminAuditQuerySchema = z.object({
+  take: z.coerce.number().int().min(1).max(200).optional().default(100),
+});
+
+export const listCompanyLedgerQuerySchema = z.object({
+  take: z.coerce.number().int().min(1).max(200).optional().default(50),
+});
+
+export const patchAdminTokenSchema = z.object({
+  isActive: z.boolean(),
+});
+
+const roleEnum = z.enum(['PLATFORM_ADMIN', 'COMPANY_OWNER', 'COMPANY_MANAGER', 'USER']);
+
+export const putRoleEndpointAccessSchema = z.object({
+  matrix: z.array(
+    z.object({
+      role: roleEnum,
+      routeKey: z.string().min(1),
+      isEnabled: z.boolean(),
+    }),
+  ),
 });

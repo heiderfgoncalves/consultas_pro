@@ -13,6 +13,8 @@ const envSchema = z.object({
   DEFAULT_INVITE_EXPIRATION_HOURS: z.coerce.number().default(72),
   PROVIDER_REQUEST_TIMEOUT_MS: z.coerce.number().default(30000),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
+  /** Origens extras permitidas no CORS, separadas por vírgula (opcional). */
+  CORS_ORIGINS: z.string().optional(),
 });
 
 export const env = envSchema.parse(process.env);
