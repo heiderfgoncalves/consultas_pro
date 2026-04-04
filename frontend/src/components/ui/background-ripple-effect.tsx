@@ -1,5 +1,5 @@
 import { cn } from "@/lib/utils";
-import { useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 export const BackgroundRippleEffect = ({
   rows = 8,
@@ -11,6 +11,8 @@ export const BackgroundRippleEffect = ({
   masked = false,
   /** Escala a grade para cobrir 100% do container (largura e altura), com leve folga. */
   cover = false,
+  /** Em modo cover, permite ancorar a malha em vez de centralizar. */
+  coverPosition = "center",
 }: {
   rows?: number;
   cols?: number;
@@ -19,6 +21,7 @@ export const BackgroundRippleEffect = ({
   gridClassName?: string;
   masked?: boolean;
   cover?: boolean;
+  coverPosition?: "center" | "top-right" | "top-left";
 }) => {
   const [clickedCell, setClickedCell] = useState<{
     row: number;
@@ -26,28 +29,31 @@ export const BackgroundRippleEffect = ({
   } | null>(null);
   const [rippleKey, setRippleKey] = useState(0);
   const coverWrapRef = useRef<HTMLDivElement>(null);
-  const [coverScale, setCoverScale] = useState(1);
+  const [coverDimensions, setCoverDimensions] = useState({ rows, cols });
 
-  const gridW = cols * cellSize;
-  const gridH = rows * cellSize;
-
-  useLayoutEffect(() => {
+  useEffect(() => {
     if (!cover) return;
     const el = coverWrapRef.current;
     if (!el) return;
 
     const update = () => {
       const r = el.getBoundingClientRect();
-      if (r.width < 2 || r.height < 2 || gridW < 1 || gridH < 1) return;
-      const s = Math.max(r.width / gridW, r.height / gridH) * 1.04;
-      setCoverScale(s);
+      if (r.width < 2 || r.height < 2 || cellSize < 1) return;
+      const overscan = coverPosition === "center" ? 4 : 0;
+      setCoverDimensions({
+        cols: Math.max(cols, Math.ceil(r.width / cellSize) + overscan),
+        rows: Math.max(rows, Math.ceil(r.height / cellSize) + overscan),
+      });
     };
 
     update();
     const ro = new ResizeObserver(update);
     ro.observe(el);
     return () => ro.disconnect();
-  }, [cover, gridW, gridH]);
+  }, [cellSize, cols, cover, coverPosition, rows]);
+
+  const activeRows = cover ? coverDimensions.rows : rows;
+  const activeCols = cover ? coverDimensions.cols : cols;
 
   const grid = (
     <DivGrid
@@ -57,8 +63,8 @@ export const BackgroundRippleEffect = ({
         masked ? "opacity-40 ripple-grid-mask" : "opacity-100",
         gridClassName,
       )}
-      rows={rows}
-      cols={cols}
+      rows={activeRows}
+      cols={activeCols}
       cellSize={cellSize}
       borderColor="var(--cell-border-color)"
       fillColor="var(--cell-fill-color)"
@@ -87,14 +93,16 @@ export const BackgroundRippleEffect = ({
       >
         <div className="pointer-events-none absolute inset-0 z-[2] h-full w-full overflow-hidden" />
         {cover ? (
-          <div ref={coverWrapRef} className="absolute inset-0 flex items-center justify-center">
-            <div
-              className="flex items-center justify-center will-change-transform"
-              style={{
-                transform: `scale(${coverScale})`,
-                transformOrigin: "center center",
-              }}
-            >
+          <div
+            ref={coverWrapRef}
+            className={cn(
+              "absolute inset-0 flex",
+              coverPosition === "top-right" && "items-start justify-end",
+              coverPosition === "top-left" && "items-start justify-start",
+              coverPosition === "center" && "items-center justify-center",
+            )}
+          >
+            <div className="flex items-center justify-center">
               {grid}
             </div>
           </div>
@@ -168,7 +176,7 @@ const DivGrid = ({
           <div
             key={idx}
             className={cn(
-              "cell relative border-[0.5px] opacity-[0.55] transition-opacity duration-150 will-change-transform hover:opacity-90 dark:shadow-[0px_0px_40px_1px_var(--cell-shadow-color)_inset]",
+              "cell relative border-[0.5px] opacity-40 transition-opacity duration-150 will-change-transform hover:opacity-80 dark:shadow-[0px_0px_40px_1px_var(--cell-shadow-color)_inset]",
               clickedCell && "animate-cell-ripple [animation-fill-mode:none]",
               !interactive && "pointer-events-none",
             )}
