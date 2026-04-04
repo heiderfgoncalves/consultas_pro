@@ -351,6 +351,8 @@ model ProviderProduct {
   isActive           Boolean                @default(true)
   sampleRequest      Json?
   sampleResponse     Json?
+  /// Critérios de filtro por chave do tipo canônico (pathKey), por produto — não confundir com uiItemFilters do catálogo.
+  typeItemFilters    Json?
   createdAt          DateTime               @default(now())
   updatedAt          DateTime               @updatedAt
 
