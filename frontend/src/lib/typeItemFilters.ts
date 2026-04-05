@@ -1,6 +1,8 @@
 import type {
   MappingItemFilter,
   MappingItemFilterOp,
+  TypeComputedFieldDefinition,
+  TypeComputedFieldOperator,
   TypeItemFieldMapping,
   TypeItemFilterConfig,
   TypeItemFilterGroup,
@@ -8,6 +10,8 @@ import type {
 } from '@/types/integrations';
 
 const FILTER_OPS = new Set<MappingItemFilterOp>(['eq', 'contains', 'startsWith', 'endsWith', 'regex']);
+
+const COMPUTED_OPS = new Set<TypeComputedFieldOperator>(['sum', 'avg', 'min', 'max', 'count']);
 
 function createId(prefix: string) {
   return `${prefix}_${Math.random().toString(36).slice(2, 10)}`;
@@ -39,14 +43,47 @@ function normalizeRule(raw: unknown, index: number): TypeItemFilterRule | null {
   };
 }
 
+function normalizeComputedFieldOp(value: unknown): TypeComputedFieldOperator {
+  return typeof value === 'string' && COMPUTED_OPS.has(value as TypeComputedFieldOperator)
+    ? (value as TypeComputedFieldOperator)
+    : 'sum';
+}
+
+function normalizeComputedField(raw: unknown, index: number): TypeComputedFieldDefinition | null {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const item = raw as Record<string, unknown>;
+  const label = typeof item.label === 'string' ? item.label : '';
+  const keyRaw = typeof item.key === 'string' ? item.key.trim() : '';
+  return {
+    id: typeof item.id === 'string' && item.id.trim() ? item.id : createId(`computed_${index + 1}`),
+    label,
+    key: keyRaw || 'campo_calculado',
+    dataType:
+      typeof item.dataType === 'string'
+      && ['text', 'boolean', 'numeric', 'date', 'datetime', 'currency', 'percent', 'document'].includes(
+        item.dataType as string,
+      )
+        ? (item.dataType as TypeComputedFieldDefinition['dataType'])
+        : 'numeric',
+    operator: normalizeComputedFieldOp(item.operator),
+    sourceReportFieldId:
+      typeof item.sourceReportFieldId === 'string' ? item.sourceReportFieldId : '',
+  };
+}
+
 function normalizeFieldMapping(raw: unknown, index: number): TypeItemFieldMapping | null {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
   const item = raw as Record<string, unknown>;
+  const sourceTrechoPath =
+    typeof item.sourceTrechoPath === 'string' && item.sourceTrechoPath.trim()
+      ? item.sourceTrechoPath.trim()
+      : undefined;
   return {
     id: typeof item.id === 'string' && item.id.trim() ? item.id : createId(`map_${index + 1}`),
     reportFieldId: typeof item.reportFieldId === 'string' ? item.reportFieldId : '',
     reportFieldLabel: typeof item.reportFieldLabel === 'string' ? item.reportFieldLabel : '',
     jsonPath: typeof item.jsonPath === 'string' ? item.jsonPath : '',
+    ...(sourceTrechoPath !== undefined ? { sourceTrechoPath } : {}),
   };
 }
 
@@ -92,6 +129,7 @@ export function emptyTypeItemFilterConfig(): TypeItemFilterConfig {
     groups: [],
     fieldMappings: [],
     dedupFieldIds: [],
+    computedFields: [],
   };
 }
 
@@ -106,6 +144,7 @@ export function cloneTypeItemFilterConfig(config?: TypeItemFilterConfig): TypeIt
     })),
     fieldMappings: normalized.fieldMappings.map((mapping) => ({ ...mapping })),
     dedupFieldIds: [...normalized.dedupFieldIds],
+    computedFields: (normalized.computedFields ?? []).map((c) => ({ ...c })),
   };
 }
 
@@ -119,6 +158,7 @@ export function normalizeTypeItemFilterConfig(raw: unknown): TypeItemFilterConfi
       groups: rules.length ? [{ id: createId('group_legacy'), joinOperator: 'and', rules }] : [],
       fieldMappings: [],
       dedupFieldIds: [],
+      computedFields: [],
     };
   }
 
@@ -138,12 +178,18 @@ export function normalizeTypeItemFilterConfig(raw: unknown): TypeItemFilterConfi
   const dedupFieldIds = Array.isArray(item.dedupFieldIds)
     ? item.dedupFieldIds.filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
     : [];
+  const computedFields = Array.isArray(item.computedFields)
+    ? item.computedFields
+        .map((row, i) => normalizeComputedField(row, i))
+        .filter((row): row is TypeComputedFieldDefinition => !!row)
+    : [];
 
   return {
     version: 2,
     groups: groups.filter((g) => g.rules.length > 0),
     fieldMappings,
     dedupFieldIds,
+    computedFields,
   };
 }
 

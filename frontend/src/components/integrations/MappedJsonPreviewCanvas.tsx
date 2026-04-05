@@ -153,6 +153,8 @@ function HighlightedJsonLine({ line, searchQuery }: { line: string; searchQuery?
   );
 }
 
+const PREVIEW_TYPE_REORDER_MIME = 'application/x-consultas-pro-mapped-type';
+
 export function MappedJsonPreviewCanvas({
   jsonText,
   lineMeta,
@@ -160,6 +162,7 @@ export function MappedJsonPreviewCanvas({
   highlightQuery,
   highlightNavigation,
   scrollBodyRef,
+  onReorderMappedTypes,
 }: {
   jsonText: string;
   lineMeta: LineGutterMeta[];
@@ -170,13 +173,17 @@ export function MappedJsonPreviewCanvas({
   /** Com índice ativo: realça a ocorrência atual (âmbar) e permite scroll externo */
   highlightNavigation?: { matches: TextMatch[]; activeIndex: number };
   scrollBodyRef?: RefObject<HTMLDivElement | null>;
+  /** Arrastar badge de tipo sobre outro cabeçalho para trocar a ordem no JSON e na coluna Tipos */
+  onReorderMappedTypes?: (fromTypeKey: string, toTypeKey: string) => void;
 }) {
   const lines = jsonText.length ? jsonText.split('\n') : ['{}'];
+  const reorderEnabled = Boolean(onReorderMappedTypes);
 
   return (
     <div
       className={cn(
-        'flex min-h-[11rem] flex-1 flex-col overflow-hidden rounded-lg border border-border/80',
+        /* h-full + min-h-0: encaixa no viewport; sem min-h-0 o flex filho estica com o conteúdo (milhares de px). */
+        'flex h-full min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-border/80',
         'bg-gradient-to-b from-muted/35 via-card to-card',
         'dark:from-muted/20 dark:via-card dark:to-card',
         /* Elevação + borda interna superior: hsl com opacidade só funciona com ` / ` (formato shadcn). */
@@ -188,9 +195,9 @@ export function MappedJsonPreviewCanvas({
     >
       <div
         ref={scrollBodyRef}
-        className="scrollbar-thin min-h-0 flex-1 overflow-auto"
+        className="scrollbar-thin min-h-0 flex-1 overflow-x-auto overflow-y-auto overscroll-x-contain [scrollbar-width:thin]"
       >
-        <div className="min-w-max py-1.5 pr-2">
+        <div className="min-w-max py-1.5 pr-1">
           {lines.map((line, i) => {
             const meta = lineMeta[i] ?? { barClass: 'bg-border/20' };
             const useNav =
@@ -203,7 +210,7 @@ export function MappedJsonPreviewCanvas({
                 className={cn(
                   'group relative isolate flex min-h-[1.5rem] items-stretch',
                   meta.isSectionHeaderLine &&
-                    'after:pointer-events-none after:absolute after:inset-x-0 after:bottom-0 after:z-[5] after:h-px after:bg-border/60',
+                    'after:pointer-events-none after:absolute after:inset-x-0 after:bottom-0 after:z-[1] after:h-px after:bg-border/60',
                   meta.isDuplicateLine &&
                     'border-l-[3px] border-destructive bg-destructive/[0.07] dark:bg-destructive/[0.11]',
                 )}
@@ -226,39 +233,93 @@ export function MappedJsonPreviewCanvas({
                   )}
                   title={meta.title}
                 />
-                <code
-                  className={cn(
-                    'relative z-10 block min-w-0 flex-1 whitespace-pre pl-2 pr-2 font-mono text-[11px] leading-[1.55] text-foreground/90',
-                    meta.isSectionHeaderLine && meta.sectionBadgeLabel ? 'pr-[8.25rem]' : '',
-                  )}
+                <div
+                  className="relative z-10 flex min-h-0 min-w-0 flex-1 items-center"
+                  onDragOver={
+                    reorderEnabled && meta.isSectionHeaderLine && meta.sectionTypeKey
+                      ? (e) => {
+                          e.preventDefault();
+                          e.dataTransfer.dropEffect = 'move';
+                        }
+                      : undefined
+                  }
+                  onDrop={
+                    reorderEnabled && meta.isSectionHeaderLine && meta.sectionTypeKey
+                      ? (e) => {
+                          e.preventDefault();
+                          const raw =
+                            e.dataTransfer.getData(PREVIEW_TYPE_REORDER_MIME)
+                            || e.dataTransfer.getData('text/plain');
+                          const fromKey = raw?.trim();
+                          const toKey = meta.sectionTypeKey;
+                          if (fromKey && toKey && fromKey !== toKey) {
+                            onReorderMappedTypes?.(fromKey, toKey);
+                          }
+                        }
+                      : undefined
+                  }
                 >
-                  {line.length > 0 ? (
-                    useNav ? (
-                      renderPreviewLineWithMatches(
-                        line,
-                        i,
-                        highlightNavigation.matches,
-                        highlightNavigation.activeIndex,
+                  <code className="block min-w-0 flex-1 whitespace-pre pl-2 pr-2 font-mono text-[11px] leading-[1.55] text-foreground/90">
+                    {line.length > 0 ? (
+                      useNav ? (
+                        renderPreviewLineWithMatches(
+                          line,
+                          i,
+                          highlightNavigation.matches,
+                          highlightNavigation.activeIndex,
+                        )
+                      ) : (
+                        <HighlightedJsonLine line={line} searchQuery={highlightQuery} />
                       )
                     ) : (
-                      <HighlightedJsonLine line={line} searchQuery={highlightQuery} />
-                    )
-                  ) : (
-                    '\u00a0'
-                  )}
+                      '\u00a0'
+                    )}
+                  </code>
                   {meta.isSectionHeaderLine && meta.sectionBadgeLabel ? (
-                    <Badge
-                      variant="outline"
-                      className="pointer-events-none absolute right-2 top-1/2 z-20 flex h-5 max-w-[8rem] -translate-y-1/2 items-center gap-1 truncate border-border bg-card/95 pl-1 pr-1.5 text-[9px] font-normal text-muted-foreground shadow-sm transition-colors dark:border-border dark:bg-card/90"
-                      title={meta.sectionBadgeLabel}
+                    <div
+                      className={cn(
+                        'sticky right-1 ml-auto flex max-w-[9.5rem] shrink-0 flex-row flex-nowrap items-center justify-end gap-1 rounded-l-full bg-gradient-to-l from-card via-card/95 to-transparent pl-3 pr-1 shadow-sm dark:from-card dark:via-card/95',
+                        reorderEnabled ? 'pointer-events-auto cursor-grab active:cursor-grabbing' : 'pointer-events-none',
+                      )}
+                      style={{
+                        zIndex: meta.sectionBadgeStackZ ?? 24,
+                      }}
+                      title={
+                        reorderEnabled && meta.sectionTypeKey
+                          ? `${meta.sectionBadgeLabel} — arraste para reordenar tipos`
+                          : meta.sectionBadgeLabel
+                      }
                     >
-                      {meta.sectionBadgeIcon ? (
-                        <PreviewTypeIcon icon={meta.sectionBadgeIcon} className="h-3 w-3 shrink-0 opacity-85" />
-                      ) : null}
-                      <span className="truncate">{meta.sectionBadgeLabel}</span>
-                    </Badge>
+                      <Badge
+                        variant="outline"
+                        draggable={reorderEnabled && Boolean(meta.sectionTypeKey)}
+                        onDragStart={
+                          reorderEnabled && meta.sectionTypeKey
+                            ? (e) => {
+                                e.dataTransfer.setData(PREVIEW_TYPE_REORDER_MIME, meta.sectionTypeKey!);
+                                e.dataTransfer.setData('text/plain', meta.sectionTypeKey!);
+                                e.dataTransfer.effectAllowed = 'move';
+                              }
+                            : undefined
+                        }
+                        className={cn(
+                          'flex h-5 max-w-[8.75rem] items-center gap-1 truncate border-border bg-card/95 pl-1 pr-1.5 text-[9px] font-normal text-muted-foreground shadow-sm dark:border-border dark:bg-card/90',
+                          reorderEnabled && meta.sectionTypeKey && 'select-none',
+                        )}
+                      >
+                        {typeof meta.sectionBadgeOrdinal === 'number' ? (
+                          <span className="shrink-0 tabular-nums text-[8px] font-semibold text-muted-foreground/90">
+                            {meta.sectionBadgeOrdinal}.
+                          </span>
+                        ) : null}
+                        {meta.sectionBadgeIcon ? (
+                          <PreviewTypeIcon icon={meta.sectionBadgeIcon} className="h-3 w-3 shrink-0 opacity-85" />
+                        ) : null}
+                        <span className="truncate">{meta.sectionBadgeLabel}</span>
+                      </Badge>
+                    </div>
                   ) : null}
-                </code>
+                </div>
               </div>
             );
           })}

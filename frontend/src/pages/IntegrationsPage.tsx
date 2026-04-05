@@ -13,7 +13,7 @@ import {
 } from 'react';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Navigate } from 'react-router-dom';
+import { Navigate, useSearchParams } from 'react-router-dom';
 import {
   Server, Plus, Pencil, Trash2, Database,
   Play, Tag, ChevronDown, ChevronRight, Search, RefreshCcw,
@@ -37,7 +37,7 @@ import type {
 } from '@/types/integrations';
 import JsonFieldMapper from '@/components/integrations/JsonFieldMapper';
 import TypeReportFieldsConfig from '@/components/integrations/TypeReportFieldsConfig';
-import { formatDeepFilteredValueAtPath } from '@/lib/providerResponseMapping';
+import { buildTypeLinkedConsultationMappedPreview } from '@/lib/consultationMappedPreview';
 import {
   buildSingleGroupTypeItemFilterConfig,
   cloneTypeItemFilterConfig,
@@ -47,6 +47,11 @@ import {
 } from '@/lib/typeItemFilters';
 import { toast } from 'sonner';
 import { slugify } from '@/lib/slug';
+import {
+  INTEGRATIONS_TAB_QUERY_KEY,
+  parseIntegrationsTabFromSearch,
+  tabToIntegrationsAbaParam,
+} from '@/lib/integrationsTabQuery';
 import {
   authToApi,
   createCanonicalFieldApi,
@@ -902,6 +907,7 @@ function ConsultationTypeFiltersEditor({
 function LinkedConsultationCard({
   consultation: pc,
   provider: prov,
+  fieldType,
   fieldTypeKey,
   initialFilters,
   accessToken,
@@ -909,6 +915,7 @@ function LinkedConsultationCard({
 }: {
   consultation: ProviderConsultation;
   provider?: Provider;
+  fieldType: ConsultationFieldType;
   fieldTypeKey: string;
   initialFilters?: MappingItemFilter[];
   accessToken: string | null;
@@ -919,7 +926,8 @@ function LinkedConsultationCard({
   const [savingFilters, setSavingFilters] = useState(false);
   const maps = pc.fieldMappings.filter((m) => m.fieldTypeKey === fieldTypeKey);
   const filterConfigForType = normalizeTypeItemFilterConfig(pc.typeItemFilters?.[fieldTypeKey]);
-  const filterActive = countActiveTypeItemRules(buildSingleGroupTypeItemFilterConfig(filters, filterConfigForType)) > 0;
+  const mergedFilterConfig = buildSingleGroupTypeItemFilterConfig(filters, filterConfigForType);
+  const filterActive = countActiveTypeItemRules(mergedFilterConfig) > 0;
 
   const initialSignature = JSON.stringify(initialFilters ?? []);
 
@@ -969,35 +977,15 @@ function LinkedConsultationCard({
     }
   };
 
-  let jsonExcerpt = '';
-  if (pc.sampleResponse && maps.length > 0) {
-    try {
-      const parts: { trecho: string; dados: unknown }[] = [];
-      for (const m of maps) {
-        const { text, hasData } = formatDeepFilteredValueAtPath(
-          pc.sampleResponse,
-          m.jsonPath,
-          filters,
-          '',
-        );
-        if (filterActive && !hasData) continue;
-        let dados: unknown;
-        try {
-          dados = JSON.parse(text);
-        } catch {
-          dados = text;
-        }
-        parts.push({ trecho: m.jsonPath, dados });
-      }
-      if (parts.length === 0) {
-        jsonExcerpt = filterActive ? 'Nenhum trecho corresponde aos critérios.' : '—';
-      } else {
-        jsonExcerpt = JSON.stringify(parts.length === 1 ? parts[0].dados : parts, null, 2) || '—';
-      }
-    } catch {
-      jsonExcerpt = '—';
-    }
-  }
+  const jsonExcerpt =
+    pc.sampleResponse && maps.length > 0
+      ? buildTypeLinkedConsultationMappedPreview({
+          sampleResponse: pc.sampleResponse,
+          trechoMappings: maps,
+          fieldType,
+          typeItemFilterConfig: mergedFilterConfig,
+        })
+      : '';
 
   return (
     <div className="rounded border border-border overflow-hidden bg-card">
@@ -1096,6 +1084,7 @@ async function syncMappings(
 export default function IntegrationsPage() {
   const { user, accessToken } = useAuthStore();
   const queryClient = useQueryClient();
+  const [searchParams, setSearchParams] = useSearchParams();
 
   const [providerModal, setProviderModal] = useState<{ open: boolean; provider?: Provider }>({ open: false });
   const [fieldTypeModal, setFieldTypeModal] = useState<{ open: boolean; ft?: ConsultationFieldType }>({ open: false });
@@ -1108,7 +1097,31 @@ export default function IntegrationsPage() {
   const [savingProvider, setSavingProvider] = useState(false);
   const [savingFieldType, setSavingFieldType] = useState(false);
   const [importingDefaultFieldTypes, setImportingDefaultFieldTypes] = useState(false);
-  const [integrationsTab, setIntegrationsTab] = useState<'providers' | 'consultations' | 'types'>('providers');
+  const [integrationsTab, setIntegrationsTab] = useState<'providers' | 'consultations' | 'types'>(() =>
+    parseIntegrationsTabFromSearch(
+      new URLSearchParams(typeof window !== 'undefined' ? window.location.search : ''),
+    ) ?? 'providers',
+  );
+
+  const setIntegrationsTabWithUrl = useCallback(
+    (tab: 'providers' | 'consultations' | 'types') => {
+      setIntegrationsTab(tab);
+      setSearchParams(
+        (prev) => {
+          const next = new URLSearchParams(prev);
+          next.set(INTEGRATIONS_TAB_QUERY_KEY, tabToIntegrationsAbaParam(tab));
+          return next;
+        },
+        { replace: true },
+      );
+    },
+    [setSearchParams],
+  );
+
+  useEffect(() => {
+    const fromUrl = parseIntegrationsTabFromSearch(searchParams);
+    if (fromUrl != null) setIntegrationsTab(fromUrl);
+  }, [searchParams]);
 
   const consultationPickerRef = useRef(consultationPicker);
   consultationPickerRef.current = consultationPicker;
@@ -1601,7 +1614,7 @@ export default function IntegrationsPage() {
 
       <Tabs
         value={integrationsTab}
-        onValueChange={(v) => setIntegrationsTab(v as 'providers' | 'consultations' | 'types')}
+        onValueChange={(v) => setIntegrationsTabWithUrl(v as 'providers' | 'consultations' | 'types')}
         className="space-y-4"
       >
         <div className="flex flex-wrap items-center justify-between gap-2">
@@ -1744,7 +1757,7 @@ export default function IntegrationsPage() {
                                 type="button"
                                 className={`${linkActionCls} text-primary hover:text-primary/80`}
                                 onClick={() => {
-                                  setIntegrationsTab('consultations');
+                                  setIntegrationsTabWithUrl('consultations');
                                   setConsultationPicker(CONSULTATION_PICKER_NEW);
                                   setNewConsultationProviderId(prov.id);
                                 }}
@@ -2131,6 +2144,7 @@ export default function IntegrationsPage() {
                             key={pc.id}
                             consultation={pc}
                             provider={providers.find((p) => p.id === pc.providerId)}
+                            fieldType={ft}
                             fieldTypeKey={selectedFieldType!}
                             initialFilters={linkedConsultationInitialFilters(pc, selectedFieldType, fieldTypes)}
                             accessToken={accessToken}

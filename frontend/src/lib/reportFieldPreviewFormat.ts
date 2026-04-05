@@ -1,4 +1,10 @@
 import type { ReportFieldDataType } from '@/types/integrations';
+import {
+  coerceBooleanForReport,
+  formatAbsolutePercentBrDisplay,
+  parseCurrencyBrlToNumber,
+  parsePercentToAbsolutePercent,
+} from '@/lib/reportFieldValueCoercion';
 
 function digitsOnly(raw: string): string {
   return raw.replace(/\D/g, '');
@@ -24,13 +30,11 @@ export function formatCurrencyBrlDisplay(raw: unknown): string {
   if (typeof raw === 'number' && Number.isFinite(raw)) {
     return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(raw);
   }
-  const s = String(raw).trim();
-  if (!s) return '';
-  const normalized = s.replace(/\./g, '').replace(',', '.');
-  const n = Number(normalized);
-  if (Number.isFinite(n)) {
+  const n = parseCurrencyBrlToNumber(raw);
+  if (n != null) {
     return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(n);
   }
+  const s = String(raw).trim();
   return s;
 }
 
@@ -79,13 +83,14 @@ export function formatPercentBrDisplay(raw: unknown): string {
   if (typeof raw === 'number' && Number.isFinite(raw)) {
     const abs = Math.abs(raw);
     if (abs > 0 && abs <= 1) {
-      return new Intl.NumberFormat('pt-BR', { style: 'percent', maximumFractionDigits: 4 }).format(raw);
+      return formatAbsolutePercentBrDisplay(raw * 100);
     }
-    const body = new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 4 }).format(raw);
-    return `${body} %`;
+    return formatAbsolutePercentBrDisplay(raw);
   }
   const s = String(raw).trim();
   if (!s) return '';
+  const abs = parsePercentToAbsolutePercent(s);
+  if (abs != null) return formatAbsolutePercentBrDisplay(abs);
   return s.endsWith('%') ? s : `${s} %`;
 }
 
@@ -116,8 +121,11 @@ function formatLeaf(raw: unknown, dataType: ReportFieldDataType): unknown {
       return formatPercentBrDisplay(raw);
     case 'numeric':
       return formatNumericBrDisplay(raw);
-    case 'boolean':
+    case 'boolean': {
+      const b = coerceBooleanForReport(raw);
+      if (b !== undefined) return b;
       return raw;
+    }
     case 'text':
     default:
       return typeof raw === 'string' ? raw : String(raw);

@@ -1,4 +1,28 @@
-import { useState, useRef, useCallback, useMemo, useEffect, useLayoutEffect, type ReactNode } from 'react';
+import {
+  useState,
+  useRef,
+  useCallback,
+  useMemo,
+  useEffect,
+  useLayoutEffect,
+  type CSSProperties,
+  type ReactNode,
+} from 'react';
+import {
+  DndContext,
+  PointerSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  SortableContext,
+  arrayMove,
+  useSortable,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import {
   Tag, GripVertical, Pencil, Check, X, Copy,
   Move, Code2, Eye, Trash2, User, AlertTriangle, Gauge, FileWarning,
@@ -16,7 +40,6 @@ import {
   buildByTypeWithGlobalDedupRemoved,
   computeGlobalDuplicateRowIndicesByType,
   formatDeepFilteredValueAtPath,
-  getRecordPropertyCI,
   getValueAtJsonPath,
 } from '@/lib/providerResponseMapping';
 import {
@@ -32,6 +55,13 @@ import { computeJsonLineGutterMeta, type LineGutterMeta } from '@/lib/jsonLineGu
 import { cn } from '@/lib/utils';
 import { dedupeReportFieldKeys, slugifyReportFieldKey } from '@/lib/reportFieldKeys';
 import { formatMappedPreviewValue } from '@/lib/reportFieldPreviewFormat';
+import {
+  buildComputedPreviewRows,
+  collectValuesAtPath,
+  normalizeMappedFieldValue,
+  parsePreviewPartText,
+  zipAlignedMappedPreviewRows,
+} from '@/lib/consultationMappedPreview';
 import { toast } from 'sonner';
 import { findTextMatches, toAbsoluteMatchRanges, type TextMatch } from '@/lib/jsonSearchHighlight';
 
@@ -77,6 +107,52 @@ interface JsonFieldMapperProps {
 
 function newRegionId(): string {
   return `r_${Math.random().toString(36).slice(2, 12)}`;
+}
+
+function mergeFieldTypeDisplayOrder(
+  prev: string[],
+  fieldTypes: ConsultationFieldType[],
+): string[] {
+  const all = fieldTypes.map((ft) => ft.key);
+  const set = new Set(all);
+  const next = prev.filter((k) => set.has(k));
+  for (const k of all) {
+    if (!next.includes(k)) next.push(k);
+  }
+  return next;
+}
+
+/** Reordena `mappings` para que tipos apareçam na ordem de `typeOrder` (preview / coluna Tipos). */
+function reorderMappingsByTypeOrder(mappings: FieldMapping[], typeOrder: string[]): FieldMapping[] {
+  const byType = new Map<string, FieldMapping[]>();
+  for (const m of mappings) {
+    const list = byType.get(m.fieldTypeKey) ?? [];
+    list.push(m);
+    byType.set(m.fieldTypeKey, list);
+  }
+  const out: FieldMapping[] = [];
+  for (const k of typeOrder) {
+    const list = byType.get(k);
+    if (list) {
+      out.push(...list);
+      byType.delete(k);
+    }
+  }
+  byType.forEach((list) => {
+    out.push(...list);
+  });
+  return out;
+}
+
+function compareRegionsByPanelOrder(
+  a: MappedRegion,
+  b: MappedRegion,
+  rank: Map<string, number>,
+): number {
+  const ra = rank.get(a.fieldTypeKey) ?? 99999;
+  const rb = rank.get(b.fieldTypeKey) ?? 99999;
+  if (ra !== rb) return ra - rb;
+  return a.regionId.localeCompare(b.regionId);
 }
 
 function parseJsonSections(jsonStr: string): { lines: string[]; sections: JsonSection[] } {
@@ -330,6 +406,40 @@ const LINE_HEIGHT = 24; // px por linha (alinhado a text-sm / leading-6)
 const PREVIEW_LINE_HEIGHT = 24; // min-h-[1.5rem] no canvas de preview
 const REGION_DRAG_THRESHOLD_PX = 5; // evita confundir clique de seleção com arraste
 
+/** Centraliza (ou ancora no topo) o intervalo de linhas no viewport do JSON de retorno — mede o DOM real. */
+function scrollRetornoRangeIntoViewDom(root: HTMLDivElement, startLine: number, endLine: number) {
+  const lo = Math.min(startLine, endLine);
+  const hi = Math.max(startLine, endLine);
+  const startEl = root.querySelector<HTMLElement>(`[data-json-mapper-line="${lo}"]`);
+  if (!startEl) return;
+  const endEl = root.querySelector<HTMLElement>(`[data-json-mapper-line="${hi}"]`) ?? startEl;
+  const pad = 8;
+  const rootRect = root.getBoundingClientRect();
+  const top = startEl.getBoundingClientRect().top - rootRect.top + root.scrollTop;
+  const bottom = endEl.getBoundingClientRect().bottom - rootRect.top + root.scrollTop;
+  const viewH = root.clientHeight;
+  const blockH = bottom - top;
+  let nextTop: number;
+  if (blockH > viewH - 2 * pad) {
+    nextTop = top - pad;
+  } else {
+    const mid = (top + bottom) / 2;
+    nextTop = Math.round(Math.max(0, Math.min(mid - viewH / 2, root.scrollHeight - viewH)));
+  }
+  root.scrollTop = nextTop;
+
+  const rootRect2 = root.getBoundingClientRect();
+  const rStart = startEl.getBoundingClientRect();
+  const rEnd = endEl.getBoundingClientRect();
+  const left = Math.min(rStart.left, rEnd.left) - rootRect2.left + root.scrollLeft;
+  const right = Math.max(rStart.right, rEnd.right) - rootRect2.left + root.scrollLeft;
+  const viewW = root.clientWidth;
+  let sl = root.scrollLeft;
+  if (left < sl + pad) sl = left - pad;
+  else if (right > sl + viewW - pad) sl = right - viewW + pad;
+  root.scrollLeft = Math.max(0, sl);
+}
+
 const SENTINEL_EMPTY = '__empty__';
 
 function cellToSuggestionString(val: unknown): string {
@@ -508,58 +618,6 @@ function collectFilterSuggestionsForMappedRegions(
   };
 }
 
-function parsePreviewPartText(text: string): unknown {
-  const t = text.trim();
-  if (!t || t === '—') return null;
-  try {
-    return JSON.parse(t) as unknown;
-  } catch {
-    return t;
-  }
-}
-
-function collectValuesAtPath(value: unknown, path: string): unknown[] {
-  const parts = path.split('.').filter(Boolean);
-  if (parts.length === 0) return [];
-
-  const walk = (node: unknown, index: number): unknown[] => {
-    if (node == null) return [];
-    if (index >= parts.length) return [node];
-    if (Array.isArray(node)) {
-      return node.flatMap((item) => walk(item, index));
-    }
-    if (typeof node !== 'object') return [];
-    const next = getRecordPropertyCI(node as Record<string, unknown>, parts[index]!);
-    if (next === undefined) return [];
-    return walk(next, index + 1);
-  };
-
-  return walk(value, 0);
-}
-
-/** Preview: objetos só com arrays do mesmo tamanho viram lista de linhas (cada índice = uma ocorrência). */
-function zipAlignedMappedPreviewRows(obj: Record<string, unknown>): unknown {
-  const arrayEntries: [string, unknown[]][] = [];
-  const scalars: Record<string, unknown> = {};
-  for (const [k, v] of Object.entries(obj)) {
-    if (Array.isArray(v)) arrayEntries.push([k, v]);
-    else scalars[k] = v;
-  }
-  if (arrayEntries.length < 2) return obj;
-  const lengths = arrayEntries.map(([, a]) => a.length);
-  const n = lengths[0]!;
-  if (n === 0 || lengths.some(len => len !== n)) return obj;
-  const rows: Record<string, unknown>[] = [];
-  for (let i = 0; i < n; i += 1) {
-    const row: Record<string, unknown> = { ...scalars };
-    for (const [k, arr] of arrayEntries) {
-      row[k] = arr[i];
-    }
-    rows.push(row);
-  }
-  return rows;
-}
-
 function summarizeTypeItemCriteria(config: TypeItemFilterConfig): string {
   const groups = getActiveTypeItemFilterGroups(normalizeTypeItemFilterConfig(config));
   const bits: string[] = [];
@@ -579,11 +637,36 @@ function summarizeTypeItemCriteria(config: TypeItemFilterConfig): string {
   return bits.join(' · ');
 }
 
-/** Uma entrada por linha da origem; não remove repetidos (origem/contrato repetem entre linhas). */
-function normalizeMappedFieldValue(values: unknown[]): unknown {
-  if (values.length === 0) return null;
-  if (values.length === 1) return values[0];
-  return values;
+function SortableTypeCardShell({
+  typeKey,
+  children,
+}: {
+  typeKey: string;
+  children: (shell: {
+    setNodeRef: (el: HTMLDivElement | null) => void;
+    style: CSSProperties;
+    dragAttributes: Record<string, unknown>;
+    dragListeners: Record<string, unknown> | undefined;
+    isDragging: boolean;
+  }) => ReactNode;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: typeKey });
+  const style: CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.72 : 1,
+  };
+  return (
+    <>
+      {children({
+        setNodeRef,
+        style,
+        dragAttributes: attributes as unknown as Record<string, unknown>,
+        dragListeners: listeners as unknown as Record<string, unknown> | undefined,
+        isDragging,
+      })}
+    </>
+  );
 }
 
 export default function JsonFieldMapper({
@@ -636,6 +719,36 @@ export default function JsonFieldMapper({
   onMappingsChangeRef.current = onMappingsChange;
   /** Atualizado em todo dragover; o drop usa isto para não perder a seção (state/React 18 ou dragleave). */
   const hoveredSectionRef = useRef<JsonSection | null>(null);
+  const pendingRetornoRevealRef = useRef<{ startLine: number; endLine: number } | null>(null);
+  const [retornoNavigateSeq, setRetornoNavigateSeq] = useState(0);
+  const [fieldTypeDisplayOrder, setFieldTypeDisplayOrder] = useState<string[]>(() =>
+    fieldTypes.map((ft) => ft.key),
+  );
+
+  const typeReorderSensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
+
+  const mappingTypeKeysSig = useMemo(
+    () => mappings.map((m) => m.fieldTypeKey).join('\u0001'),
+    [mappings],
+  );
+
+  useEffect(() => {
+    setFieldTypeDisplayOrder((prev) => {
+      const merged = mergeFieldTypeDisplayOrder(prev, fieldTypes);
+      const orderFromMappings: string[] = [];
+      const seen = new Set<string>();
+      for (const m of mappings) {
+        if (!seen.has(m.fieldTypeKey)) {
+          seen.add(m.fieldTypeKey);
+          orderFromMappings.push(m.fieldTypeKey);
+        }
+      }
+      if (orderFromMappings.length === 0) return merged;
+      const rest = merged.filter((k) => !seen.has(k));
+      return [...orderFromMappings, ...rest];
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- `mappings` alinhado a `mappingTypeKeysSig` (evita loop por referência)
+  }, [fieldTypes, mappingTypeKeysSig]);
 
   useEffect(() => {
     setEditBuffer(json);
@@ -875,6 +988,11 @@ export default function JsonFieldMapper({
         return next;
       });
       setSelectedRegion(fieldTypeKey);
+      pendingRetornoRevealRef.current = {
+        startLine: section.startLine,
+        endLine: section.endLine,
+      };
+      setRetornoNavigateSeq((n) => n + 1);
     },
     [syncMappings],
   );
@@ -1040,17 +1158,62 @@ export default function JsonFieldMapper({
     [lines],
   );
 
-  const typeKeysInOrder = useMemo(() => {
-    const seen = new Set<string>();
-    const order: string[] = [];
-    for (const r of displayRegions) {
-      if (!seen.has(r.fieldTypeKey)) {
-        seen.add(r.fieldTypeKey);
-        order.push(r.fieldTypeKey);
-      }
-    }
-    return order;
-  }, [displayRegions]);
+  const typePanelRank = useMemo(() => {
+    const m = new Map<string, number>();
+    fieldTypeDisplayOrder.forEach((k, i) => m.set(k, i));
+    return m;
+  }, [fieldTypeDisplayOrder]);
+
+  const mappedTypeKeySet = useMemo(
+    () => new Set(displayRegions.map((r) => r.fieldTypeKey)),
+    [displayRegions],
+  );
+
+  const typeKeysInOrder = useMemo(
+    () => fieldTypeDisplayOrder.filter((k) => mappedTypeKeySet.has(k)),
+    [fieldTypeDisplayOrder, mappedTypeKeySet],
+  );
+
+  const sortedFieldTypesForPanel = useMemo(() => {
+    const byKey = new Map(fieldTypes.map((ft) => [ft.key, ft]));
+    return fieldTypeDisplayOrder
+      .map((k) => byKey.get(k))
+      .filter((ft): ft is ConsultationFieldType => Boolean(ft));
+  }, [fieldTypeDisplayOrder, fieldTypes]);
+
+  const handleTypesPanelDragEnd = useCallback(
+    (event: DragEndEvent) => {
+      const { active, over } = event;
+      if (!over || active.id === over.id) return;
+      const a = String(active.id);
+      const o = String(over.id);
+      const oldIndex = fieldTypeDisplayOrder.indexOf(a);
+      const newIndex = fieldTypeDisplayOrder.indexOf(o);
+      if (oldIndex < 0 || newIndex < 0) return;
+      const nextOrder = arrayMove(fieldTypeDisplayOrder, oldIndex, newIndex);
+      setFieldTypeDisplayOrder(nextOrder);
+      const mapped = new Set(displayRegions.map((r) => r.fieldTypeKey));
+      const previewKeys = nextOrder.filter((k) => mapped.has(k));
+      onMappingsChange(reorderMappingsByTypeOrder(mappings, previewKeys));
+    },
+    [fieldTypeDisplayOrder, displayRegions, mappings, onMappingsChange],
+  );
+
+  const handlePreviewMappedTypeReorder = useCallback(
+    (fromKey: string, toKey: string) => {
+      if (fromKey === toKey) return;
+      const keys = [...fieldTypeDisplayOrder];
+      const fi = keys.indexOf(fromKey);
+      const ti = keys.indexOf(toKey);
+      if (fi < 0 || ti < 0) return;
+      const nextOrder = arrayMove(keys, fi, ti);
+      setFieldTypeDisplayOrder(nextOrder);
+      const mapped = new Set(displayRegions.map((r) => r.fieldTypeKey));
+      const previewKeys = nextOrder.filter((k) => mapped.has(k));
+      onMappingsChange(reorderMappingsByTypeOrder(mappings, previewKeys));
+    },
+    [fieldTypeDisplayOrder, displayRegions, mappings, onMappingsChange],
+  );
 
   const suggestionsByType = useMemo(() => {
     const keys = [...new Set(displayRegions.map(r => r.fieldTypeKey))];
@@ -1089,7 +1252,8 @@ export default function JsonFieldMapper({
     const keyToMeta = new Map<string, LineGutterMeta>();
     const rowInfo = new Map<string, { rows: Record<string, unknown>[]; dedupKeys: string[] }>();
 
-    for (const row of previewByType) {
+    for (let pi = 0; pi < previewByType.length; pi++) {
+      const row = previewByType[pi]!;
       const filters =
         openFilterTypeKey === row.fieldTypeKey
           ? (draftTypeFilters[row.fieldTypeKey] ?? typeFilters[row.fieldTypeKey])
@@ -1103,7 +1267,13 @@ export default function JsonFieldMapper({
           const fieldDef = fieldsById.get(mapping.reportFieldId);
           const baseKey = fieldDef?.key
             ?? slugifyReportFieldKey(mapping.reportFieldLabel || mapping.reportFieldId || 'campo');
-          const values = parsedParts.flatMap((partValue) => collectValuesAtPath(partValue, mapping.jsonPath));
+          const trecho = mapping.sourceTrechoPath?.trim() ?? '';
+          const values = row.parts.flatMap((part, idx) => {
+            const partValue = parsedParts[idx];
+            if (partValue == null) return [];
+            if (trecho.length > 0 && part.path !== trecho) return [];
+            return collectValuesAtPath(partValue, mapping.jsonPath);
+          });
           return {
             baseKey,
             value: formatMappedPreviewValue(
@@ -1113,19 +1283,29 @@ export default function JsonFieldMapper({
             reportFieldId: mapping.reportFieldId,
           };
         });
+      const computedFieldRows = buildComputedPreviewRows({
+        fieldType: row.ft,
+        filterCfg,
+        parsedParts,
+        partPaths: row.parts.map((p) => p.path),
+      });
+      const allFieldRows = [...mappedFieldRows, ...computedFieldRows];
       const colors = getColors(row.ft.color);
       keyToMeta.set(row.fieldTypeKey, {
         barClass: colors.solid,
         title: `${row.ft.label} · tipo ${row.ft.key}`,
         sectionBadgeLabel: row.ft.label,
         sectionBadgeIcon: row.ft.icon,
+        sectionTypeKey: row.fieldTypeKey,
+        sectionBadgeOrdinal: pi + 1,
+        sectionBadgeStackZ: 28 + pi,
         sessionWashClass: colors.sessionWash,
       });
-      const displayFieldKeys = dedupeReportFieldKeys(mappedFieldRows.map((item) => item.baseKey));
+      const displayFieldKeys = dedupeReportFieldKeys(allFieldRows.map((item) => item.baseKey));
       const dedupFieldIdSet = new Set(filterCfg.dedupFieldIds);
       const block: Record<string, unknown> = {};
       const dedupDisplayKeys: string[] = [];
-      mappedFieldRows.forEach((fieldRow, index) => {
+      allFieldRows.forEach((fieldRow, index) => {
         const displayKey = displayFieldKeys[index]!;
         block[displayKey] = fieldRow.value;
         if (dedupFieldIdSet.has(fieldRow.reportFieldId)) {
@@ -1148,11 +1328,22 @@ export default function JsonFieldMapper({
     }
 
     const duplicateRowsByType = computeGlobalDuplicateRowIndicesByType(typeKeysInOrder, rowInfo);
+    const dedupFieldKeysByType = new Map<string, Set<string>>();
+    rowInfo.forEach((info, typeKey) => {
+      if (info.dedupKeys.length > 0) {
+        dedupFieldKeysByType.set(typeKey, new Set(info.dedupKeys));
+      }
+    });
     const byTypeExport = buildByTypeWithGlobalDedupRemoved(byType, typeKeysInOrder, rowInfo);
 
     const jsonText = JSON.stringify(byType, null, 2);
     const jsonTextForExport = JSON.stringify(byTypeExport, null, 2);
-    const lineMeta = computeJsonLineGutterMeta(jsonText, keyToMeta, duplicateRowsByType);
+    const lineMeta = computeJsonLineGutterMeta(
+      jsonText,
+      keyToMeta,
+      duplicateRowsByType,
+      dedupFieldKeysByType,
+    );
     return { jsonText, jsonTextForExport, lineMeta };
   }, [
     previewByType,
@@ -1239,15 +1430,34 @@ export default function JsonFieldMapper({
     if (!m) return;
     const run = () => {
       const el = jsonViewScrollRef.current;
-      if (el) {
-        const lh = LINE_HEIGHT;
-        el.scrollTop = Math.round(Math.max(0, m.line * lh - el.clientHeight / 2 + lh / 2));
-      }
+      if (el) scrollRetornoRangeIntoViewDom(el, m.line, m.line);
     };
     run();
     const t = requestAnimationFrame(run);
     return () => cancelAnimationFrame(t);
   }, [isEditing, retornoSafeIdx, retornoSearch, retornoMatches]);
+
+  /** Clique na coluna Tipos (ou badge): scroll após commit — evita corrida com rAF e usa alturas reais das linhas. */
+  useLayoutEffect(() => {
+    const p = pendingRetornoRevealRef.current;
+    pendingRetornoRevealRef.current = null;
+    if (!p || isEditing) return;
+    const { startLine, endLine } = p;
+    const apply = () => {
+      const root = jsonViewScrollRef.current;
+      if (root) scrollRetornoRangeIntoViewDom(root, startLine, endLine);
+    };
+    apply();
+    let innerRaf = 0;
+    const outerRaf = requestAnimationFrame(() => {
+      apply();
+      innerRaf = requestAnimationFrame(apply);
+    });
+    return () => {
+      cancelAnimationFrame(outerRaf);
+      cancelAnimationFrame(innerRaf);
+    };
+  }, [retornoNavigateSeq, isEditing]);
 
   useEffect(() => {
     const q = previewSearch.trim();
@@ -1297,6 +1507,14 @@ export default function JsonFieldMapper({
       return (cur + 1) % n;
     });
   }, [previewMatches.length]);
+
+  const queueRetornoReveal = useCallback((startLine: number, endLine: number) => {
+    pendingRetornoRevealRef.current = {
+      startLine: Math.min(startLine, endLine),
+      endLine: Math.max(startLine, endLine),
+    };
+    setRetornoNavigateSeq((n) => n + 1);
+  }, []);
 
   const copyRetornoJson = useCallback(async () => {
     const text = activeJson.trim() || '{}';
@@ -1427,6 +1645,15 @@ export default function JsonFieldMapper({
                     const primaryColors = ft ? getColors(ft.color) : null;
                     const startsOnLine = displayRegions.filter(r => r.startLine === i);
                     const endsOnLine = displayRegions.filter(r => r.endLine === i);
+                    const orderedRegionsOnLine = [...regionsOnLine].sort((a, b) =>
+                      compareRegionsByPanelOrder(a, b, typePanelRank),
+                    );
+                    const orderedStartsOnLine = [...startsOnLine].sort((a, b) =>
+                      compareRegionsByPanelOrder(a, b, typePanelRank),
+                    );
+                    const orderedEndsOnLine = [...endsOnLine].sort((a, b) =>
+                      compareRegionsByPanelOrder(a, b, typePanelRank),
+                    );
                     const dragHoverLine =
                       hoveredSection && draggedType
                       && i >= hoveredSection.startLine && i <= hoveredSection.endLine;
@@ -1441,6 +1668,7 @@ export default function JsonFieldMapper({
                     return (
                       <div
                         key={i}
+                        data-json-mapper-line={i}
                         className={`flex w-max min-w-full items-stretch text-sm font-mono leading-6 transition-colors duration-75 relative hover:bg-accent/20 ${regionsOnLine.length ? 'cursor-grab active:cursor-grabbing' : ''} ${leftBorder}`}
                         style={{ height: LINE_HEIGHT }}
                         onDragOver={e => handleLineDragOver(e, i)}
@@ -1461,13 +1689,14 @@ export default function JsonFieldMapper({
                         }}
                       >
                         <div className="absolute inset-0 pointer-events-none z-0" aria-hidden>
-                          {regionsOnLine.map(r => {
+                          {orderedRegionsOnLine.map((r, hIdx) => {
                             const rft = fieldTypes.find(f => f.key === r.fieldTypeKey);
                             const c = getColors(rft?.color || 'primary');
                             return (
                               <div
                                 key={r.regionId}
                                 className={`absolute inset-0 ${c.highlightLayer}`}
+                                style={{ zIndex: hIdx + 1 }}
                               />
                             );
                           })}
@@ -1480,27 +1709,27 @@ export default function JsonFieldMapper({
                           )}
                         </div>
 
-                        {startsOnLine.map((r, idx) => {
+                        {orderedStartsOnLine.map((r, idx) => {
                           const rft = fieldTypes.find(f => f.key === r.fieldTypeKey);
                           const c = getColors(rft?.color || 'primary');
                           return (
                             <div
                               key={`${r.regionId}-resize-start`}
                               data-json-mapper-resize="start"
-                              className={`absolute left-10 right-2 h-[3px] cursor-ns-resize z-20 ${c.solid} opacity-40 hover:opacity-80 transition-opacity`}
+                              className={`absolute left-10 right-[13.5rem] h-[3px] cursor-ns-resize z-[12] ${c.solid} opacity-40 hover:opacity-80 transition-opacity`}
                               style={{ top: idx * 4 }}
                               onMouseDown={e => handleEdgeMouseDown(e, r.regionId, 'start')}
                             />
                           );
                         })}
-                        {endsOnLine.map((r, idx) => {
+                        {orderedEndsOnLine.map((r, idx) => {
                           const rft = fieldTypes.find(f => f.key === r.fieldTypeKey);
                           const c = getColors(rft?.color || 'primary');
                           return (
                             <div
                               key={`${r.regionId}-resize-end`}
                               data-json-mapper-resize="end"
-                              className={`absolute left-10 right-2 h-[3px] cursor-ns-resize z-20 ${c.solid} opacity-40 hover:opacity-80 transition-opacity`}
+                              className={`absolute left-10 right-[13.5rem] h-[3px] cursor-ns-resize z-[12] ${c.solid} opacity-40 hover:opacity-80 transition-opacity`}
                               style={{ bottom: idx * 4 }}
                               onMouseDown={e => handleEdgeMouseDown(e, r.regionId, 'end')}
                             />
@@ -1510,32 +1739,40 @@ export default function JsonFieldMapper({
                         <span className="relative z-10 w-10 text-right pr-2 text-muted-foreground/40 select-none flex-shrink-0 border-r border-border/40 text-xs leading-6 tabular-nums">
                           {i + 1}
                         </span>
-                        <div className="relative z-10 flex min-h-0 flex-1 items-center">
+                        <div className="relative z-[18] flex min-h-0 flex-1 items-center">
                           <pre className="px-2 pr-24 whitespace-pre text-foreground/90 leading-6">
                             {retornoSearch.trim()
                               ? renderRetornoLineWithMatches(line, i, retornoMatches, retornoSafeIdx)
                               : line || ' '}
                           </pre>
-                          {startsOnLine.length > 0 && (
+                          {orderedStartsOnLine.length > 0 && (
                             <div
-                              className="pointer-events-auto sticky right-1 ml-auto flex max-w-[18rem] shrink-0 flex-row flex-nowrap items-center justify-end gap-1 rounded-l-full bg-gradient-to-l from-background via-background/95 to-transparent pl-3 pr-1"
+                              className="pointer-events-auto sticky right-1 z-[32] ml-auto flex max-w-[18rem] shrink-0 flex-row flex-nowrap items-center justify-end gap-1 rounded-l-full bg-gradient-to-l from-background via-background/95 to-transparent pl-3 pr-1 shadow-sm"
                               data-json-mapper-badge-stack
                             >
-                              {startsOnLine.map(r => {
+                              {orderedStartsOnLine.map((r) => {
                                 const rft = fieldTypes.find(f => f.key === r.fieldTypeKey);
                                 if (!rft) return null;
                                 const c = getColors(rft.color);
+                                const ord = typeKeysInOrder.indexOf(r.fieldTypeKey);
+                                const stackZ = 34 + Math.max(0, ord);
                                 return (
                                   <Badge
                                     key={r.regionId}
                                     data-json-mapper-badge
                                     variant="outline"
-                                    className={`text-[10px] h-5 max-w-[8.5rem] shrink-0 cursor-pointer rounded-full border ${c.border} ${c.text} bg-background/95 font-medium gap-0.5 shadow-sm`}
+                                    className={`relative text-[10px] h-5 max-w-[8.5rem] shrink-0 cursor-pointer rounded-full border ${c.border} ${c.text} bg-background/95 font-medium gap-0.5 shadow-sm`}
+                                    style={{ zIndex: stackZ }}
                                     onClick={(e) => {
                                       e.stopPropagation();
                                       setSelectedRegion(r.fieldTypeKey === selectedRegion ? null : r.fieldTypeKey);
                                     }}
                                   >
+                                    {ord >= 0 ? (
+                                      <span className="shrink-0 tabular-nums text-[9px] font-semibold opacity-80">
+                                        {ord + 1}.
+                                      </span>
+                                    ) : null}
                                     <FieldIcon icon={rft.icon} className="w-2.5 h-2.5 shrink-0" />
                                     <span className="truncate">{rft.label}</span>
                                   </Badge>
@@ -1625,97 +1862,124 @@ export default function JsonFieldMapper({
               </span>
             </div>
             <ScrollArea className="flex-1 min-h-0 min-w-0">
-              <div className="space-y-2 py-1.5 pl-1.5 pr-4 pb-1.5">
-                {fieldTypes.map(ft => {
-                  const colors = getColors(ft.color);
-                  const regionsForType = displayRegions.filter(r => r.fieldTypeKey === ft.key);
-                  const isMapped = regionsForType.length > 0;
-                  const suggest = suggestionsByType[ft.key] ?? {
-                    fields: [],
-                    valuesByField: {},
-                    allValues: [],
-                    allPaths: [],
-                    jsonFieldSelectGroups: [],
-                  };
-                  const filterConfig = openFilterTypeKey === ft.key
-                    ? (draftTypeFilters[ft.key] ?? typeFilters[ft.key] ?? emptyTypeItemFilterConfig())
-                    : (typeFilters[ft.key] ?? emptyTypeItemFilterConfig());
-                  const activeCriteriaCount = countActiveTypeItemRules(filterConfig);
-                  const criteriaSummary = summarizeTypeItemCriteria(filterConfig);
+              <DndContext sensors={typeReorderSensors} collisionDetection={closestCenter} onDragEnd={handleTypesPanelDragEnd}>
+                <SortableContext items={sortedFieldTypesForPanel.map((t) => t.key)} strategy={verticalListSortingStrategy}>
+                  <div className="space-y-2 py-1.5 pl-1.5 pr-4 pb-1.5">
+                    {sortedFieldTypesForPanel.map((ft) => {
+                      const colors = getColors(ft.color);
+                      const regionsForType = displayRegions.filter(r => r.fieldTypeKey === ft.key);
+                      const isMapped = regionsForType.length > 0;
+                      const suggest = suggestionsByType[ft.key] ?? {
+                        fields: [],
+                        valuesByField: {},
+                        allValues: [],
+                        allPaths: [],
+                        jsonFieldSelectGroups: [],
+                      };
+                      const filterConfig = openFilterTypeKey === ft.key
+                        ? (draftTypeFilters[ft.key] ?? typeFilters[ft.key] ?? emptyTypeItemFilterConfig())
+                        : (typeFilters[ft.key] ?? emptyTypeItemFilterConfig());
+                      const activeCriteriaCount = countActiveTypeItemRules(filterConfig);
+                      const criteriaSummary = summarizeTypeItemCriteria(filterConfig);
 
-                  return (
-                    <div
-                      key={ft.key}
-                      draggable
-                      onDragStart={e => {
-                        setDraggedType(ft);
-                        e.dataTransfer.effectAllowed = 'copy';
-                      }}
-                      onDragEnd={() => {
-                        hoveredSectionRef.current = null;
-                        setDraggedType(null);
-                        setHoveredSection(null);
-                      }}
-                      onClick={() => {
-                        setSelectedRegion(ft.key === selectedRegion ? null : ft.key);
-                      }}
-                      className={`
-                        rounded-md border text-sm transition-all
-                        ${isMapped
-                          ? `${colors.bg} ${colors.border} shadow-elevated cursor-pointer`
-                          : 'border-border/60 bg-background hover:border-primary/30 cursor-grab active:cursor-grabbing cursor-pointer'
-                        }
-                        ${selectedRegion === ft.key ? 'ring-1 ring-primary/40' : ''}
-                        ${draggedType?.key === ft.key ? 'opacity-70' : ''}
-                      `}
-                    >
-                      <div className="flex items-center gap-1.5 px-2.5 pt-2 pb-1">
-                        <GripVertical className="w-3.5 h-3.5 shrink-0 text-muted-foreground/40" />
-                        <div className={`flex h-5 w-5 shrink-0 items-center justify-center rounded ${colors.bg}`}>
-                          <FieldIcon icon={ft.icon} className={`w-3.5 h-3.5 ${colors.text}`} />
-                        </div>
-                        <span className="min-w-0 flex-1 truncate font-medium text-foreground">{ft.label}</span>
-                        {isMapped && (
-                          <>
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="icon"
-                              className="h-7 w-7 shrink-0 text-muted-foreground hover:text-foreground"
-                              onClick={e => {
-                                e.stopPropagation();
-                                openFilterDialog(ft.key);
+                      return (
+                        <SortableTypeCardShell key={ft.key} typeKey={ft.key}>
+                          {({ setNodeRef, style, dragAttributes, dragListeners, isDragging }) => (
+                            <div
+                              ref={setNodeRef}
+                              style={style}
+                              onClick={() => {
+                                const next = ft.key === selectedRegion ? null : ft.key;
+                                setSelectedRegion(next);
+                                if (next) {
+                                  const regs = displayRegions.filter((r) => r.fieldTypeKey === next);
+                                  if (regs.length > 0) {
+                                    const minS = Math.min(...regs.map((r) => r.startLine));
+                                    const maxE = Math.max(...regs.map((r) => r.endLine));
+                                    queueRetornoReveal(minS, maxE);
+                                  }
+                                }
                               }}
-                              aria-label="Configurar critérios do tipo"
+                              className={cn(
+                                'rounded-md border text-sm transition-all',
+                                isMapped
+                                  ? `${colors.bg} ${colors.border} shadow-elevated cursor-pointer`
+                                  : 'border-border/60 bg-background hover:border-primary/30 cursor-pointer',
+                                selectedRegion === ft.key ? 'ring-1 ring-primary/40' : '',
+                                draggedType?.key === ft.key ? 'opacity-70' : '',
+                                isDragging ? 'z-10 ring-2 ring-primary/25' : '',
+                              )}
                             >
-                              <Settings2 className="w-3.5 h-3.5" />
-                            </Button>
-                            {activeCriteriaCount > 0 && (
-                              <Badge variant="secondary" className="h-5 px-1.5 text-[10px]">
-                                {activeCriteriaCount}
-                              </Badge>
-                            )}
-                            <TypeCriteriaDialog
-                              open={openFilterTypeKey === ft.key}
-                              fieldType={ft}
-                              draftConfig={draftTypeFilters[ft.key] ?? filterConfig}
-                              suggestions={suggest}
-                              jsonFieldOptions={suggest.allPaths.length > 0 ? suggest.allPaths : allJsonKeys}
-                              jsonFieldSelectGroups={
-                                suggest.allPaths.length > 0
-                                  ? suggest.jsonFieldSelectGroups
-                                  : [{ header: 'Retorno', items: allJsonKeys.map((k) => ({ value: k, label: k })) }]
-                              }
-                              mappedRegionCount={regionsForType.length}
-                              onOpenChange={(open) => {
-                                if (open) openFilterDialog(ft.key);
-                                else closeFilterDialog(ft.key);
-                              }}
-                              onDraftChange={(nextConfig) => setDraftFiltersForType(ft.key, nextConfig)}
-                              onSave={() => saveFilterDialog(ft.key)}
-                            />
-                          </>
+                              <div className="flex items-center gap-1.5 px-2.5 pt-2 pb-1">
+                                <button
+                                  type="button"
+                                  className="flex h-7 w-6 shrink-0 cursor-grab items-center justify-center rounded text-muted-foreground hover:bg-muted/80 active:cursor-grabbing"
+                                  aria-label="Reordenar tipo (lista e preview JSON)"
+                                  {...dragAttributes}
+                                  {...dragListeners}
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  <GripVertical className="h-3.5 w-3.5 shrink-0 opacity-70" />
+                                </button>
+                                <div
+                                  draggable
+                                  onDragStart={(e) => {
+                                    e.stopPropagation();
+                                    setDraggedType(ft);
+                                    e.dataTransfer.effectAllowed = 'copy';
+                                  }}
+                                  onDragEnd={() => {
+                                    hoveredSectionRef.current = null;
+                                    setDraggedType(null);
+                                    setHoveredSection(null);
+                                  }}
+                                  onClick={(e) => e.stopPropagation()}
+                                  title="Arrastar para mapear no JSON de retorno"
+                                  className={cn(
+                                    'flex h-5 w-5 shrink-0 cursor-grab items-center justify-center rounded active:cursor-grabbing',
+                                    colors.bg,
+                                  )}
+                                >
+                                  <FieldIcon icon={ft.icon} className={`h-3.5 w-3.5 ${colors.text}`} />
+                                </div>
+                        <span className="min-w-0 flex-1 truncate font-medium text-foreground">{ft.label}</span>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7 shrink-0 text-muted-foreground hover:text-foreground"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            openFilterDialog(ft.key);
+                          }}
+                          aria-label="Mapeamento de campos e critérios do tipo"
+                        >
+                          <Settings2 className="w-3.5 h-3.5" />
+                        </Button>
+                        {activeCriteriaCount > 0 && (
+                          <Badge variant="secondary" className="h-5 px-1.5 text-[10px]">
+                            {activeCriteriaCount}
+                          </Badge>
                         )}
+                        <TypeCriteriaDialog
+                          open={openFilterTypeKey === ft.key}
+                          fieldType={ft}
+                          draftConfig={draftTypeFilters[ft.key] ?? filterConfig}
+                          suggestions={suggest}
+                          jsonFieldOptions={suggest.allPaths.length > 0 ? suggest.allPaths : allJsonKeys}
+                          jsonFieldSelectGroups={
+                            suggest.allPaths.length > 0
+                              ? suggest.jsonFieldSelectGroups
+                              : [{ header: 'Retorno', items: allJsonKeys.map((k) => ({ value: k, label: k })) }]
+                          }
+                          mappedRegionCount={regionsForType.length}
+                          onOpenChange={(open) => {
+                            if (open) openFilterDialog(ft.key);
+                            else closeFilterDialog(ft.key);
+                          }}
+                          onDraftChange={(nextConfig) => setDraftFiltersForType(ft.key, nextConfig)}
+                          onSave={() => saveFilterDialog(ft.key)}
+                        />
                         {isMapped && (
                           <button
                             type="button"
@@ -1736,7 +2000,12 @@ export default function JsonFieldMapper({
                             {regionsForType.map(r => (
                               <div
                                 key={r.regionId}
-                                className="rounded border border-border/60 bg-background/70 px-2 py-1"
+                                className="cursor-pointer rounded border border-border/60 bg-background/70 px-2 py-1 hover:bg-muted/40"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  if (selectedRegion !== ft.key) setSelectedRegion(ft.key);
+                                  queueRetornoReveal(r.startLine, r.endLine);
+                                }}
                               >
                                 <div className="flex items-center gap-1">
                                   <code
@@ -1804,10 +2073,14 @@ export default function JsonFieldMapper({
                           </div>
                         </>
                       )}
-                    </div>
-                  );
-                })}
-              </div>
+                            </div>
+                          )}
+                        </SortableTypeCardShell>
+                      );
+                    })}
+                  </div>
+                </SortableContext>
+              </DndContext>
             </ScrollArea>
           </div>
         </ResizablePanel>
@@ -1816,7 +2089,7 @@ export default function JsonFieldMapper({
 
         {/* RIGHT: Preview — dados unificados; duplicatas marcadas nas linhas */}
         <ResizablePanel defaultSize={28} minSize={18} className="min-h-0 min-w-[12rem]">
-          <div className="flex min-h-0 min-w-0 flex-col h-full">
+          <div className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden">
             <div className="flex shrink-0 items-center justify-between gap-2 px-3 h-9 border-b border-border bg-muted/40">
               <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-2 min-w-0">
                 <Eye className="w-4 h-4 shrink-0" /> Preview
@@ -1841,9 +2114,9 @@ export default function JsonFieldMapper({
                 </Button>
               </div>
             </div>
-            <ScrollArea className="flex-1 min-h-0 min-w-0">
+            <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
               {previewByType.length > 0 ? (
-                <div className="flex min-h-0 flex-col gap-2 p-2 pr-4">
+                <div className="flex min-h-0 min-w-0 flex-1 flex-col p-2">
                   <MappedJsonPreviewCanvas
                     jsonText={mappedPreviewPayload.jsonText}
                     lineMeta={mappedPreviewPayload.lineMeta}
@@ -1854,10 +2127,11 @@ export default function JsonFieldMapper({
                         : undefined
                     }
                     scrollBodyRef={previewScrollRef}
+                    onReorderMappedTypes={handlePreviewMappedTypeReorder}
                   />
                 </div>
               ) : (
-                <div className="flex h-full flex-col items-center justify-center p-4 text-center">
+                <div className="flex h-full min-h-0 flex-col items-center justify-center p-4 text-center">
                   <Move className="mb-2 h-6 w-6 text-muted-foreground/20" />
                   <p className="px-2 text-sm leading-relaxed text-muted-foreground">
                     Arraste um tipo para o JSON — o preview unifica os campos mapeados na configuração do tipo (chaves do
@@ -1865,7 +2139,7 @@ export default function JsonFieldMapper({
                   </p>
                 </div>
               )}
-            </ScrollArea>
+            </div>
             <div className="flex min-h-9 shrink-0 w-full min-w-0 border-t border-border bg-muted/30 px-2 py-1.5">
               <div className="flex min-w-0 flex-1 items-center gap-0.5 rounded-md border border-input bg-background pl-2 pr-1 shadow-sm">
                 <Search className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />

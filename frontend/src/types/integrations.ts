@@ -78,6 +78,23 @@ export interface TypeItemFieldMapping {
   reportFieldId: string;
   reportFieldLabel: string;
   jsonPath: string;
+  /** JsonPath do trecho no retorno (como no card). Quando definido, o preview só lê esse trecho no de-para. */
+  sourceTrechoPath?: string;
+}
+
+/** Agregação no trecho (soma/média/etc.) sobre valores de um campo já mapeado do tipo. */
+export type TypeComputedFieldOperator = 'sum' | 'avg' | 'min' | 'max' | 'count';
+
+/** Campo calculado persistido por consulta em `typeItemFilters` (não exige jsonPath). */
+export interface TypeComputedFieldDefinition {
+  id: string;
+  label: string;
+  /** Chave estável para o preview (slug). */
+  key: string;
+  dataType: ReportFieldDataType;
+  operator: TypeComputedFieldOperator;
+  /** `reportFieldId` de um campo do relatório do tipo (aba Tipos) usado como fonte. */
+  sourceReportFieldId: string;
 }
 
 export interface TypeItemFilterRule extends MappingItemFilter {
@@ -95,6 +112,8 @@ export interface TypeItemFilterConfig {
   groups: TypeItemFilterGroup[];
   fieldMappings: TypeItemFieldMapping[];
   dedupFieldIds: string[];
+  /** Campos calculados por agregação no trecho (preview e saída). */
+  computedFields?: TypeComputedFieldDefinition[];
 }
 
 export interface Provider {

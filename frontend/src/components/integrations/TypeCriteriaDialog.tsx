@@ -19,6 +19,7 @@ import type { LucideIcon } from 'lucide-react';
 import {
   Calendar,
   CalendarClock,
+  Calculator,
   DollarSign,
   Filter,
   GripVertical,
@@ -29,19 +30,25 @@ import {
   Plus,
   SplitSquareVertical,
   TableProperties,
+  Tag,
   ToggleLeft,
   Trash2,
   Type,
 } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { buildIntegrationsAdminUrl } from '@/lib/integrationsTabQuery';
 import type {
   ConsultationFieldType,
   MappingItemFilter,
   MappingItemFilterOp,
   ReportFieldDataType,
+  TypeComputedFieldDefinition,
+  TypeComputedFieldOperator,
   TypeItemFilterConfig,
   TypeItemFilterGroup,
   TypeItemFilterRule,
 } from '@/types/integrations';
+import { slugifyReportFieldKey } from '@/lib/reportFieldKeys';
 import { cn } from '@/lib/utils';
 import {
   createTypeItemFilterGroup,
@@ -79,9 +86,29 @@ const FILTER_OPS: { value: MappingItemFilterOp; label: string }[] = [
   { value: 'regex', label: 'regex' },
 ];
 
+const COMPUTED_OPS: { value: TypeComputedFieldOperator; label: string }[] = [
+  { value: 'sum', label: 'Soma' },
+  { value: 'avg', label: 'Média' },
+  { value: 'min', label: 'Mínimo' },
+  { value: 'max', label: 'Máximo' },
+  { value: 'count', label: 'Contagem' },
+];
+
+const REPORT_DATA_TYPE_OPTIONS: { value: ReportFieldDataType; label: string }[] = [
+  { value: 'numeric', label: 'Numérico' },
+  { value: 'currency', label: 'Moeda' },
+  { value: 'percent', label: 'Percentual' },
+  { value: 'text', label: 'Texto' },
+  { value: 'boolean', label: 'Booleano' },
+  { value: 'date', label: 'Data' },
+  { value: 'datetime', label: 'Data e hora' },
+  { value: 'document', label: 'Documento' },
+];
+
 const SENTINEL_EMPTY = '__empty__';
 const SENTINEL_FREE_FIELD = '__add_campo_livre__';
 const SENTINEL_FREE_VALUE = '__add_valor_livre__';
+const SENTINEL_FREE_JSON_PATH = '__add_json_path_livre__';
 
 /** Alinhado ao JsonFieldMapper: RS entre trecho e path relativo no `value` do Select. */
 const JSON_FIELD_TRECHO_REL_SEP = '\x1e';
@@ -92,16 +119,33 @@ function persistedJsonPathFromSelectValue(raw: string): string {
   return raw.slice(i + JSON_FIELD_TRECHO_REL_SEP.length);
 }
 
+function trechoHeaderFromSelectValue(raw: string): string | undefined {
+  const i = raw.indexOf(JSON_FIELD_TRECHO_REL_SEP);
+  if (i === -1) return undefined;
+  return raw.slice(0, i);
+}
+
 function findSelectValueForPersisted(
   persisted: string,
+  sourceTrecho: string | undefined,
   groups: { header: string; items: { value: string; label: string }[] }[],
 ): string | null {
+  const legacyMatches: string[] = [];
   for (const g of groups) {
     for (const it of g.items) {
-      if (it.label === persisted || persistedJsonPathFromSelectValue(it.value) === persisted) return it.value;
+      const rel = persistedJsonPathFromSelectValue(it.value);
+      if (rel !== persisted && it.label !== persisted) continue;
+      const headerFromValue = trechoHeaderFromSelectValue(it.value);
+      const effectiveTrecho = headerFromValue ?? g.header;
+      if (sourceTrecho != null && sourceTrecho !== '') {
+        if (effectiveTrecho === sourceTrecho) return it.value;
+      } else {
+        legacyMatches.push(it.value);
+      }
     }
   }
-  return null;
+  if (sourceTrecho != null && sourceTrecho !== '') return null;
+  return legacyMatches[0] ?? null;
 }
 
 /** Operador (condição) com largura fixa; campo e valor usam flex no JSX. */
@@ -198,6 +242,8 @@ export default function TypeCriteriaDialog({
   onSave: () => void;
 }) {
   const [uiModeByRule, setUiModeByRule] = useState<Record<string, { fieldList: boolean; valueList: boolean }>>({});
+  /** true = escolher path na lista (Select); false = path livre (Input), como critérios + Livre. */
+  const [pathListModeByReportFieldId, setPathListModeByReportFieldId] = useState<Record<string, boolean>>({});
   const [criteriaModalEl, setCriteriaModalEl] = useState<HTMLDivElement | null>(null);
   const dialogWasOpenRef = useRef(false);
   const sensors = useSensors(
@@ -213,6 +259,28 @@ export default function TypeCriteriaDialog({
     }
     const justOpened = !dialogWasOpenRef.current;
     dialogWasOpenRef.current = true;
+
+    const fields = [...(fieldType.reportFieldConfig?.fields ?? [])];
+    setPathListModeByReportFieldId((current) => {
+      const next: Record<string, boolean> = {};
+      for (const field of fields) {
+        const fieldMapping = draftConfig.fieldMappings.find((m) => m.reportFieldId === field.id);
+        const persistedPath = fieldMapping?.jsonPath?.trim() ?? '';
+        const sourceTrecho = fieldMapping?.sourceTrechoPath?.trim() || undefined;
+        if (!persistedPath) {
+          next[field.id] = justOpened || current[field.id] === undefined ? true : current[field.id]!;
+          continue;
+        }
+        const inList =
+          findSelectValueForPersisted(persistedPath, sourceTrecho, jsonFieldSelectGroups) != null;
+        if (justOpened || current[field.id] === undefined) {
+          next[field.id] = inList;
+        } else {
+          next[field.id] = current[field.id]!;
+        }
+      }
+      return next;
+    });
 
     const rules = draftConfig.groups.flatMap((group) => group.rules);
     setUiModeByRule((current) => {
@@ -238,7 +306,7 @@ export default function TypeCriteriaDialog({
       }
       return next;
     });
-  }, [open, draftConfig, suggestions]);
+  }, [open, draftConfig, suggestions, fieldType.reportFieldConfig, jsonFieldSelectGroups]);
 
   const reportFields = useMemo(
     () => [...(fieldType.reportFieldConfig?.fields ?? [])].sort((a, b) => a.sortOrder - b.sortOrder),
@@ -346,17 +414,70 @@ export default function TypeCriteriaDialog({
     });
   };
 
-  const upsertFieldMapping = (reportFieldId: string, reportFieldLabel: string, jsonPath: string) => {
+  const applyReportFieldJsonMapping = (
+    reportFieldId: string,
+    reportFieldLabel: string,
+    nextPath:
+      | { kind: 'clear' }
+      | { kind: 'select'; selectValue: string }
+      | { kind: 'freePath'; jsonPath: string },
+  ) => {
     const nextMappings = draftConfig.fieldMappings.filter((mapping) => mapping.reportFieldId !== reportFieldId);
     const nextDedupFieldIds = draftConfig.dedupFieldIds.filter((fieldId) => fieldId !== reportFieldId);
-    if (jsonPath !== SENTINEL_EMPTY) {
+    const prevId =
+      draftConfig.fieldMappings.find((mapping) => mapping.reportFieldId === reportFieldId)?.id
+      ?? `${reportFieldId}_${Date.now()}`;
+
+    if (nextPath.kind === 'clear') {
+      onDraftChange({
+        ...draftConfig,
+        fieldMappings: nextMappings,
+        dedupFieldIds: nextDedupFieldIds,
+      });
+      return;
+    }
+
+    if (nextPath.kind === 'select') {
+      if (nextPath.selectValue === SENTINEL_EMPTY) {
+        onDraftChange({
+          ...draftConfig,
+          fieldMappings: nextMappings,
+          dedupFieldIds: nextDedupFieldIds,
+        });
+        return;
+      }
+      const jsonPath = persistedJsonPathFromSelectValue(nextPath.selectValue);
+      const trecho = trechoHeaderFromSelectValue(nextPath.selectValue);
       nextMappings.push({
-        id: draftConfig.fieldMappings.find((mapping) => mapping.reportFieldId === reportFieldId)?.id ?? `${reportFieldId}_${Date.now()}`,
+        id: prevId,
         reportFieldId,
         reportFieldLabel,
         jsonPath,
+        ...(trecho != null && trecho !== '' ? { sourceTrechoPath: trecho } : {}),
       });
+      onDraftChange({
+        ...draftConfig,
+        fieldMappings: nextMappings,
+        dedupFieldIds: nextDedupFieldIds,
+      });
+      return;
     }
+
+    const trimmed = nextPath.jsonPath.trim();
+    if (!trimmed) {
+      onDraftChange({
+        ...draftConfig,
+        fieldMappings: nextMappings,
+        dedupFieldIds: nextDedupFieldIds,
+      });
+      return;
+    }
+    nextMappings.push({
+      id: prevId,
+      reportFieldId,
+      reportFieldLabel,
+      jsonPath: trimmed,
+    });
     onDraftChange({
       ...draftConfig,
       fieldMappings: nextMappings,
@@ -373,6 +494,42 @@ export default function TypeCriteriaDialog({
     onDraftChange({
       ...draftConfig,
       dedupFieldIds: nextDedupFieldIds,
+    });
+  };
+
+  const computedFields = draftConfig.computedFields ?? [];
+
+  const addComputedField = () => {
+    const id = `computed_${Math.random().toString(36).slice(2, 11)}`;
+    const defaultLabel = 'Campo calculado';
+    onDraftChange({
+      ...draftConfig,
+      computedFields: [
+        ...computedFields,
+        {
+          id,
+          label: defaultLabel,
+          key: slugifyReportFieldKey(defaultLabel),
+          dataType: 'numeric',
+          operator: 'sum',
+          sourceReportFieldId: reportFields[0]?.id ?? '',
+        },
+      ],
+    });
+  };
+
+  const patchComputedField = (computedId: string, patch: Partial<TypeComputedFieldDefinition>) => {
+    onDraftChange({
+      ...draftConfig,
+      computedFields: computedFields.map((c) => (c.id === computedId ? { ...c, ...patch } : c)),
+    });
+  };
+
+  const removeComputedField = (computedId: string) => {
+    onDraftChange({
+      ...draftConfig,
+      computedFields: computedFields.filter((c) => c.id !== computedId),
+      dedupFieldIds: draftConfig.dedupFieldIds.filter((fieldId) => fieldId !== computedId),
     });
   };
 
@@ -404,12 +561,28 @@ export default function TypeCriteriaDialog({
                   <p className="text-sm font-semibold leading-snug text-foreground">Mapeamento de Campos</p>
                 </div>
                 <p className="text-[11px] leading-snug text-muted-foreground">
-                  Campos do tipo — paths no trecho JSON mapeado.
+                  Escolha um path sugerido por trecho (como na lista Tipos) ou use &quot;+ Path livre&quot; para digitar o jsonPath.
                 </p>
               </div>
               {reportFields.length === 0 ? (
-                <div className="rounded-md border border-dashed border-border/60 bg-muted/10 px-3 py-4 text-center text-[11px] text-muted-foreground">
-                  Este tipo ainda não possui campos definidos.
+                <div className="rounded-md border border-dashed border-border/60 bg-muted/10 px-3 py-4 text-center">
+                  <p className="text-xs font-medium text-foreground">Nenhum campo de relatório neste tipo</p>
+                  <p className="mt-1 text-[11px] text-muted-foreground">
+                    O mapeamento associa cada coluna do relatório a um jsonPath no retorno. Defina os campos em Integrações,
+                    aba Tipos — selecione este tipo e configure &quot;Campos de relatório&quot;. Depois volte aqui para ligar
+                    cada campo ao JSON de exemplo.
+                  </p>
+                  <Button
+                    asChild
+                    variant="outline"
+                    size="sm"
+                    className="mt-3 h-7 gap-1 border-border/50 px-2.5 text-[11px] font-medium"
+                  >
+                    <Link to={buildIntegrationsAdminUrl('types')}>
+                      <Tag className="h-3 w-3" />
+                      Abrir Tipos canônicos
+                    </Link>
+                  </Button>
                 </div>
               ) : (
                 <div className="rounded-lg border border-border/50 bg-muted/10">
@@ -420,13 +593,18 @@ export default function TypeCriteriaDialog({
                   </div>
                   <div className="space-y-1 p-2">
                     {reportFields.map((field) => {
-                      const persistedPath =
-                        draftConfig.fieldMappings.find((mapping) => mapping.reportFieldId === field.id)?.jsonPath ?? '';
-                      const selected =
-                        !persistedPath
-                          ? SENTINEL_EMPTY
-                          : (findSelectValueForPersisted(persistedPath, jsonFieldSelectGroups) ?? persistedPath);
-                      const isMapped = Boolean(persistedPath);
+                      const fieldMapping = draftConfig.fieldMappings.find((mapping) => mapping.reportFieldId === field.id);
+                      const persistedPath = fieldMapping?.jsonPath ?? '';
+                      const sourceTrecho = fieldMapping?.sourceTrechoPath?.trim() || undefined;
+                      const pathListPref = pathListModeByReportFieldId[field.id] ?? true;
+                      const selectResolved =
+                        persistedPath.trim() === ''
+                          ? null
+                          : findSelectValueForPersisted(persistedPath, sourceTrecho, jsonFieldSelectGroups);
+                      const useSelectUi = pathListPref && (persistedPath.trim() === '' || selectResolved != null);
+                      const selectValue =
+                        persistedPath.trim() === '' ? SENTINEL_EMPTY : (selectResolved ?? SENTINEL_EMPTY);
+                      const isMapped = Boolean(persistedPath.trim());
                       const dedupChecked = isMapped && draftConfig.dedupFieldIds.includes(field.id);
                       return (
                         <div key={field.id} className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)_auto] items-center gap-2 rounded-md border border-border/50 bg-background/90 px-2 py-1.5">
@@ -467,20 +645,28 @@ export default function TypeCriteriaDialog({
                               </div>
                             </div>
                           </div>
+                          {useSelectUi ? (
                           <Select
-                            value={selected}
-                            onValueChange={(value) =>
-                              upsertFieldMapping(
-                                field.id,
-                                field.label,
-                                value === SENTINEL_EMPTY ? SENTINEL_EMPTY : persistedJsonPathFromSelectValue(value),
-                              )
-                            }
+                            value={selectValue}
+                            onValueChange={(value) => {
+                              if (value === SENTINEL_FREE_JSON_PATH) {
+                                setPathListModeByReportFieldId((c) => ({ ...c, [field.id]: false }));
+                                return;
+                              }
+                              if (value === SENTINEL_EMPTY) {
+                                applyReportFieldJsonMapping(field.id, field.label, { kind: 'clear' });
+                                return;
+                              }
+                              applyReportFieldJsonMapping(field.id, field.label, {
+                                kind: 'select',
+                                selectValue: value,
+                              });
+                            }}
                           >
                             <SelectTrigger className="h-8 border-border/50 bg-background text-[11px] [&_span]:font-mono [&_span]:text-[10px] [&_span]:text-muted-foreground">
                               <SelectValue placeholder="JSON…" />
                             </SelectTrigger>
-                            <SelectContent className="max-h-72">
+                            <SelectContent className="max-h-72 z-[200]">
                               <SelectItem value={SENTINEL_EMPTY} className="text-xs text-muted-foreground">
                                 Não mapear agora
                               </SelectItem>
@@ -501,8 +687,52 @@ export default function TypeCriteriaDialog({
                                   ))}
                                 </SelectGroup>
                               ))}
+                              <SelectItem value={SENTINEL_FREE_JSON_PATH} className="text-xs font-medium text-primary">
+                                + Path livre
+                              </SelectItem>
                             </SelectContent>
                           </Select>
+                          ) : (
+                          <div className="flex min-w-0 items-center gap-0.5">
+                            <Input
+                              value={persistedPath}
+                              onChange={(event) =>
+                                applyReportFieldJsonMapping(field.id, field.label, {
+                                  kind: 'freePath',
+                                  jsonPath: event.target.value,
+                                })
+                              }
+                              placeholder="jsonPath (ex: data.itens[0].nome)"
+                              className="h-8 min-w-0 flex-1 border-border/50 bg-background px-2 font-mono text-[10px]"
+                              spellCheck={false}
+                            />
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-7 shrink-0 px-0"
+                              onClick={() => {
+                                const sr = findSelectValueForPersisted(
+                                  persistedPath,
+                                  sourceTrecho,
+                                  jsonFieldSelectGroups,
+                                );
+                                if (sr != null || persistedPath.trim() === '') {
+                                  setPathListModeByReportFieldId((c) => ({ ...c, [field.id]: true }));
+                                  if (sr != null) {
+                                    applyReportFieldJsonMapping(field.id, field.label, {
+                                      kind: 'select',
+                                      selectValue: sr,
+                                    });
+                                  }
+                                }
+                              }}
+                              aria-label="Lista de campos JSON"
+                            >
+                              <List className="h-3.5 w-3.5" />
+                            </Button>
+                          </div>
+                          )}
                           <div className="flex items-center justify-center px-1">
                             <Checkbox
                               checked={dedupChecked}
@@ -516,6 +746,140 @@ export default function TypeCriteriaDialog({
                       );
                     })}
                   </div>
+
+                  <div className="space-y-2 border-t border-border/50 p-2">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <Calculator className="h-3.5 w-3.5 shrink-0 text-primary" aria-hidden />
+                        <p className="text-[11px] font-semibold text-foreground">Campos calculados</p>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="h-7 gap-1 border-border/50 px-2.5 text-[11px] font-medium"
+                        onClick={addComputedField}
+                        disabled={reportFields.length === 0}
+                      >
+                        <Plus className="h-3 w-3" />
+                        Adicionar campo calculado
+                      </Button>
+                    </div>
+                    <p className="text-[10px] leading-snug text-muted-foreground">
+                      Agrega valores do campo fonte em todos os itens do trecho (ex.: soma de <code className="font-mono">valor</code>).
+                      O tipo de saída define a formatação no preview (moeda, percentual, etc.).
+                    </p>
+                    {computedFields.length === 0 ? (
+                      <p className="text-[10px] italic text-muted-foreground">Nenhum campo calculado.</p>
+                    ) : (
+                      <div className="space-y-1">
+                        {computedFields.map((comp) => {
+                          const dedupChecked = draftConfig.dedupFieldIds.includes(comp.id);
+                          return (
+                            <div
+                              key={comp.id}
+                              className="grid grid-cols-1 gap-2 rounded-md border border-primary/25 bg-primary/[0.04] px-2 py-1.5 sm:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)_auto]"
+                            >
+                              <div className="flex min-w-0 flex-col gap-1">
+                                <Input
+                                  value={comp.label}
+                                  onChange={(e) => {
+                                    const label = e.target.value;
+                                    patchComputedField(comp.id, {
+                                      label,
+                                      key: slugifyReportFieldKey(label || 'campo'),
+                                    });
+                                  }}
+                                  placeholder="Nome (ex: total)"
+                                  className="h-8 border-border/50 bg-background px-2 text-xs"
+                                />
+                                <Select
+                                  value={comp.dataType}
+                                  onValueChange={(v) =>
+                                    patchComputedField(comp.id, { dataType: v as ReportFieldDataType })
+                                  }
+                                >
+                                  <SelectTrigger className="h-8 border-border/50 bg-background text-[11px]">
+                                    <SelectValue placeholder="Tipo de saída" />
+                                  </SelectTrigger>
+                                  <SelectContent className="z-[200]">
+                                    {REPORT_DATA_TYPE_OPTIONS.map((opt) => (
+                                      <SelectItem key={opt.value} value={opt.value} className="text-xs">
+                                        {opt.label}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                              <div className="flex min-w-0 flex-col gap-1 sm:flex-row sm:items-stretch">
+                                <Select
+                                  value={comp.operator}
+                                  onValueChange={(v) =>
+                                    patchComputedField(comp.id, { operator: v as TypeComputedFieldOperator })
+                                  }
+                                >
+                                  <SelectTrigger className="h-8 shrink-0 border-border/50 bg-background text-[11px] sm:w-[6.5rem]">
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent className="z-[200]">
+                                    {COMPUTED_OPS.map((op) => (
+                                      <SelectItem key={op.value} value={op.value} className="text-xs">
+                                        {op.label}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                                <Select
+                                  value={comp.sourceReportFieldId || SENTINEL_EMPTY}
+                                  onValueChange={(v) => {
+                                    if (v === SENTINEL_EMPTY) {
+                                      patchComputedField(comp.id, { sourceReportFieldId: '' });
+                                      return;
+                                    }
+                                    patchComputedField(comp.id, { sourceReportFieldId: v });
+                                  }}
+                                >
+                                  <SelectTrigger className="h-8 min-w-0 flex-1 border-border/50 bg-background text-[11px]">
+                                    <SelectValue placeholder="Campo fonte" />
+                                  </SelectTrigger>
+                                  <SelectContent className="max-h-60 z-[200]">
+                                    <SelectItem value={SENTINEL_EMPTY} className="text-xs text-muted-foreground">
+                                      Campo fonte…
+                                    </SelectItem>
+                                    {reportFields.map((f) => (
+                                      <SelectItem key={f.id} value={f.id} className="text-xs">
+                                        <span className="font-medium">{f.label || f.key}</span>
+                                        <span className="text-muted-foreground"> · {f.key}</span>
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                              <div className="flex items-center justify-end gap-0.5 sm:flex-col sm:justify-center">
+                                <Checkbox
+                                  checked={dedupChecked}
+                                  onCheckedChange={(value) => toggleDedupField(comp.id, value === true)}
+                                  aria-label={`Deduplicar por ${comp.label || 'campo calculado'}`}
+                                  className="h-4 w-4"
+                                />
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-8 w-8 shrink-0 text-muted-foreground hover:text-destructive"
+                                  onClick={() => removeComputedField(comp.id)}
+                                  aria-label="Remover campo calculado"
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </Button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+
                   {jsonFieldOptions.length === 0 && (
                     <div className="border-t border-border/50 px-2 py-2 text-[11px] leading-snug text-muted-foreground">
                       Nenhum campo no trecho. Ajuste o mapeamento do JSON.

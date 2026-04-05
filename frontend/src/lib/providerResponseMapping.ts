@@ -43,7 +43,7 @@ export function normalizeDedupFingerprintPart(value: unknown): string {
   return raw
     .toLowerCase()
     .replace(/r\$\s*/gi, '')
-    .replace(/\u00a0/g, ' ')
+    .replace(/[\u00a0\u202f\u2007\u2009]/g, ' ')
     .replace(/\s+/g, '')
     .replace(/\./g, '')
     .replace(/[/-]/g, '')
