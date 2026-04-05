@@ -24,6 +24,7 @@ import { PageHeader } from '@/components/shared/StatCard';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
+import { Switch } from '@/components/ui/switch';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -269,7 +270,7 @@ function ProviderModal({ open, onClose, provider, onSave, saving }: {
                 onCheckedChange={(v) => setForm((f) => ({ ...f, status: v === true ? 'active' : 'inactive' }))}
               />
               <Label htmlFor="provider-modal-ativo" className="cursor-pointer text-sm font-normal text-foreground">
-                Provedor ativo
+                Ativo
               </Label>
             </div>
           )}
@@ -1107,7 +1108,6 @@ export default function IntegrationsPage() {
 
   const [providerModal, setProviderModal] = useState<{ open: boolean; provider?: Provider }>({ open: false });
   const [fieldTypeModal, setFieldTypeModal] = useState<{ open: boolean; ft?: ConsultationFieldType }>({ open: false });
-  const [collapsedProviderIds, setCollapsedProviderIds] = useState<Set<string>>(() => new Set());
   const [togglingProviderStatusId, setTogglingProviderStatusId] = useState<string | null>(null);
   const [consultationPicker, setConsultationPicker] = useState<string | null>(null);
   const [newConsultationProviderId, setNewConsultationProviderId] = useState<string | undefined>(undefined);
@@ -1705,45 +1705,39 @@ export default function IntegrationsPage() {
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-2">
             {filteredProviders.map((prov, i) => {
               const provConsults = consultations.filter((c) => c.providerId === prov.id);
-              const isExpanded = !collapsedProviderIds.has(prov.id);
-              const toggleExpanded = () => {
-                setCollapsedProviderIds((prev) => {
-                  const next = new Set(prev);
-                  if (next.has(prov.id)) next.delete(prov.id);
-                  else next.add(prov.id);
-                  return next;
-                });
-              };
+              const isActive = prov.status === 'active';
 
               return (
                 <motion.div key={prov.id} initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.02 }} className="min-w-0">
-                  <div className="bg-card rounded-lg border border-border overflow-hidden h-full flex flex-col shadow-sm">
+                  <div
+                    className={`bg-card rounded-lg border border-border overflow-hidden h-full flex flex-col shadow-sm transition-[opacity,filter] ${
+                      isActive ? '' : 'opacity-[0.68] saturate-[0.55]'
+                    }`}
+                  >
                     <div className="border-b border-border/70">
-                      <div
-                        className="flex items-start gap-2.5 px-3 py-2.5 cursor-pointer hover:bg-accent/25 transition-colors duration-200"
-                        onClick={toggleExpanded}
-                        onKeyDown={(e) => e.key === 'Enter' && toggleExpanded()}
-                        role="button"
-                        tabIndex={0}
-                      >
+                      <div className="flex items-start gap-2.5 px-3 py-2.5">
                         <div
-                          className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-md ${prov.status === 'active' ? 'bg-emerald-500/10' : 'bg-muted'}`}
+                          className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-md ${isActive ? 'bg-emerald-500/10' : 'bg-muted'}`}
                         >
-                          <Server className={`h-3.5 w-3.5 ${prov.status === 'active' ? 'text-emerald-500' : 'text-muted-foreground'}`} />
+                          <Server className={`h-3.5 w-3.5 ${isActive ? 'text-emerald-500' : 'text-muted-foreground'}`} />
                         </div>
                         <div className="min-w-0 flex-1 space-y-0.5">
                           <span className={`${cardTitleCls} line-clamp-2 block leading-snug`}>{prov.name}</span>
                           <p className={`${metaMonoCls} truncate text-[11px] leading-tight text-muted-foreground`}>{prov.baseUrl}</p>
                         </div>
-                        <div className="flex shrink-0 items-start pt-1 text-muted-foreground">
-                          {isExpanded ? <ChevronDown className="h-4 w-4" aria-hidden /> : <ChevronRight className="h-4 w-4" aria-hidden />}
+                        <div className="flex shrink-0 items-center pt-0.5">
+                          <Switch
+                            size="sm"
+                            checked={isActive}
+                            disabled={togglingProviderStatusId === prov.id}
+                            onCheckedChange={(v) => {
+                              void persistProviderIsActive(prov.id, v);
+                            }}
+                            aria-label={isActive ? 'Desativar provedor' : 'Ativar provedor'}
+                          />
                         </div>
                       </div>
-                      <div
-                        className="flex flex-wrap items-center gap-x-2 gap-y-1 border-t border-border/40 px-3 py-2"
-                        onClick={(e) => e.stopPropagation()}
-                        onKeyDown={(e) => e.stopPropagation()}
-                      >
+                      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 border-t border-border/40 px-3 py-2">
                         <button
                           type="button"
                           className={`${linkActionCls} text-primary hover:text-primary/80`}
@@ -1779,102 +1773,79 @@ export default function IntegrationsPage() {
                         >
                           <Trash2 className="w-3.5 h-3.5" /> Remover
                         </button>
-                        <span className="text-border hidden sm:inline select-none" aria-hidden>
-                          ·
-                        </span>
-                        <div className="inline-flex items-center gap-2">
-                          <Checkbox
-                            id={`provider-ativo-${prov.id}`}
-                            checked={prov.status === 'active'}
-                            disabled={togglingProviderStatusId === prov.id}
-                            onCheckedChange={(v) => {
-                              void persistProviderIsActive(prov.id, v === true);
-                            }}
-                          />
-                          <Label
-                            htmlFor={`provider-ativo-${prov.id}`}
-                            className="cursor-pointer text-xs font-normal text-muted-foreground"
-                          >
-                            Provedor ativo
-                          </Label>
-                        </div>
                       </div>
                     </div>
 
-                    <AnimatePresence>
-                      {isExpanded && (
-                        <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden flex-1 flex flex-col min-h-0">
-                          <div className="flex flex-1 flex-col gap-2.5 px-3 pb-3 pt-2.5">
-                            <div className="grid grid-cols-1 gap-2">
-                              <div className="rounded-md border border-border/80 bg-muted/20 p-2">
-                                <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Saldo</p>
-                                <code className="break-all text-xs font-mono leading-relaxed text-foreground">{prov.balanceEndpoint || '—'}</code>
-                              </div>
-                              <div className="rounded-md border border-border/80 bg-muted/20 p-2">
-                                <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Recarga</p>
-                                <code className="break-all text-xs font-mono leading-relaxed text-foreground">{prov.rechargeEndpoint || '—'}</code>
-                              </div>
-                              <div className="rounded-md border border-border/80 bg-muted/20 p-2">
-                                <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Auth</p>
-                                <div className="flex flex-wrap items-center gap-1.5">
-                                  <span className="text-xs capitalize text-foreground">{prov.authType}</span>
-                                  <span className="text-[11px] text-muted-foreground">({prov.credentials.length})</span>
-                                </div>
-                              </div>
-                            </div>
-
-                            <div className="space-y-2">
-                              <div
-                                className="flex items-center justify-between gap-2 rounded-md border border-border/80 bg-muted/15 px-2.5 py-2"
-                                role="status"
-                                aria-label={`${provConsults.length} consultas cadastradas neste provedor`}
-                              >
-                                <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                                  Consultas cadastradas
-                                </span>
-                                <span className="flex items-center gap-1 tabular-nums text-sm font-medium text-foreground">
-                                  <Hash className="h-3 w-3 text-muted-foreground" aria-hidden />
-                                  {provConsults.length}
-                                </span>
-                              </div>
-                              {provConsults.length > 0 && (
-                                <div className="space-y-1" role="list">
-                                  {provConsults.map((pc) => (
-                                    <div
-                                      key={pc.id}
-                                      role="listitem"
-                                      className="flex items-center justify-between gap-1 rounded-md border border-border/80 bg-background px-2 py-1.5 transition-colors hover:border-primary/25 group"
-                                    >
-                                      <div className="flex min-w-0 flex-1 items-center gap-1.5">
-                                        <Database className="h-3.5 w-3.5 shrink-0 text-primary" aria-hidden />
-                                        <span className="truncate text-xs font-medium text-foreground">{pc.name}</span>
-                                        <code className="shrink-0 text-[10px] font-mono text-muted-foreground">{pc.externalId}</code>
-                                      </div>
-                                      <button
-                                        type="button"
-                                        className="shrink-0 rounded p-1 text-muted-foreground opacity-0 transition-opacity hover:text-destructive group-hover:opacity-100"
-                                        onClick={async () => {
-                                          try {
-                                            await deleteProductApi(accessToken, pc.id);
-                                            toast.success('Removida');
-                                            invalidateAll();
-                                          } catch {
-                                            toast.error('Não foi possível remover');
-                                          }
-                                        }}
-                                        aria-label={`Remover ${pc.name}`}
-                                      >
-                                        <Trash2 className="h-3.5 w-3.5" />
-                                      </button>
-                                    </div>
-                                  ))}
-                                </div>
-                              )}
+                    <div className="overflow-hidden flex-1 flex flex-col min-h-0">
+                      <div className="flex flex-1 flex-col gap-2.5 px-3 pb-3 pt-2.5">
+                        <div className="grid grid-cols-1 gap-2">
+                          <div className="rounded-md border border-border/80 bg-muted/20 p-2">
+                            <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Saldo</p>
+                            <code className="break-all text-xs font-mono leading-relaxed text-foreground">{prov.balanceEndpoint || '—'}</code>
+                          </div>
+                          <div className="rounded-md border border-border/80 bg-muted/20 p-2">
+                            <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Recarga</p>
+                            <code className="break-all text-xs font-mono leading-relaxed text-foreground">{prov.rechargeEndpoint || '—'}</code>
+                          </div>
+                          <div className="rounded-md border border-border/80 bg-muted/20 p-2">
+                            <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Auth</p>
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              <span className="text-xs capitalize text-foreground">{prov.authType}</span>
+                              <span className="text-[11px] text-muted-foreground">({prov.credentials.length})</span>
                             </div>
                           </div>
-                        </motion.div>
-                      )}
-                    </AnimatePresence>
+                        </div>
+
+                        <div className="space-y-2">
+                          <div
+                            className="flex items-center justify-between gap-2 rounded-md border border-border/80 bg-muted/15 px-2.5 py-2"
+                            role="status"
+                            aria-label={`${provConsults.length} consultas cadastradas neste provedor`}
+                          >
+                            <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                              Consultas cadastradas
+                            </span>
+                            <span className="flex items-center gap-1 tabular-nums text-sm font-medium text-foreground">
+                              <Hash className="h-3 w-3 text-muted-foreground" aria-hidden />
+                              {provConsults.length}
+                            </span>
+                          </div>
+                          {provConsults.length > 0 && (
+                            <div className="space-y-1" role="list">
+                              {provConsults.map((pc) => (
+                                <div
+                                  key={pc.id}
+                                  role="listitem"
+                                  className="flex items-center justify-between gap-1 rounded-md border border-border/80 bg-background px-2 py-1.5 transition-colors hover:border-primary/25 group"
+                                >
+                                  <div className="flex min-w-0 flex-1 items-center gap-1.5">
+                                    <Database className="h-3.5 w-3.5 shrink-0 text-primary" aria-hidden />
+                                    <span className="truncate text-xs font-medium text-foreground">{pc.name}</span>
+                                    <code className="shrink-0 text-[10px] font-mono text-muted-foreground">{pc.externalId}</code>
+                                  </div>
+                                  <button
+                                    type="button"
+                                    className="shrink-0 rounded p-1 text-muted-foreground opacity-0 transition-opacity hover:text-destructive group-hover:opacity-100"
+                                    onClick={async () => {
+                                      try {
+                                        await deleteProductApi(accessToken, pc.id);
+                                        toast.success('Removida');
+                                        invalidateAll();
+                                      } catch {
+                                        toast.error('Não foi possível remover');
+                                      }
+                                    }}
+                                    aria-label={`Remover ${pc.name}`}
+                                  >
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                  </button>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 </motion.div>
               );

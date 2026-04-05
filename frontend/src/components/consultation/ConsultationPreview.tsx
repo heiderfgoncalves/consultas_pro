@@ -1,20 +1,30 @@
-import React, { useState, useCallback, useRef } from 'react';
+import React, { useState, useCallback } from 'react';
 import { type ConsultationBlock } from '@/stores/consultationStore';
 import {
   AlertTriangle, Gauge, Award, DollarSign, TrendingUp,
   ShieldAlert, Building2, FileX, Users, FileWarning, FileText,
-  User, Hash, Tag, Pencil, Check, GripVertical, X,
-  CheckCircle, Upload, Image as ImageIcon
+  CheckCircle,
 } from 'lucide-react';
 import {
   DndContext, closestCenter, KeyboardSensor, PointerSensor,
-  useSensor, useSensors, type DragEndEvent
+  useSensor, useSensors, type DragEndEvent,
 } from '@dnd-kit/core';
 import {
   arrayMove, SortableContext, sortableKeyboardCoordinates,
-  useSortable, verticalListSortingStrategy
+  useSortable, verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
+import {
+  EditableText,
+  ScoreSpeedometer,
+  SectionHeader,
+  PlaceholderTable,
+  PlaceholderScore,
+  ReportHeader,
+  ClientInfoCard,
+  FinancialSummaryCards,
+  ReportFooter,
+} from './report-blocks';
 
 const iconMap: Record<string, any> = {
   AlertTriangle, Gauge, Award, DollarSign, TrendingUp, ShieldAlert, Building2, FileX, Users, FileWarning,
@@ -32,88 +42,6 @@ interface ConsultationPreviewProps {
   mode?: PreviewMode;
 }
 
-function EditableText({ value, onChange, className, tag: TagName = 'span', placeholder }: {
-  value: string;
-  onChange?: (val: string) => void;
-  className?: string;
-  tag?: 'span' | 'p' | 'h2' | 'h3' | 'div';
-  placeholder?: string;
-}) {
-  const [editing, setEditing] = useState(false);
-  const [text, setText] = useState(value);
-
-  if (!onChange) return <TagName className={className}>{value}</TagName>;
-
-  if (editing) {
-    return (
-      <span className="inline-flex items-center gap-1 w-full">
-        <input
-          autoFocus
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          onBlur={() => { setEditing(false); onChange(text); }}
-          onKeyDown={(e) => { if (e.key === 'Enter') { setEditing(false); onChange(text); } if (e.key === 'Escape') { setEditing(false); setText(value); } }}
-          className="bg-primary/5 border border-primary/30 rounded px-1.5 py-0.5 outline-none text-foreground w-full text-inherit"
-          style={{ fontSize: 'inherit', fontWeight: 'inherit' }}
-        />
-        <button onClick={() => { setEditing(false); onChange(text); }} className="text-primary hover:text-primary/80 flex-shrink-0"><Check className="w-3 h-3" /></button>
-        <button onClick={() => { setEditing(false); setText(value); }} className="text-muted-foreground hover:text-destructive flex-shrink-0"><X className="w-3 h-3" /></button>
-      </span>
-    );
-  }
-
-  return (
-    <span className="group/edit inline-flex items-center gap-1.5 relative cursor-pointer hover:bg-primary/5 rounded px-0.5 -mx-0.5 transition-colors" onClick={() => setEditing(true)}>
-      <TagName className={className}>{text || placeholder || 'Clique para editar'}</TagName>
-      <span className="opacity-0 group-hover/edit:opacity-100 transition-all duration-200 flex items-center gap-0.5 flex-shrink-0">
-        <span className="bg-primary text-primary-foreground rounded p-0.5"><Pencil className="w-2.5 h-2.5" /></span>
-      </span>
-    </span>
-  );
-}
-
-function ScoreSpeedometer({ score = 0, size = 'large' }: { score: number; size?: 'small' | 'large' }) {
-  const clampedScore = Math.max(0, Math.min(1000, score));
-  const angle = (clampedScore / 1000) * 180;
-  const radian = (angle * Math.PI) / 180;
-  const cx = 100, cy = 90, r = 80;
-  const needleX = cx - r * Math.cos(radian);
-  const needleY = cy - r * Math.sin(radian);
-
-  const getBand = (s: number) => {
-    if (s <= 200) return { label: 'Péssimo', color: '#dc2626' };
-    if (s <= 400) return { label: 'Ruim', color: '#ea580c' };
-    if (s <= 600) return { label: 'Regular', color: '#ca8a04' };
-    if (s <= 800) return { label: 'Bom', color: '#65a30d' };
-    return { label: 'Ótimo', color: '#16a34a' };
-  };
-
-  const band = getBand(clampedScore);
-  const isSmall = size === 'small';
-
-  return (
-    <div className="text-center">
-      <svg viewBox="0 0 200 115" className={`w-full mx-auto ${isSmall ? 'max-w-[120px]' : 'max-w-[175px]'}`}>
-        <path d="M 20 90 A 80 80 0 0 1 180 90" fill="none" stroke="hsl(var(--border))" strokeWidth="14" strokeLinecap="round" />
-        <path d="M 20 90 A 80 80 0 0 1 35.28 42.98" fill="none" stroke="#ef4444" strokeWidth="14" strokeLinecap="round" />
-        <path d="M 35.28 42.98 A 80 80 0 0 1 75.28 13.91" fill="none" stroke="#f97316" strokeWidth="14" strokeLinecap="round" />
-        <path d="M 75.28 13.91 A 80 80 0 0 1 124.72 13.91" fill="none" stroke="#eab308" strokeWidth="14" strokeLinecap="round" />
-        <path d="M 124.72 13.91 A 80 80 0 0 1 164.72 42.98" fill="none" stroke="#84cc16" strokeWidth="14" strokeLinecap="round" />
-        <path d="M 164.72 42.98 A 80 80 0 0 1 180 90" fill="none" stroke="#22c55e" strokeWidth="14" strokeLinecap="round" />
-        <circle cx={needleX} cy={needleY} r="7" fill={band.color} stroke="white" strokeWidth="2" />
-        <circle cx={needleX} cy={needleY} r="3" fill="white" />
-        <line x1={cx} y1={cy} x2={needleX} y2={needleY} stroke={band.color} strokeWidth="2.5" strokeLinecap="round" />
-        <circle cx={cx} cy={cy} r="6" fill="white" stroke="hsl(var(--border))" strokeWidth="1" />
-        <circle cx={cx} cy={cy} r="2" fill="hsl(var(--muted-foreground))" />
-        <text x="15" y="110" fontSize="11" fill="hsl(var(--muted-foreground))" fontWeight="700">0</text>
-        <text x="165" y="110" fontSize="11" fill="hsl(var(--muted-foreground))" fontWeight="700">1000</text>
-      </svg>
-      <p className={`font-semibold mt-1 tracking-tight ${isSmall ? 'text-lg' : 'text-2xl'}`} style={{ color: band.color }}>{clampedScore}</p>
-      <p className="text-[10px] font-semibold uppercase tracking-widest" style={{ color: band.color }}>{band.label}</p>
-    </div>
-  );
-}
-
 function SortableBlock({ block, children }: { block: ConsultationBlock; children: React.ReactNode }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: block.id });
   const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1, zIndex: isDragging ? 50 : 'auto' as any };
@@ -122,7 +50,7 @@ function SortableBlock({ block, children }: { block: ConsultationBlock; children
     <div ref={setNodeRef} style={style} {...attributes}>
       <div className="group/block relative">
         <button {...listeners} className="absolute -left-5 top-2 opacity-0 group-hover/block:opacity-100 transition-opacity cursor-grab active:cursor-grabbing p-0.5 rounded hover:bg-accent">
-          <GripVertical className="w-3 h-3 text-muted-foreground" />
+          <FileText className="w-3 h-3 text-muted-foreground" />
         </button>
         {children}
       </div>
@@ -130,57 +58,6 @@ function SortableBlock({ block, children }: { block: ConsultationBlock; children
   );
 }
 
-// Placeholder wireframe for edit mode — dashed borders, no skeleton pulse
-function PlaceholderTable({ label, cols = 3 }: { label: string; cols?: number }) {
-  return (
-    <div className="rounded-lg border-2 border-dashed border-border/60 overflow-hidden">
-      <div className="px-3 py-2 flex items-center gap-2 border-b border-dashed border-border/40">
-        <div className="w-3 h-3 rounded border border-dashed border-muted-foreground/30" />
-        <span className="text-[10px] text-muted-foreground/70 font-medium">{label}</span>
-      </div>
-      <div className="p-3 space-y-2.5">
-        {/* Header row */}
-        <div className="flex gap-2">
-          {Array.from({ length: cols }).map((_, c) => (
-            <div key={c} className="h-2.5 rounded-sm border border-dashed border-border/50 flex-1" />
-          ))}
-        </div>
-        {/* Data rows */}
-        {[1, 2, 3].map(i => (
-          <div key={i} className="flex gap-2">
-            {Array.from({ length: cols }).map((_, c) => (
-              <div key={c} className="h-2 rounded-sm border border-dashed border-border/30 flex-1" />
-            ))}
-          </div>
-        ))}
-      </div>
-      <div className="px-3 py-1.5 text-[9px] text-muted-foreground/50 italic text-center border-t border-dashed border-border/40">
-        Dados exibidos após emissão da consulta
-      </div>
-    </div>
-  );
-}
-
-function PlaceholderScore() {
-  return (
-    <div className="rounded-lg border-2 border-dashed border-border/60 p-4 text-center space-y-3">
-      <div className="w-[120px] h-[65px] mx-auto rounded-lg border-2 border-dashed border-border/40 flex items-center justify-center">
-        <Gauge className="w-6 h-6 text-muted-foreground/25" />
-      </div>
-      <div className="h-5 w-14 mx-auto rounded border border-dashed border-border/40" />
-      <div className="grid grid-cols-2 gap-2 max-w-[280px] mx-auto">
-        {[1, 2, 3, 4].map(i => (
-          <div key={i} className="h-10 rounded-lg border-2 border-dashed border-border/30 flex items-center justify-center">
-            <div className="w-8 h-1.5 rounded-sm border border-dashed border-border/30" />
-          </div>
-        ))}
-      </div>
-      <p className="text-[9px] text-muted-foreground/50 italic">Score e métricas exibidos após emissão</p>
-    </div>
-  );
-}
-
-// Mock data matching the HTML template
 const mockSpcData = [
   { dtOcorr: '09/11/2025', dtInclusao: '19/12/2025', dtVencimento: '09/11/2025', contrato: 'FAT37521061', origem: 'CDL - SÃO PAULO / SP', credor: 'MOGI GUACU/SP', valor: 942.07 },
   { dtOcorr: '01/09/2025', dtInclusao: '15/10/2025', dtVencimento: '01/09/2025', contrato: '00000000000000018330', origem: 'SÃO PAULO / SP', credor: 'BRASILIA/DF', valor: 116.66 },
@@ -226,11 +103,8 @@ const mockBacenOperacoes = [
 export default function ConsultationPreview({ blocks, document: docInput, onReorder, logo, onLogoChange, clientName, mode = 'preview' }: ConsultationPreviewProps) {
   const [sectionTitles, setSectionTitles] = useState<Record<string, string>>({});
   const [additionalInfo, setAdditionalInfo] = useState<Record<string, string>>({});
-  const logoInputRef = useRef<HTMLInputElement>(null);
   const isEdit = mode === 'edit';
-
-  const today = new Date().toLocaleDateString('pt-BR');
-  const protocol = `CP-${Date.now().toString().slice(-8)}`;
+  const reportMode = isEdit ? 'skeleton' : 'preview';
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -249,15 +123,6 @@ export default function ConsultationPreview({ blocks, document: docInput, onReor
   const updateSectionTitle = (id: string, title: string) => setSectionTitles(prev => ({ ...prev, [id]: title }));
   const updateAdditionalInfo = (id: string, info: string) => setAdditionalInfo(prev => ({ ...prev, [id]: info }));
 
-  const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onload = (ev) => onLogoChange?.(ev.target?.result as string);
-      reader.readAsDataURL(file);
-    }
-  };
-
   const scoreBands = [
     { label: 'Péssimo', range: '0–200', color: '#dc2626' },
     { label: 'Ruim', range: '201–400', color: '#ea580c' },
@@ -267,7 +132,7 @@ export default function ConsultationPreview({ blocks, document: docInput, onReor
   ];
 
   const scoreMetrics = [
-    { icon: Tag, label: 'Faixa', value: '401 a 600', desc: 'Risco moderado. Valide renda e estabilidade.', color: '#ca8a04' },
+    { icon: Gauge, label: 'Faixa', value: '401 a 600', desc: 'Risco moderado. Valide renda e estabilidade.', color: '#ca8a04' },
     { icon: Gauge, label: 'Score', value: '596', desc: 'Quanto maior, melhor a predisposição ao crédito.' },
     { icon: CheckCircle, label: 'Chance de pagar (6 meses)', value: '59.60%', desc: 'Estimativa de adimplência nos próximos 6 meses.' },
     { icon: AlertTriangle, label: 'Probabilidade de inadimplência', value: '40.40%', desc: 'Estimativa de inadimplência — use como apoio à decisão.' },
@@ -279,153 +144,38 @@ export default function ConsultationPreview({ blocks, document: docInput, onReor
     { title: 'Reduzir consultas de crédito', text: 'Evite múltiplas simulações em pouco tempo — o mercado interpreta como risco.' },
   ];
 
-  const mockTotalApontado = 190828.59;
-  const mockTotalDeduzido = 98654.57;
-  const mockRiscoBacen = 20347.00;
-
-  const SectionHeader = ({ icon: Icon, title, badge, blockId }: { icon: any; title: string; badge?: string; blockId?: string }) => (
-    <div className="flex items-center gap-2 mb-2">
-      <div className="w-8 h-8 min-w-[32px] rounded-lg bg-muted border border-border flex items-center justify-center">
-        <Icon className="w-4 h-4 text-muted-foreground" />
-      </div>
-      <EditableText
-        value={blockId ? (sectionTitles[blockId] || title) : title}
-        onChange={blockId ? (v) => updateSectionTitle(blockId, v) : undefined}
-        className="text-[13px] font-bold uppercase text-muted-foreground tracking-wider whitespace-nowrap"
-        tag="h3"
-      />
-      <div className="flex-1 border-b-2 border-dashed border-border ml-1 min-w-[24px]" />
-      {badge && (
-        <span className="text-[10px] bg-muted border border-border text-muted-foreground px-2.5 py-1 rounded-full font-medium whitespace-nowrap">
-          {isEdit ? '— registros' : badge}
-        </span>
-      )}
-    </div>
-  );
-
   return (
     <div className="p-5 space-y-4 text-xs bg-card">
-      <input ref={logoInputRef} type="file" accept="image/*" onChange={handleLogoUpload} className="hidden" />
-
       {/* ===== HEADER ===== */}
-      <div className="pb-3" style={{ borderBottom: '3px solid hsl(var(--primary))' }}>
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            {logo ? (
-              <div className="group/logo relative cursor-pointer" onClick={() => logoInputRef.current?.click()}>
-                <img src={logo} alt="Logo" className="h-[50px] object-contain" />
-                <div className="absolute inset-0 bg-foreground/50 rounded opacity-0 group-hover/logo:opacity-100 transition-opacity flex items-center justify-center">
-                  <Pencil className="w-4 h-4 text-background" />
-                </div>
-              </div>
-            ) : (
-              <button
-                onClick={() => onLogoChange ? logoInputRef.current?.click() : undefined}
-                className="w-[50px] h-[50px] rounded-lg border-2 border-dashed border-border flex flex-col items-center justify-center gap-0.5 hover:border-primary hover:bg-primary/5 transition-colors group cursor-pointer"
-              >
-                <ImageIcon className="w-4 h-4 text-muted-foreground group-hover:text-primary" />
-                <span className="text-[7px] text-muted-foreground group-hover:text-primary font-medium">LOGO</span>
-              </button>
-            )}
-            <div>
-              <EditableText
-                value="Consultas PRO"
-                onChange={(v) => updateSectionTitle('header-title', v)}
-                className="text-[10px] font-bold text-primary tracking-widest uppercase"
-              />
-              <EditableText
-                value="Relatório Analítico de Crédito"
-                onChange={(v) => updateSectionTitle('header-subtitle', v)}
-                className="text-[9px] text-muted-foreground"
-              />
-            </div>
-          </div>
-          <div className="text-right">
-            <p className="text-[9px] text-muted-foreground">{isEdit ? 'DD/MM/AAAA' : today}</p>
-            <p className="text-[9px] text-muted-foreground font-mono">PROT: {isEdit ? 'CP-XXXXXXXX' : protocol}</p>
-          </div>
-        </div>
-      </div>
+      <ReportHeader
+        mode={reportMode}
+        logo={logo}
+        onLogoChange={onLogoChange}
+        onCompanyNameChange={(v) => updateSectionTitle('header-title', v)}
+        onReportTitleChange={(v) => updateSectionTitle('header-subtitle', v)}
+      />
 
       {/* ===== CLIENT INFO CARD ===== */}
-      <div className="rounded-xl border border-border bg-card p-3.5 shadow-sm">
-        <div className="grid grid-cols-3 gap-3">
-          <div className="flex items-start gap-2.5">
-            <div className="w-9 h-9 rounded-lg bg-muted border border-border flex items-center justify-center flex-shrink-0">
-              <User className="w-[18px] h-[18px] text-muted-foreground" />
-            </div>
-            <div>
-              <p className="text-[9px] uppercase font-semibold text-muted-foreground tracking-wider">Cliente Analisado</p>
-              <EditableText value={isEdit ? 'NOME DO CONSULTADO' : (clientName || 'NOME DO CONSULTADO')} onChange={(v) => updateSectionTitle('client-name', v)} className="text-[13px] font-semibold text-foreground" />
-            </div>
-          </div>
-          <div className="flex items-start gap-2.5">
-            <div className="w-9 h-9 rounded-lg bg-muted border border-border flex items-center justify-center flex-shrink-0">
-              <Hash className="w-[18px] h-[18px] text-muted-foreground" />
-            </div>
-            <div>
-              <p className="text-[9px] uppercase font-semibold text-muted-foreground tracking-wider">Documento</p>
-              <p className="text-[13px] font-semibold text-foreground font-mono">{isEdit ? '000.000.000-00' : docInput}</p>
-            </div>
-          </div>
-          <div className="flex items-start gap-2.5">
-            <div className="w-9 h-9 rounded-lg bg-muted border border-border flex items-center justify-center flex-shrink-0">
-              <Tag className="w-[18px] h-[18px] text-muted-foreground" />
-            </div>
-            <div>
-              <p className="text-[9px] uppercase font-semibold text-muted-foreground tracking-wider">Tipo de Relatório</p>
-              <EditableText
-                value={blocks.length >= 8 ? 'Premium (Completa)' : 'Padrão'}
-                onChange={(v) => updateSectionTitle('report-type', v)}
-                className="text-[13px] font-semibold text-foreground"
-              />
-            </div>
-          </div>
-        </div>
-      </div>
+      <ClientInfoCard
+        mode={reportMode}
+        clientName={clientName}
+        document={docInput}
+        reportType={blocks.length >= 8 ? 'Premium (Completa)' : 'Padrão'}
+        onClientNameChange={(v) => updateSectionTitle('client-name', v)}
+        onReportTypeChange={(v) => updateSectionTitle('report-type', v)}
+      />
 
       {/* ===== FINANCIAL SUMMARY ===== */}
-      <div>
-        <SectionHeader icon={DollarSign} title="Resumo Financeiro" blockId="fin-summary" />
-        {isEdit ? (
-          <div className="grid grid-cols-3 gap-3">
-            {['Total Apontado', 'Total Deduzido', 'Risco Bacen'].map((label) => (
-              <div key={label} className="rounded-xl border border-dashed border-border p-3 relative overflow-hidden">
-                <p className="text-[9px] uppercase text-muted-foreground font-semibold">{label}</p>
-                <div className="h-5 w-24 bg-muted rounded animate-pulse mt-1" />
-                <p className="text-[8px] text-muted-foreground mt-1">Calculado após emissão</p>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div className="grid grid-cols-3 gap-3">
-            <div className="rounded-xl border border-border p-3 relative overflow-hidden shadow-sm">
-              <div className="absolute left-0 top-0 bottom-0 w-1 rounded-l-xl bg-destructive" />
-              <p className="text-[9px] uppercase text-muted-foreground font-semibold pl-2">Total Apontado</p>
-              <p className="text-lg font-bold text-destructive pl-2">R$ {mockTotalApontado.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
-              <p className="text-[8px] text-muted-foreground pl-2 mt-0.5">Soma bruta de apontamentos</p>
-            </div>
-            <div className="rounded-xl border border-border p-3 relative overflow-hidden shadow-sm">
-              <div className="absolute left-0 top-0 bottom-0 w-1 rounded-l-xl bg-success" />
-              <p className="text-[9px] uppercase text-muted-foreground font-semibold pl-2">Total Deduzido</p>
-              <p className="text-lg font-bold text-success pl-2">R$ {mockTotalDeduzido.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
-              <p className="text-[8px] text-muted-foreground pl-2 mt-0.5">Sem duplicidades</p>
-            </div>
-            <div className="rounded-xl border border-border p-3 relative overflow-hidden shadow-sm">
-              <div className="absolute left-0 top-0 bottom-0 w-1 rounded-l-xl bg-warning" />
-              <p className="text-[9px] uppercase text-muted-foreground font-semibold pl-2">Risco Bacen (Vencido)</p>
-              <p className="text-lg font-bold text-warning pl-2">R$ {mockRiscoBacen.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
-              <p className="text-[8px] text-muted-foreground pl-2 mt-0.5">Prejuízo + Vencido</p>
-            </div>
-          </div>
-        )}
-      </div>
+      <FinancialSummaryCards
+        mode={reportMode}
+        onSectionTitleChange={(v) => updateSectionTitle('fin-summary', v)}
+      />
 
       {/* ===== SCORE SECTION ===== */}
       {blocks.some(b => b.id === '5') && (
         isEdit ? (
           <div className="space-y-2">
-            <SectionHeader icon={Gauge} title="Score de Crédito" blockId="score-section" />
+            <SectionHeader icon={Gauge} title="Score de Crédito" onTitleChange={(v) => updateSectionTitle('score-section', v)} />
             <PlaceholderScore />
           </div>
         ) : (
@@ -484,7 +234,6 @@ export default function ConsultationPreview({ blocks, document: docInput, onReor
               </ul>
             </div>
 
-            {/* Diagnostic block — dark mode fix */}
             <div className="rounded-lg p-3 bg-success/10 dark:bg-success/20 border border-success/20">
               <h4 className="text-[11px] font-bold text-success mb-1 flex items-center gap-1.5">
                 <CheckCircle className="w-3.5 h-3.5" />
@@ -493,7 +242,6 @@ export default function ConsultationPreview({ blocks, document: docInput, onReor
               <EditableText value="O que trava crédito quase sempre é simples: pendência/negativação + histórico recente. A boa notícia é que, com estratégia, dá pra acelerar sua reabilitação e voltar a ser aprovado com mais facilidade." onChange={(v) => updateAdditionalInfo('diagnostic', v)} className="text-[10px] text-foreground leading-relaxed block" tag="p" />
             </div>
 
-            {/* Action plan — dark mode fix */}
             <div className="rounded-lg p-3.5 bg-primary/10 dark:bg-primary/15 border border-primary/20">
               <EditableText value="Plano de Ação — Seu Próximo Passo" onChange={(v) => updateSectionTitle('action-plan-title', v)} className="text-[11px] font-bold text-primary block mb-3" tag="h3" />
               <div className="space-y-3">
@@ -509,7 +257,6 @@ export default function ConsultationPreview({ blocks, document: docInput, onReor
               </div>
             </div>
 
-            {/* Disclaimer — dark mode fix */}
             <div className="flex items-start gap-2 rounded-r-lg p-3 bg-warning/10 dark:bg-warning/15 border-l-4 border-warning">
               <AlertTriangle className="w-5 h-5 flex-shrink-0 mt-0.5 text-warning" />
               <div>
@@ -525,15 +272,14 @@ export default function ConsultationPreview({ blocks, document: docInput, onReor
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
         <SortableContext items={blocks.map(b => b.id)} strategy={verticalListSortingStrategy}>
           {blocks.map((block) => {
-            if (block.id === '5') return null; // score has own section
+            if (block.id === '5') return null;
             const Icon = iconMap[block.icon] || FileText;
 
-            // In edit mode, all data blocks show placeholders
             if (isEdit) {
               return (
                 <SortableBlock key={block.id} block={block}>
                   <div className="ml-4 space-y-2">
-                    <SectionHeader icon={Icon} title={sectionTitles[block.id] || block.name} blockId={block.id} badge="— registros" />
+                    <SectionHeader icon={Icon} title={sectionTitles[block.id] || block.name} onTitleChange={(v) => updateSectionTitle(block.id, v)} badge="— registros" isEdit />
                     <PlaceholderTable label={block.name} cols={block.id === '10' ? 3 : 5} />
                     <EditableText value={additionalInfo[block.id] || ''} onChange={(v) => updateAdditionalInfo(block.id, v)} className="text-[9px] text-muted-foreground italic" tag="p" placeholder="+ Adicionar informações adicionais..." />
                   </div>
@@ -541,12 +287,11 @@ export default function ConsultationPreview({ blocks, document: docInput, onReor
               );
             }
 
-            // Serasa block — show filled data
             if (block.id === '2') {
               return (
                 <SortableBlock key={block.id} block={block}>
                   <div className="ml-4 space-y-2">
-                    <SectionHeader icon={Icon} title="Serasa - Base I" badge={`${mockSerasaData.length} registros`} blockId={block.id} />
+                    <SectionHeader icon={Icon} title="Serasa - Base I" badge={`${mockSerasaData.length} registros`} onTitleChange={(v) => updateSectionTitle(block.id, v)} />
                     <div className="rounded-xl border border-border overflow-hidden shadow-sm">
                       <table className="w-full">
                         <thead>
@@ -577,12 +322,11 @@ export default function ConsultationPreview({ blocks, document: docInput, onReor
               );
             }
 
-            // SPC block
             if (block.id === '1') {
               return (
                 <SortableBlock key={block.id} block={block}>
                   <div className="ml-4 space-y-2">
-                    <SectionHeader icon={Icon} title="SPC - SCPC" badge={`${mockSpcData.length} registros`} blockId={block.id} />
+                    <SectionHeader icon={Icon} title="SPC - SCPC" badge={`${mockSpcData.length} registros`} onTitleChange={(v) => updateSectionTitle(block.id, v)} />
                     <div className="rounded-xl border border-border overflow-hidden shadow-sm">
                       <table className="w-full">
                         <thead>
@@ -613,12 +357,11 @@ export default function ConsultationPreview({ blocks, document: docInput, onReor
               );
             }
 
-            // Bacen block
             if (block.id === '10') {
               return (
                 <SortableBlock key={block.id} block={block}>
                   <div className="ml-4 space-y-3">
-                    <SectionHeader icon={Icon} title="Relatório Banco Central (SCR) - Bacen" badge="Consolidado Financeiro" blockId={block.id} />
+                    <SectionHeader icon={Icon} title="Relatório Banco Central (SCR) - Bacen" badge="Consolidado Financeiro" onTitleChange={(v) => updateSectionTitle(block.id, v)} />
                     <p className="text-[10px] text-muted-foreground leading-relaxed">Visão consolidada do relacionamento com o sistema financeiro nacional (SCR).</p>
 
                     <div className="rounded-xl border border-border overflow-hidden shadow-sm">
@@ -697,12 +440,11 @@ export default function ConsultationPreview({ blocks, document: docInput, onReor
               );
             }
 
-            // Protestos
             if (block.id === '4') {
               return (
                 <SortableBlock key={block.id} block={block}>
                   <div className="ml-4 space-y-2">
-                    <SectionHeader icon={Icon} title="Protestos" badge="0 registros" blockId={block.id} />
+                    <SectionHeader icon={Icon} title="Protestos" badge="0 registros" onTitleChange={(v) => updateSectionTitle(block.id, v)} />
                     <div className="rounded-xl border border-border p-4 text-center text-[11px] text-muted-foreground shadow-sm">
                       Nenhum protesto em cartório localizado.
                     </div>
@@ -712,11 +454,10 @@ export default function ConsultationPreview({ blocks, document: docInput, onReor
               );
             }
 
-            // Generic block
             return (
               <SortableBlock key={block.id} block={block}>
                 <div className="ml-4 space-y-2">
-                  <SectionHeader icon={Icon} title={sectionTitles[block.id] || block.name} badge="0 registros" blockId={block.id} />
+                  <SectionHeader icon={Icon} title={sectionTitles[block.id] || block.name} badge="0 registros" onTitleChange={(v) => updateSectionTitle(block.id, v)} />
                   <div className="rounded-xl border border-border overflow-hidden shadow-sm">
                     <table className="w-full">
                       <thead>
@@ -745,15 +486,10 @@ export default function ConsultationPreview({ blocks, document: docInput, onReor
 
       {/* ===== FOOTER ===== */}
       {blocks.length > 0 && (
-        <div className="border-t border-border pt-4 mt-6">
-          <EditableText
-            value="Aviso Importante: Este documento contém informações confidenciais e privilegiadas, protegidas por sigilo legal. O relatório tem caráter estritamente indicativo, baseado em dados coletados de provedores públicos e privados de proteção ao crédito no momento da consulta. O Consultas PRO atua apenas como intermediador tecnológico e não se responsabiliza pela veracidade, atualidade ou integridade dos dados originais, nem por decisões de crédito tomadas com base nas informações aqui apresentadas. Em conformidade com a Lei Geral de Proteção de Dados (LGPD - nº 13.709/2018), é vedada a divulgação, cópia ou compartilhamento deste relatório com terceiros não autorizados, sob pena de responsabilidade civil e criminal."
-            onChange={(v) => updateAdditionalInfo('footer', v)}
-            className="text-[8px] text-muted-foreground leading-relaxed block text-justify"
-            tag="p"
-          />
-          <p className="text-center mt-3 text-[9px] font-mono text-muted-foreground">{isEdit ? 'DD/MM/AAAA • hash: CP-XXXXXXXX' : `${today} • hash: ${protocol}`}</p>
-        </div>
+        <ReportFooter
+          mode={reportMode}
+          onDisclaimerChange={(v) => updateAdditionalInfo('footer', v)}
+        />
       )}
     </div>
   );

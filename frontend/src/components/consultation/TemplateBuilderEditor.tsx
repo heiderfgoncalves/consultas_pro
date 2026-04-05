@@ -1,13 +1,27 @@
 import { useState, useMemo, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Search, Plus, Minus, Wallet, Save, FileText, Eye, Upload, X, type LucideIcon } from 'lucide-react';
+import {
+  Search, Plus, Minus, Wallet, Save, FileText, Eye, Upload, X,
+  Layers, LayoutGrid, Type as TypeIcon, Variable, PlusCircle,
+  type LucideIcon,
+} from 'lucide-react';
 import { useAuthStore } from '@/stores/authStore';
 import { availableBlocks, type ConsultationBlock } from '@/stores/consultationStore';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Switch } from '@/components/ui/switch';
+import { Label } from '@/components/ui/label';
 import ConsultationPreview from '@/components/consultation/ConsultationPreview';
+import BaseReportSkeleton from '@/components/consultation/BaseReportSkeleton';
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from '@/components/ui/resizable';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { VariablesPanel } from '@/components/integrations/template-builder/VariablesPanel';
+import { ExpressionConsole } from '@/components/integrations/template-builder/ExpressionConsole';
+import { CustomBlockEditorModal } from '@/components/integrations/template-builder/CustomBlockEditorModal';
+import type { CustomBlockDraft } from '@/components/integrations/template-builder/CustomBlockEditorModal';
+import type { ConsultationFieldType } from '@/types/integrations';
+import type { TemplateBuilderCapabilities } from '@/types/template-layout';
+import { createCapabilitiesByMode } from '@/lib/templateLayoutTransforms';
 import {
   DndContext, closestCenter, PointerSensor, useSensor, useSensors,
   type DragEndEvent, type DragStartEvent, DragOverlay,
@@ -17,19 +31,26 @@ import { useDraggable } from '@dnd-kit/core';
 import { arrayMove } from '@dnd-kit/sortable';
 
 const iconMap: Record<string, LucideIcon> = {
-  AlertTriangle: FileText,
-  Gauge: FileText,
-  Award: FileText,
-  DollarSign: FileText,
-  TrendingUp: FileText,
-  ShieldAlert: FileText,
-  Building2: FileText,
-  FileX: FileText,
-  Users: FileText,
-  FileWarning: FileText,
+  AlertTriangle: FileText, Gauge: FileText, Award: FileText, DollarSign: FileText,
+  TrendingUp: FileText, ShieldAlert: FileText, Building2: FileText,
+  FileX: FileText, Users: FileText, FileWarning: FileText,
 };
 
 const categories = ['Todos', ...Array.from(new Set(availableBlocks.map((b) => b.category)))];
+
+type LayoutBlockItem = {
+  id: string;
+  name: string;
+  description: string;
+  icon: LucideIcon;
+  kind: 'card-kpi' | 'container' | 'free-text' | 'custom';
+};
+
+const LAYOUT_BLOCKS: LayoutBlockItem[] = [
+  { id: 'lb-card-kpi', name: 'Card KPI', description: 'Card com ícone, valor e label', icon: LayoutGrid, kind: 'card-kpi' },
+  { id: 'lb-container', name: 'Container', description: 'Agrupador genérico de blocos', icon: Layers, kind: 'container' },
+  { id: 'lb-free-text', name: 'Texto Livre', description: 'Parágrafo com expressões dinâmicas', icon: TypeIcon, kind: 'free-text' },
+];
 
 function DraggableCatalogBlock({ block, selected, onToggle }: {
   block: ConsultationBlock;
@@ -68,10 +89,7 @@ function DraggableCatalogBlock({ block, selected, onToggle }: {
           <p className="text-[10px] text-muted-foreground mt-0.5 leading-relaxed line-clamp-1">{block.description}</p>
         </div>
         <button
-          onClick={(e) => {
-            e.stopPropagation();
-            onToggle();
-          }}
+          onClick={(e) => { e.stopPropagation(); onToggle(); }}
           className={`w-5 h-5 rounded-md flex items-center justify-center flex-shrink-0 transition-all duration-200 ${
             selected ? 'bg-primary text-primary-foreground' : 'border border-border text-muted-foreground group-hover:border-primary/40'
           }`}
@@ -103,41 +121,31 @@ function PreviewDropZone({ children, hasBlocks, activeDragItem }: { children: Re
 
   return (
     <div ref={setNodeRef} className={`flex-1 overflow-y-auto scrollbar-thin transition-all duration-300 ${isOver && !hasBlocks ? 'bg-primary/5 ring-2 ring-primary/30 ring-inset' : ''}`}>
-      {!hasBlocks && (
-        <div className={`flex flex-col items-center justify-center h-full p-8 text-center transition-all duration-300 ${isOver ? 'scale-105' : ''}`}>
-          {isOver && activeDragItem ? (
-            <div className="w-full max-w-md opacity-50 pointer-events-none">
-              <div className="rounded-lg border-2 border-dashed border-primary/40 bg-primary/5 p-4 space-y-3">
-                <div className="flex items-center gap-2">
-                  <div className="w-7 h-7 rounded-lg border border-dashed border-primary/30 flex items-center justify-center">
-                    <Icon className="w-3.5 h-3.5 text-primary/50" />
-                  </div>
-                  <div className="space-y-1 flex-1">
-                    <div className="h-2.5 w-24 rounded border border-dashed border-primary/30" />
-                    <div className="h-2 w-16 rounded border border-dashed border-primary/20" />
-                  </div>
+      {!hasBlocks && !isOver && (
+        <div className="flex flex-col items-center justify-center h-full p-8 text-center">
+          <div className="w-14 h-14 rounded-2xl flex items-center justify-center mb-3 bg-muted">
+            <FileText className="w-7 h-7 text-muted-foreground" />
+          </div>
+          <p className="text-sm font-medium text-foreground mb-1">Nenhum bloco selecionado</p>
+          <p className="text-xs text-muted-foreground">Arraste blocos do catálogo ou clique para adicionar</p>
+        </div>
+      )}
+      {isOver && !hasBlocks && activeDragItem && (
+        <div className="flex items-center justify-center h-full p-8">
+          <div className="w-full max-w-md opacity-50 pointer-events-none">
+            <div className="rounded-lg border-2 border-dashed border-primary/40 bg-primary/5 p-4 space-y-3">
+              <div className="flex items-center gap-2">
+                <div className="w-7 h-7 rounded-lg border border-dashed border-primary/30 flex items-center justify-center">
+                  <Icon className="w-3.5 h-3.5 text-primary/50" />
                 </div>
-                <div className="space-y-1.5">
-                  {[1, 2, 3].map((i) => (
-                    <div key={i} className="flex gap-2">
-                      <div className="h-2 rounded border border-dashed border-primary/20 flex-1" />
-                      <div className="h-2 rounded border border-dashed border-primary/20 flex-1" />
-                      <div className="h-2 rounded border border-dashed border-primary/20 flex-1" />
-                    </div>
-                  ))}
+                <div className="space-y-1 flex-1">
+                  <div className="h-2.5 w-24 rounded border border-dashed border-primary/30" />
+                  <div className="h-2 w-16 rounded border border-dashed border-primary/20" />
                 </div>
-                <p className="text-[10px] text-primary/60 font-medium text-center">{activeDragItem.name}</p>
               </div>
+              <p className="text-[10px] text-primary/60 font-medium text-center">{activeDragItem.name}</p>
             </div>
-          ) : (
-            <>
-              <div className="w-14 h-14 rounded-2xl flex items-center justify-center mb-3 bg-muted">
-                <FileText className="w-7 h-7 text-muted-foreground" />
-              </div>
-              <p className="text-sm font-medium text-foreground mb-1">Nenhum bloco selecionado</p>
-              <p className="text-xs text-muted-foreground">Arraste blocos do catálogo ou clique para adicionar</p>
-            </>
-          )}
+          </div>
         </div>
       )}
       {children}
@@ -168,6 +176,8 @@ type TemplateBuilderEditorProps = {
   templateName?: string;
   onSave?: (payload: { name: string; blocks: ConsultationBlock[]; logo: string | null }) => void;
   showBalance?: boolean;
+  builderMode?: 'admin' | 'user';
+  fieldTypes?: ConsultationFieldType[];
 };
 
 export default function TemplateBuilderEditor({
@@ -178,6 +188,8 @@ export default function TemplateBuilderEditor({
   templateName: initialName,
   onSave,
   showBalance = true,
+  builderMode = 'admin',
+  fieldTypes = [],
 }: TemplateBuilderEditorProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [activeCategory, setActiveCategory] = useState('Todos');
@@ -186,8 +198,12 @@ export default function TemplateBuilderEditor({
   const [reportLogo, setReportLogo] = useState<string | null>(null);
   const [activeDragItem, setActiveDragItem] = useState<ConsultationBlock | null>(null);
   const [overDropId, setOverDropId] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<'skeleton' | 'preview'>('skeleton');
+  const [customBlockEditorOpen, setCustomBlockEditorOpen] = useState(false);
+  const [customBlocks, setCustomBlocks] = useState<CustomBlockDraft[]>([]);
   const { user } = useAuthStore();
 
+  const capabilities: TemplateBuilderCapabilities = useMemo(() => createCapabilitiesByMode(builderMode), [builderMode]);
   const totalPrice = blocks.reduce((sum, b) => sum + b.price, 0);
 
   const filteredBlocks = useMemo(() => {
@@ -199,7 +215,6 @@ export default function TemplateBuilderEditor({
   }, [searchQuery, activeCategory]);
 
   const isSelected = (id: string) => blocks.some((b) => b.id === id);
-
   const toggleBlock = (block: ConsultationBlock) => {
     if (isSelected(block.id)) setBlocks((prev) => prev.filter((b) => b.id !== block.id));
     else setBlocks((prev) => [...prev, block]);
@@ -213,8 +228,7 @@ export default function TemplateBuilderEditor({
   };
 
   const handleDragOver = (event: DragOverEvent) => {
-    const { over } = event;
-    setOverDropId(over ? String(over.id) : null);
+    setOverDropId(event.over ? String(event.over.id) : null);
   };
 
   const handleDragEnd = (event: DragEndEvent) => {
@@ -224,33 +238,19 @@ export default function TemplateBuilderEditor({
     if (!over) return;
 
     const activeId = String(active.id);
-
     if (activeId.startsWith('catalog-')) {
       const data = active.data.current;
       if (!data?.block || isSelected(data.block.id)) return;
-
       const overId = String(over.id);
-
       if (overId.startsWith('gap-')) {
         const idx = parseInt(overId.replace('gap-', ''), 10);
-        setBlocks((prev) => {
-          const next = [...prev];
-          next.splice(idx, 0, data.block);
-          return next;
-        });
+        setBlocks((prev) => { const next = [...prev]; next.splice(idx, 0, data.block); return next; });
       } else if (overId === 'preview-drop-zone') {
         setBlocks((prev) => [...prev, data.block]);
       } else {
         const idx = blocks.findIndex((b) => b.id === overId);
-        if (idx >= 0) {
-          setBlocks((prev) => {
-            const next = [...prev];
-            next.splice(idx, 0, data.block);
-            return next;
-          });
-        } else {
-          setBlocks((prev) => [...prev, data.block]);
-        }
+        if (idx >= 0) setBlocks((prev) => { const next = [...prev]; next.splice(idx, 0, data.block); return next; });
+        else setBlocks((prev) => [...prev, data.block]);
       }
       return;
     }
@@ -265,17 +265,22 @@ export default function TemplateBuilderEditor({
       } else {
         newIdx = blocks.findIndex((b) => b.id === overStr);
       }
-      if (oldIdx >= 0 && newIdx >= 0) {
-        setBlocks((prev) => arrayMove(prev, oldIdx, newIdx));
-      }
+      if (oldIdx >= 0 && newIdx >= 0) setBlocks((prev) => arrayMove(prev, oldIdx, newIdx));
     }
   };
 
-  const handleReorder = useCallback((newBlocks: ConsultationBlock[]) => {
-    setBlocks(newBlocks);
-  }, []);
+  const handleReorder = useCallback((newBlocks: ConsultationBlock[]) => setBlocks(newBlocks), []);
+
+  const handleInsertVariable = (expression: string) => {
+    // For now, variable insertion is available via the VariablesPanel for reference
+  };
+
+  const handleSaveCustomBlock = (draft: CustomBlockDraft) => {
+    setCustomBlocks((prev) => [...prev, draft]);
+  };
 
   const titleText = initialName ? `Editar: ${initialName}` : 'Novo Template';
+
   const headerToolbar = (
     <>
       <div className="flex items-center gap-3">
@@ -316,9 +321,10 @@ export default function TemplateBuilderEditor({
         </DialogHeader>
       )}
 
-      <div className="flex-1 overflow-hidden">
+      <div className="flex-1 overflow-hidden flex flex-col">
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={handleDragStart} onDragOver={handleDragOver} onDragEnd={handleDragEnd}>
-          <ResizablePanelGroup direction="horizontal" className="h-full">
+          <ResizablePanelGroup direction="horizontal" className="flex-1">
+            {/* ===== LEFT COLUMN ===== */}
             <ResizablePanel defaultSize={28} minSize={18} maxSize={40}>
               <div className="flex flex-col h-full">
                 <div className="px-3 py-2 border-b border-border bg-card/50">
@@ -332,46 +338,136 @@ export default function TemplateBuilderEditor({
                     ))}
                   </div>
                 </div>
-                <div className="flex-1 overflow-y-auto scrollbar-thin p-2 space-y-1.5">
-                  <AnimatePresence>
-                    {filteredBlocks.map((block) => (
-                      <DraggableCatalogBlock key={block.id} block={block} selected={isSelected(block.id)} onToggle={() => toggleBlock(block)} />
-                    ))}
-                  </AnimatePresence>
+
+                <div className="flex-1 overflow-y-auto scrollbar-thin p-2 space-y-3">
+                  {/* Tipos de consulta */}
+                  <div>
+                    <div className="text-[10px] uppercase tracking-wide text-muted-foreground mb-1.5 px-1">Tipos de consulta</div>
+                    <div className="space-y-1.5">
+                      <AnimatePresence>
+                        {filteredBlocks.map((block) => (
+                          <DraggableCatalogBlock key={block.id} block={block} selected={isSelected(block.id)} onToggle={() => toggleBlock(block)} />
+                        ))}
+                      </AnimatePresence>
+                    </div>
+                  </div>
+
+                  {/* Blocos de layout (admin only) */}
+                  {builderMode === 'admin' && (
+                    <div>
+                      <div className="text-[10px] uppercase tracking-wide text-muted-foreground mb-1.5 px-1">Blocos de layout</div>
+                      <div className="space-y-1">
+                        {LAYOUT_BLOCKS.map((lb) => {
+                          const LbIcon = lb.icon;
+                          return (
+                            <div key={lb.id} className="rounded-lg border border-border p-2 hover:border-primary/30 transition-colors cursor-pointer group">
+                              <div className="flex items-center gap-2">
+                                <div className="w-6 h-6 rounded-md bg-muted flex items-center justify-center group-hover:bg-primary/10">
+                                  <LbIcon className="w-3 h-3 text-muted-foreground group-hover:text-primary" />
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-[11px] font-medium text-foreground">{lb.name}</p>
+                                  <p className="text-[9px] text-muted-foreground line-clamp-1">{lb.description}</p>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+
+                        {customBlocks.map((cb, i) => (
+                          <div key={`custom-${i}`} className="rounded-lg border border-dashed border-primary/30 p-2 bg-primary/5">
+                            <div className="flex items-center gap-2">
+                              <div className="w-6 h-6 rounded-md bg-primary/10 flex items-center justify-center">
+                                <Variable className="w-3 h-3 text-primary" />
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <p className="text-[11px] font-medium text-foreground">{cb.name}</p>
+                                <p className="text-[9px] text-muted-foreground line-clamp-1">{cb.description || 'Bloco customizado'}</p>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+
+                        <button
+                          type="button"
+                          onClick={() => setCustomBlockEditorOpen(true)}
+                          className="w-full rounded-lg border border-dashed border-border p-2 hover:border-primary hover:bg-primary/5 transition-colors flex items-center gap-2 cursor-pointer group"
+                        >
+                          <PlusCircle className="w-4 h-4 text-muted-foreground group-hover:text-primary" />
+                          <span className="text-[11px] text-muted-foreground group-hover:text-primary font-medium">Criar bloco customizado</span>
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {fieldTypes.length > 0 && (
+                    <VariablesPanel
+                      fieldTypes={fieldTypes}
+                      capabilities={capabilities}
+                      onInsertVariable={handleInsertVariable}
+                    />
+                  )}
                 </div>
               </div>
             </ResizablePanel>
 
             <ResizableHandle withHandle />
 
+            {/* ===== MIDDLE COLUMN ===== */}
             <ResizablePanel defaultSize={47} minSize={25}>
               <div className="flex flex-col h-full">
                 <div className="flex items-center justify-between px-3 py-2 border-b border-border bg-card/50">
                   <h3 className="text-xs font-semibold text-foreground flex items-center gap-2">
                     <Eye className="w-3.5 h-3.5 text-muted-foreground" /> Layout do Template
                   </h3>
-                  <span className="text-[10px] text-muted-foreground bg-muted px-2 py-0.5 rounded-full">{blocks.length} blocos</span>
-                </div>
-                <PreviewDropZone hasBlocks={blocks.length > 0} activeDragItem={activeDragItem}>
-                  {blocks.length > 0 && (
-                    <div className="relative">
-                      <DropIndicator id="gap-0" isOver={overDropId === 'gap-0'} />
-                      <ConsultationPreview
-                        blocks={blocks}
-                        document="000.000.000-00"
-                        onReorder={handleReorder}
-                        logo={reportLogo}
-                        onLogoChange={setReportLogo}
-                        mode="edit"
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] text-muted-foreground bg-muted px-2 py-0.5 rounded-full">{blocks.length} blocos</span>
+                    <div className="flex items-center gap-1.5">
+                      <Label htmlFor="view-toggle" className={`text-[10px] cursor-pointer ${viewMode === 'skeleton' ? 'text-foreground font-medium' : 'text-muted-foreground'}`}>
+                        Esqueleto
+                      </Label>
+                      <Switch
+                        id="view-toggle"
+                        checked={viewMode === 'preview'}
+                        onCheckedChange={(checked) => setViewMode(checked ? 'preview' : 'skeleton')}
+                        className="h-4 w-7"
                       />
+                      <Label htmlFor="view-toggle" className={`text-[10px] cursor-pointer ${viewMode === 'preview' ? 'text-foreground font-medium' : 'text-muted-foreground'}`}>
+                        Preview
+                      </Label>
                     </div>
-                  )}
-                </PreviewDropZone>
+                  </div>
+                </div>
+
+                {viewMode === 'preview' ? (
+                  <div className="flex-1 overflow-y-auto scrollbar-thin">
+                    <ConsultationPreview
+                      blocks={blocks}
+                      document="403.406.588-51"
+                      clientName="JULIANO CAMPOS PEREIRA"
+                      logo={reportLogo}
+                      mode="preview"
+                    />
+                  </div>
+                ) : (
+                  <div className="flex-1 overflow-y-auto scrollbar-thin">
+                    <BaseReportSkeleton
+                      blocks={blocks}
+                      logo={reportLogo}
+                      onLogoChange={setReportLogo}
+                      onEditSection={(sectionId) => {
+                        // TODO: open section editor modal
+                        console.log('Edit section:', sectionId);
+                      }}
+                    />
+                  </div>
+                )}
               </div>
             </ResizablePanel>
 
             <ResizableHandle withHandle />
 
+            {/* ===== RIGHT COLUMN ===== */}
             <ResizablePanel defaultSize={25} minSize={16} maxSize={35}>
               <div className="flex flex-col h-full">
                 <div className="px-3 py-2 border-b border-border bg-card/50">
@@ -440,13 +536,25 @@ export default function TemplateBuilderEditor({
           </ResizablePanelGroup>
           <DragOverlay>{activeDragItem && <CatalogDragOverlay block={activeDragItem} />}</DragOverlay>
         </DndContext>
+
+        {/* Console de expressões — 3 colunas, fora do ResizablePanelGroup */}
+        <div className="shrink-0">
+          <ExpressionConsole defaultCollapsed={true} />
+        </div>
       </div>
+
+      <CustomBlockEditorModal
+        open={customBlockEditorOpen}
+        onClose={() => setCustomBlockEditorOpen(false)}
+        fieldTypes={fieldTypes}
+        onSave={handleSaveCustomBlock}
+      />
     </>
   );
 
   if (mode === 'embedded') {
     return (
-      <div className="h-[80vh] min-h-[34rem] rounded-md border border-border bg-card overflow-hidden">
+      <div className="h-[80vh] min-h-[34rem] rounded-md border border-border bg-card overflow-hidden flex flex-col">
         {content}
       </div>
     );

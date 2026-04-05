@@ -9,9 +9,9 @@ export type TemplateVariableItem = {
 };
 
 export const SYSTEM_TEMPLATE_VARIABLES: TemplateVariableItem[] = [
-  { key: 'protocol_id', label: 'Protocolo', expression: '${protocol_id}', category: 'system' },
-  { key: 'now', label: 'Data/Hora atual', expression: '${now}', category: 'system' },
-  { key: 'company_name', label: 'Empresa', expression: '${company_name}', category: 'system' },
+  { key: 'template.protocol', label: 'Protocolo', expression: '{$template.protocol}', category: 'system' },
+  { key: 'template.date', label: 'Data/Hora atual', expression: '{$template.date}', category: 'system' },
+  { key: 'template.company', label: 'Empresa', expression: '{$template.company}', category: 'system' },
 ];
 
 export function buildTypeFieldVariables(fieldTypes: ConsultationFieldType[]): TemplateVariableItem[] {
@@ -23,7 +23,7 @@ export function buildTypeFieldVariables(fieldTypes: ConsultationFieldType[]): Te
       items.push({
         key: `${typeItem.key}.${field.key}`,
         label: `${typeItem.label} - ${field.label}`,
-        expression: `\${"${typeItem.key}"."${field.key}"}`,
+        expression: `{$${typeItem.key}.${field.key}}`,
         category: 'type-field',
         typeKey: typeItem.key,
       });

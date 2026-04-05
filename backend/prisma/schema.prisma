@@ -102,8 +102,9 @@ model Tenant {
   createdAt   DateTime   @default(now())
   updatedAt   DateTime   @updatedAt
 
-  companies   Company[]
-  apiTokens   ApiToken[]
+  companies    Company[]
+  apiTokens    ApiToken[]
+  customBlocks CustomBlock[]
 }
 
 model ApiToken {
@@ -581,4 +582,23 @@ model MergeLog {
 
   @@index([consultationId])
   @@index([createdById])
+}
+
+model CustomBlock {
+  id          String   @id @default(cuid())
+  tenantId    String
+  name        String
+  description String?
+  category    String   @default("custom")
+  template    String
+  skeleton    String
+  variables   Json     @default("[]")
+  isSystem    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId])
+  @@map("custom_blocks")
 }

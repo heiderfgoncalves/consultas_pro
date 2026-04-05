@@ -1,0 +1,248 @@
+import { useState, useMemo } from 'react';
+import { Code2, Eye, Braces, ChevronDown, ChevronRight, Search, Layers, LayoutGrid, Type as TypeIcon } from 'lucide-react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Switch } from '@/components/ui/switch';
+import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable';
+import type { ConsultationFieldType } from '@/types/integrations';
+import { SYSTEM_TEMPLATE_VARIABLES, buildTypeFieldVariables } from '@/lib/templateVariableCatalog';
+import { evaluateExpression, type ExpressionContext } from '@/lib/expressionEngine';
+import { MOCK_EXPRESSION_CONTEXT } from '@/lib/expressionMockContext';
+import { ExpressionConsole } from './ExpressionConsole';
+
+export type CustomBlockDraft = {
+  name: string;
+  description: string;
+  category: string;
+  template: string;
+};
+
+interface CustomBlockEditorModalProps {
+  open: boolean;
+  onClose: () => void;
+  fieldTypes: ConsultationFieldType[];
+  initialDraft?: Partial<CustomBlockDraft>;
+  onSave: (draft: CustomBlockDraft) => void;
+}
+
+const AVAILABLE_BLOCK_ELEMENTS = [
+  { tag: '<section>', desc: 'Seção agrupadora', snippet: '<section name="">\n  \n</section>' },
+  { tag: '<card>', desc: 'Card com borda', snippet: '<card variant="kpi">\n  <label></label>\n  <value></value>\n</card>' },
+  { tag: '<container>', desc: 'Container flexível', snippet: '<container cols="3">\n  \n</container>' },
+  { tag: '<label>', desc: 'Label de campo', snippet: '<label></label>' },
+  { tag: '<value>', desc: 'Valor dinâmico', snippet: '<value>{$}</value>' },
+  { tag: '<divider>', desc: 'Linha separadora', snippet: '<divider />' },
+  { tag: '<table>', desc: 'Tabela de dados', snippet: '<table source="">\n  <column key="" label="" />\n</table>' },
+  { tag: '<text>', desc: 'Texto livre', snippet: '<text></text>' },
+  { tag: '<speedometer>', desc: 'Velocímetro de score', snippet: '<speedometer value="{$SCORE.valor}" max="1000" />' },
+  { tag: '<icon>', desc: 'Ícone Lucide', snippet: '<icon name="gauge" />' },
+];
+
+export function CustomBlockEditorModal({
+  open,
+  onClose,
+  fieldTypes,
+  initialDraft,
+  onSave,
+}: CustomBlockEditorModalProps) {
+  const [name, setName] = useState(initialDraft?.name ?? '');
+  const [description, setDescription] = useState(initialDraft?.description ?? '');
+  const [category, setCategory] = useState(initialDraft?.category ?? 'custom');
+  const [template, setTemplate] = useState(initialDraft?.template ?? '');
+  const [showPreview, setShowPreview] = useState(false);
+  const [variableSearch, setVariableSearch] = useState('');
+  const [expandedTypes, setExpandedTypes] = useState<Record<string, boolean>>({});
+
+  const typeFieldVars = useMemo(() => buildTypeFieldVariables(fieldTypes), [fieldTypes]);
+  const ctx: ExpressionContext = MOCK_EXPRESSION_CONTEXT;
+
+  const renderedHtml = useMemo(() => {
+    if (!template.trim()) return '<p class="text-muted-foreground text-xs italic">Nenhum conteúdo</p>';
+    try {
+      return showPreview ? evaluateExpression(template, ctx) : template;
+    } catch {
+      return '<p class="text-destructive text-xs">Erro ao renderizar</p>';
+    }
+  }, [template, showPreview, ctx]);
+
+  const byType = useMemo(() => {
+    const grouped: Record<string, typeof typeFieldVars> = {};
+    for (const item of typeFieldVars) {
+      if (!item.typeKey) continue;
+      if (!grouped[item.typeKey]) grouped[item.typeKey] = [];
+      grouped[item.typeKey]!.push(item);
+    }
+    return grouped;
+  }, [typeFieldVars]);
+
+  const q = variableSearch.trim().toLowerCase();
+
+  const filteredSystem = useMemo(() => {
+    if (!q) return SYSTEM_TEMPLATE_VARIABLES;
+    return SYSTEM_TEMPLATE_VARIABLES.filter(
+      (v) => v.label.toLowerCase().includes(q) || v.expression.toLowerCase().includes(q),
+    );
+  }, [q]);
+
+  const insertAtCursor = (text: string) => {
+    setTemplate((prev) => prev + text);
+  };
+
+  const handleSave = () => {
+    onSave({ name: name || 'Bloco sem nome', description, category, template });
+    onClose();
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
+      <DialogContent className="max-w-[90vw] w-[90vw] max-h-[85vh] h-[85vh] p-0 overflow-hidden flex flex-col">
+        <DialogHeader className="px-4 py-2.5 border-b border-border flex-row items-center justify-between shrink-0">
+          <div className="flex items-center gap-3">
+            <DialogTitle className="text-sm font-bold">Editor de Bloco Customizado</DialogTitle>
+            <Input placeholder="Nome do bloco..." value={name} onChange={(e) => setName(e.target.value)} className="h-7 text-xs w-48" />
+            <Input placeholder="Descrição..." value={description} onChange={(e) => setDescription(e.target.value)} className="h-7 text-xs w-48" />
+          </div>
+          <Button size="sm" className="h-7 text-xs gradient-primary text-primary-foreground" onClick={handleSave}>
+            Salvar bloco
+          </Button>
+        </DialogHeader>
+
+        <div className="flex-1 overflow-hidden flex flex-col">
+          <ResizablePanelGroup direction="horizontal" className="flex-1">
+            {/* Left: Variables + Available blocks */}
+            <ResizablePanel defaultSize={25} minSize={18}>
+              <div className="h-full overflow-y-auto p-3 space-y-3">
+                {/* Blocos disponíveis */}
+                <div>
+                  <div className="flex items-center gap-2 text-xs font-semibold text-foreground mb-2">
+                    <Layers className="h-3.5 w-3.5 text-primary" />
+                    Blocos disponíveis
+                  </div>
+                  <div className="space-y-1">
+                    {AVAILABLE_BLOCK_ELEMENTS.map((el) => (
+                      <button
+                        key={el.tag}
+                        type="button"
+                        onClick={() => insertAtCursor(el.snippet)}
+                        className="w-full rounded border border-border bg-background px-2 py-1.5 text-left hover:border-primary/40 hover:bg-muted/40 cursor-pointer group"
+                      >
+                        <code className="text-[10px] font-mono text-primary">{el.tag}</code>
+                        <p className="text-[9px] text-muted-foreground">{el.desc}</p>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Variáveis */}
+                <div>
+                  <div className="flex items-center gap-2 text-xs font-semibold text-foreground">
+                    <Braces className="h-3.5 w-3.5 text-primary" />
+                    Variáveis
+                  </div>
+                  <div className="relative mt-2">
+                    <Search className="h-3.5 w-3.5 absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                    <Input value={variableSearch} onChange={(e) => setVariableSearch(e.target.value)} placeholder="Buscar..." className="h-7 pl-7 text-xs" />
+                  </div>
+
+                  <div className="space-y-1 mt-2">
+                    <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Sistêmicas</div>
+                    {filteredSystem.map((v) => (
+                      <button key={v.key} type="button" onClick={() => insertAtCursor(v.expression)}
+                        className="w-full rounded border border-border bg-background px-2 py-1 text-left text-[10px] font-mono text-foreground hover:border-primary/40 hover:bg-muted/40 cursor-pointer">
+                        {v.expression}
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="space-y-1 mt-2">
+                    <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Tipos e campos</div>
+                    <div className="space-y-1 max-h-48 overflow-y-auto">
+                      {fieldTypes.map((ft) => {
+                        const typeVars = byType[ft.key] ?? [];
+                        const matchesType = !q || ft.label.toLowerCase().includes(q) || ft.key.toLowerCase().includes(q);
+                        const filtered = q ? typeVars.filter((v) => v.label.toLowerCase().includes(q) || v.expression.toLowerCase().includes(q)) : typeVars;
+                        if (!matchesType && filtered.length === 0) return null;
+                        const expanded = expandedTypes[ft.key] ?? false;
+
+                        return (
+                          <div key={ft.id} className="rounded-md border border-border">
+                            <button type="button" className="w-full h-7 px-2 text-left flex items-center gap-1.5 hover:bg-muted/40 cursor-pointer"
+                              onClick={() => setExpandedTypes((prev) => ({ ...prev, [ft.key]: !expanded }))}>
+                              {expanded ? <ChevronDown className="h-3 w-3 text-muted-foreground" /> : <ChevronRight className="h-3 w-3 text-muted-foreground" />}
+                              <span className="text-[11px] font-medium text-foreground truncate">{ft.label}</span>
+                            </button>
+                            {expanded && (
+                              <div className="px-2 pb-1.5 space-y-0.5">
+                                {filtered.map((v) => (
+                                  <button key={v.key} type="button" onClick={() => insertAtCursor(v.expression)}
+                                    className="w-full rounded border border-border bg-background px-2 py-0.5 text-left text-[10px] font-mono text-foreground hover:border-primary/40 hover:bg-muted/40 cursor-pointer">
+                                    {v.expression}
+                                  </button>
+                                ))}
+                                {filtered.length === 0 && <p className="text-[10px] text-muted-foreground py-1">Sem campos.</p>}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </ResizablePanel>
+
+            <ResizableHandle withHandle />
+
+            {/* Center: Preview */}
+            <ResizablePanel defaultSize={40} minSize={25}>
+              <div className="h-full flex flex-col">
+                <div className="flex items-center justify-between px-3 py-2 border-b border-border bg-muted/30">
+                  <div className="flex items-center gap-2 text-xs font-semibold text-foreground">
+                    <Eye className="h-3.5 w-3.5 text-primary" />
+                    Preview
+                  </div>
+                  <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
+                    <span className={!showPreview ? 'text-foreground font-medium' : ''}>Esqueleto</span>
+                    <Switch checked={showPreview} onCheckedChange={setShowPreview} className="h-4 w-7" />
+                    <span className={showPreview ? 'text-foreground font-medium' : ''}>Preview</span>
+                  </div>
+                </div>
+                <div className="flex-1 overflow-y-auto p-4 bg-card">
+                  <div className="text-xs" dangerouslySetInnerHTML={{ __html: renderedHtml }} />
+                </div>
+              </div>
+            </ResizablePanel>
+
+            <ResizableHandle withHandle />
+
+            {/* Right: Code editor */}
+            <ResizablePanel defaultSize={35} minSize={22}>
+              <div className="h-full flex flex-col">
+                <div className="flex items-center gap-2 px-3 py-2 border-b border-border bg-muted/30">
+                  <Code2 className="h-3.5 w-3.5 text-primary" />
+                  <span className="text-xs font-semibold text-foreground">XML / Template</span>
+                </div>
+                <div className="flex-1 overflow-hidden">
+                  <textarea
+                    value={template}
+                    onChange={(e) => setTemplate(e.target.value)}
+                    placeholder="Comece inserindo blocos da coluna esquerda ou escreva XML..."
+                    className="h-full w-full resize-none bg-transparent text-[11px] font-mono text-foreground p-3 outline-none scrollbar-thin placeholder:text-muted-foreground/40"
+                    spellCheck={false}
+                  />
+                </div>
+              </div>
+            </ResizablePanel>
+          </ResizablePanelGroup>
+
+          {/* Console — 3 colunas */}
+          <div className="shrink-0">
+            <ExpressionConsole defaultCollapsed={true} />
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}

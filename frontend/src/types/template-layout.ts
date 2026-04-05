@@ -7,7 +7,11 @@ export type TemplateWidgetKind =
   | 'text'
   | 'variable'
   | 'divider'
-  | 'table';
+  | 'table'
+  | 'card-kpi'
+  | 'container'
+  | 'free-text'
+  | 'custom';
 
 export type TemplateLayoutStyle = {
   textColor?: string;
