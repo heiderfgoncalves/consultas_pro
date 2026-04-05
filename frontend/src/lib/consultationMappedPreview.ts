@@ -4,6 +4,12 @@ import {
   formatDeepFilteredValueAtPath,
   getRecordPropertyCI,
 } from '@/lib/providerResponseMapping';
+import {
+  isMappedPreviewZipWrapper,
+  MAPPED_PREVIEW_AGGREGATES_KEY,
+  MAPPED_PREVIEW_ROWS_KEY,
+  wrapMappedPreviewZippedRows,
+} from '@/lib/mappedPreviewZipWrapper';
 import { countActiveTypeItemRules, normalizeTypeItemFilterConfig } from '@/lib/typeItemFilters';
 import { dedupeReportFieldKeys, slugifyReportFieldKey } from '@/lib/reportFieldKeys';
 import { aggregateComputedFieldValue } from '@/lib/reportFieldComputedAggregation';
@@ -54,6 +60,19 @@ function nestFlatPathRecord(flat: Record<string, unknown>): Record<string, unkno
 }
 
 function nestZippedPathsForDisplay(zipped: unknown): unknown {
+  if (isMappedPreviewZipWrapper(zipped)) {
+    const agg = zipped[MAPPED_PREVIEW_AGGREGATES_KEY];
+    const rows = zipped[MAPPED_PREVIEW_ROWS_KEY];
+    const nestedRows = rows.map((row) => nestFlatPathRecord(row));
+    const nestedAgg =
+      agg != null && typeof agg === 'object' && !Array.isArray(agg)
+        ? nestFlatPathRecord(agg as Record<string, unknown>)
+        : agg;
+    return {
+      [MAPPED_PREVIEW_AGGREGATES_KEY]: nestedAgg ?? {},
+      [MAPPED_PREVIEW_ROWS_KEY]: nestedRows,
+    };
+  }
   if (Array.isArray(zipped)) {
     if (zipped.every((el) => el != null && typeof el === 'object' && !Array.isArray(el))) {
       return (zipped as Record<string, unknown>[]).map((row) => nestFlatPathRecord(row));
@@ -260,45 +279,60 @@ export function buildTypeLinkedConsultationMappedPreview(params: {
     return 'Nenhum campo do tipo com de-para válido para esta consulta (confira campos do relatório e paths).';
   }
 
-  const allKeysRaw = [
-    ...mappedFieldRows.map((r) => r.fullPathKey),
-    ...computedPreviewRows.map((r) => r.baseKey),
-  ];
-  const displayPathKeys = dedupeReportFieldKeys(allKeysRaw);
+  const mappedDisplayKeys = dedupeReportFieldKeys(mappedFieldRows.map((r) => r.fullPathKey));
+  const computedDisplayKeys = dedupeReportFieldKeys(computedPreviewRows.map((r) => r.baseKey));
   const dedupFieldIdSet = new Set(normalizedCfg.dedupFieldIds);
-  const block: Record<string, unknown> = {};
+  const mappedBlock: Record<string, unknown> = {};
+  const computedBlock: Record<string, unknown> = {};
   const dedupDisplayKeys: string[] = [];
-  let keyIndex = 0;
-  for (const fieldRow of mappedFieldRows) {
-    const displayKey = displayPathKeys[keyIndex]!;
-    keyIndex += 1;
-    block[displayKey] = fieldRow.value;
+  const dedupSummary: Record<string, unknown> = {};
+  mappedFieldRows.forEach((fieldRow, index) => {
+    const displayKey = mappedDisplayKeys[index]!;
+    mappedBlock[displayKey] = fieldRow.value;
     if (dedupFieldIdSet.has(fieldRow.reportFieldId)) {
       dedupDisplayKeys.push(displayKey);
     }
-  }
-  for (const row of computedPreviewRows) {
-    const displayKey = displayPathKeys[keyIndex]!;
-    keyIndex += 1;
-    block[displayKey] = row.value;
+  });
+  computedPreviewRows.forEach((row, index) => {
+    const displayKey = computedDisplayKeys[index]!;
+    computedBlock[displayKey] = row.value;
     if (dedupFieldIdSet.has(row.reportFieldId)) {
       dedupDisplayKeys.push(displayKey);
+      dedupSummary[displayKey] = row.value;
     }
+  });
+
+  const zippedMapped = zipAlignedMappedPreviewRows(mappedBlock);
+  let zipped: unknown;
+  if (Array.isArray(zippedMapped) && Object.keys(computedBlock).length > 0) {
+    zipped = wrapMappedPreviewZippedRows(zippedMapped as Record<string, unknown>[], computedBlock);
+  } else if (!Array.isArray(zippedMapped) && Object.keys(computedBlock).length > 0) {
+    zipped = { ...(zippedMapped as Record<string, unknown>), ...computedBlock };
+  } else {
+    zipped = zippedMapped;
   }
 
-  let zipped: unknown = zipAlignedMappedPreviewRows(block);
   const typeKey = fieldType.key;
+  const rowsForDedup = isMappedPreviewZipWrapper(zipped)
+    ? zipped[MAPPED_PREVIEW_ROWS_KEY]
+    : Array.isArray(zippedMapped)
+      ? (zippedMapped as Record<string, unknown>[])
+      : null;
   if (
     dedupDisplayKeys.length > 0
-    && Array.isArray(zipped)
-    && zipped.length > 0
-    && zipped.every((el) => el != null && typeof el === 'object' && !Array.isArray(el))
+    && rowsForDedup != null
+    && rowsForDedup.length > 0
+    && rowsForDedup.every((el) => el != null && typeof el === 'object' && !Array.isArray(el))
   ) {
     const byType = { [typeKey]: zipped };
-    const rowInfo = new Map<string, { rows: Record<string, unknown>[]; dedupKeys: string[] }>();
+    const rowInfo = new Map<
+      string,
+      { rows: Record<string, unknown>[]; dedupKeys: string[]; dedupSummary?: Record<string, unknown> }
+    >();
     rowInfo.set(typeKey, {
-      rows: zipped as Record<string, unknown>[],
+      rows: rowsForDedup,
       dedupKeys: dedupDisplayKeys,
+      ...(Object.keys(dedupSummary).length > 0 ? { dedupSummary } : {}),
     });
     const cleaned = buildByTypeWithGlobalDedupRemoved(byType, [typeKey], rowInfo);
     zipped = cleaned[typeKey];

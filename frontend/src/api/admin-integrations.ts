@@ -3,6 +3,7 @@ import type {
   ConsultationFieldType,
   FieldMapping,
   MappingItemFilter,
+  ProductSessionFieldAssignment,
   Provider,
   ProviderConsultation,
   TestLogEntry,
@@ -51,6 +52,17 @@ export interface ApiFieldMapping {
   canonicalField: ApiCanonicalField;
 }
 
+export interface ApiSessionFieldAssignment {
+  id: string;
+  productId: string;
+  canonicalFieldId: string;
+  sessionKey: string;
+  sourcePath: string | null;
+  sortOrder: number;
+  isActive: boolean;
+  canonicalField: ApiCanonicalField;
+}
+
 export interface ApiProduct {
   id: string;
   providerId: string;
@@ -65,10 +77,12 @@ export interface ApiProduct {
   updatedAt?: string;
   sampleRequest: unknown;
   sampleResponse: unknown;
+  templateLayout?: unknown;
   bodyTemplate?: unknown;
   queryTemplate?: unknown;
   headersTemplate?: unknown;
   typeItemFilters?: unknown;
+  sessionAssignments?: ApiSessionFieldAssignment[];
   mappings: ApiFieldMapping[];
 }
 
@@ -261,6 +275,22 @@ export function mapApiProduct(p: ApiProduct, providerId: string): ProviderConsul
         : JSON.stringify(p.bodyTemplate, null, 2);
   }
 
+  const groupedSessionAssignments: Record<string, ProductSessionFieldAssignment[]> = {};
+  for (const row of p.sessionAssignments ?? []) {
+    if (!groupedSessionAssignments[row.sessionKey]) groupedSessionAssignments[row.sessionKey] = [];
+    groupedSessionAssignments[row.sessionKey].push({
+      canonicalFieldId: row.canonicalFieldId,
+      fieldTypeKey: row.canonicalField.pathKey,
+      label: row.canonicalField.label,
+      sourcePath: row.sourcePath ?? '',
+      sortOrder: row.sortOrder,
+      isActive: row.isActive,
+    });
+  }
+  for (const sessionKey of Object.keys(groupedSessionAssignments)) {
+    groupedSessionAssignments[sessionKey] = groupedSessionAssignments[sessionKey]!.sort((a, b) => a.sortOrder - b.sortOrder);
+  }
+
   return {
     id: p.id,
     providerId,
@@ -273,8 +303,10 @@ export function mapApiProduct(p: ApiProduct, providerId: string): ProviderConsul
     fieldMappings,
     mappingIds,
     typeItemFilters: parseProductTypeItemFilters(p.typeItemFilters),
+    sessionAssignments: groupedSessionAssignments,
     sampleResponse: sampleRes,
     bodyTemplateJson,
+    templateLayout: p.templateLayout,
     updatedAt,
     status: p.isActive ? 'active' : 'inactive',
   };
@@ -407,6 +439,38 @@ export async function deleteProductApi(accessToken: string | null, productId: st
   return apiRequest<{ deleted: boolean }>(`/admin/providers/products/${productId}`, {
     method: 'DELETE',
     token: tok(accessToken),
+  });
+}
+
+export async function getProductSessionAssignmentsApi(
+  accessToken: string | null,
+  productId: string,
+  sessionKey?: string,
+) {
+  const suffix = sessionKey ? `?sessionKey=${encodeURIComponent(sessionKey)}` : '';
+  return apiRequest<ApiSessionFieldAssignment[]>(`/admin/providers/products/${productId}/session-assignments${suffix}`, {
+    method: 'GET',
+    token: tok(accessToken),
+  });
+}
+
+export async function putProductSessionAssignmentsApi(
+  accessToken: string | null,
+  productId: string,
+  body: {
+    sessionKey: string;
+    assignments: Array<{
+      canonicalFieldId: string;
+      sourcePath?: string;
+      sortOrder?: number;
+      isActive?: boolean;
+    }>;
+  },
+) {
+  return apiRequest<ApiSessionFieldAssignment[]>(`/admin/providers/products/${productId}/session-assignments`, {
+    method: 'PUT',
+    token: tok(accessToken),
+    body: JSON.stringify(body),
   });
 }
 

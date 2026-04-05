@@ -1,3 +1,7 @@
+import { MAPPED_PREVIEW_ROWS_KEY } from '@/lib/mappedPreviewZipWrapper';
+
+const LINHAS_ARRAY_LINE_RE = new RegExp(`^\\s*"${MAPPED_PREVIEW_ROWS_KEY}"\\s*:`);
+
 /** Saldo aproximado de `{` `[` vs `}` `]` na linha, ignorando strings JSON. */
 export function lineDeltaDepth(line: string): number {
   let delta = 0;
@@ -32,10 +36,14 @@ export type LineGutterMeta = {
   sectionBadgeIcon?: string;
   /** Chave do tipo no JSON de preview (reordenação / DnD). */
   sectionTypeKey?: string;
+  /** Tipo da sessão ativa em qualquer linha do bloco (drop vertical no preview). */
+  sectionHitTypeKey?: string;
   /** Ordem global 1…n entre tipos mapeados (badge numerado). */
   sectionBadgeOrdinal?: number;
   /** z-index do badge para empilhar sobre faixas/linhas vizinhas. */
   sectionBadgeStackZ?: number;
+  /** z-index da lavagem da sessão (sobreposição entre tipos). */
+  sessionWashStackZ?: number;
   isSectionHeaderLine?: boolean;
 };
 
@@ -51,7 +59,10 @@ export function computeJsonLineGutterMeta(
   let active: LineGutterMeta = { barClass: 'bg-border/20' };
   let activeTypeKey = '';
   let activeSessionWashClass: string | undefined;
+  let activeSessionWashStackZ: number | undefined;
   let rowIndex = -1;
+  /** Depth do primeiro `{` de cada linha do array `linhas` (preview com agregados); -1 = formato legado (array direto no tipo). */
+  let linhasRowObjectDepth = -1;
   const out: LineGutterMeta[] = [];
 
   for (const line of lines) {
@@ -66,17 +77,34 @@ export function computeJsonLineGutterMeta(
           active = { barClass: meta.barClass, title: meta.title };
           activeTypeKey = rawKey;
           activeSessionWashClass = meta.sessionWashClass;
+          activeSessionWashStackZ = meta.sessionWashStackZ;
         } else {
           /* Evita usar o tipo da sessão anterior em chaves do JSON que não são blocos de tipo (meta stale). */
           activeTypeKey = '';
           active = { barClass: 'bg-border/20' };
           activeSessionWashClass = undefined;
+          activeSessionWashStackZ = undefined;
         }
         const colon = line.indexOf(':');
         const afterColon = colon >= 0 ? line.slice(colon + 1).trimStart() : '';
-        if (duplicateRowsByType && keyToMeta.has(rawKey) && afterColon.startsWith('[')) {
-          rowIndex = -1;
+        if (duplicateRowsByType && keyToMeta.has(rawKey)) {
+          if (afterColon.startsWith('[')) {
+            rowIndex = -1;
+            linhasRowObjectDepth = -1;
+          } else if (afterColon.startsWith('{')) {
+            rowIndex = -1;
+            linhasRowObjectDepth = -1;
+          }
         }
+      }
+    }
+
+    if (duplicateRowsByType && activeTypeKey && LINHAS_ARRAY_LINE_RE.test(line)) {
+      const colon = line.indexOf(':');
+      const afterColon = colon >= 0 ? line.slice(colon + 1).trimStart() : '';
+      if (afterColon.startsWith('[')) {
+        rowIndex = -1;
+        linhasRowObjectDepth = depthBefore + lineDeltaDepth(line);
       }
     }
 
@@ -84,18 +112,25 @@ export function computeJsonLineGutterMeta(
       activeTypeKey = '';
       active = { barClass: 'bg-border/20' };
       activeSessionWashClass = undefined;
+      activeSessionWashStackZ = undefined;
+      linhasRowObjectDepth = -1;
     }
 
-    if (duplicateRowsByType && activeTypeKey && depthBefore === 2 && line.trim().startsWith(']')) {
+    const rowCloseBracketDepth = linhasRowObjectDepth >= 0 ? linhasRowObjectDepth : 2;
+    if (duplicateRowsByType && activeTypeKey && depthBefore === rowCloseBracketDepth && line.trim().startsWith(']')) {
       rowIndex = -1;
+      linhasRowObjectDepth = -1;
     }
 
-    if (duplicateRowsByType && activeTypeKey && depthBefore === 2) {
+    const rowOpenDepth = linhasRowObjectDepth >= 0 ? linhasRowObjectDepth : 2;
+    if (duplicateRowsByType && activeTypeKey && depthBefore === rowOpenDepth) {
       const trimmed = line.trim();
       if (trimmed.startsWith('{')) {
         rowIndex += 1;
       }
     }
+
+    const minFieldKeyDepth = linhasRowObjectDepth >= 0 ? linhasRowObjectDepth + 1 : 3;
 
     let isDuplicateLine = false;
     if (duplicateRowsByType && activeTypeKey && rowIndex >= 0) {
@@ -103,7 +138,7 @@ export function computeJsonLineGutterMeta(
       if (dupSet && dupSet.size > 0 && dupSet.has(rowIndex)) {
         const dedupKeySet = dedupFieldKeysByType?.get(activeTypeKey);
         const fieldKeyMatch = line.match(/^\s*"((?:[^"\\]|\\.)*)"\s*:/);
-        if (depthBefore >= 3 && fieldKeyMatch && dedupKeySet && dedupKeySet.size > 0) {
+        if (depthBefore >= minFieldKeyDepth && fieldKeyMatch && dedupKeySet && dedupKeySet.size > 0) {
           const rawFieldKey = fieldKeyMatch[1]!.replace(/\\"/g, '"').replace(/\\\\/g, '\\');
           isDuplicateLine = dedupKeySet.has(rawFieldKey);
         }
@@ -143,7 +178,13 @@ export function computeJsonLineGutterMeta(
     out.push({
       ...active,
       isDuplicateLine,
-      ...(sessionWashClass ? { sessionWashClass } : {}),
+      ...(activeTypeKey ? { sectionHitTypeKey: activeTypeKey } : {}),
+      ...(sessionWashClass
+        ? {
+            sessionWashClass,
+            ...(activeSessionWashStackZ !== undefined ? { sessionWashStackZ: activeSessionWashStackZ } : {}),
+          }
+        : {}),
       ...(sectionBadgeLabel
         ? {
             sectionBadgeLabel,

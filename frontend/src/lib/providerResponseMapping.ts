@@ -1,5 +1,9 @@
 import type { MappingItemFilter, TypeItemFilterConfig } from '@/types/integrations';
 import { getActiveTypeItemFilterGroups, normalizeTypeItemFilterConfig } from '@/lib/typeItemFilters';
+import {
+  isMappedPreviewZipWrapper,
+  MAPPED_PREVIEW_ROWS_KEY,
+} from '@/lib/mappedPreviewZipWrapper';
 
 /** Lê propriedade com tolerância a maiúsculas/minúsculas (retornos usam INFORMANTE, telas às vezes informante). */
 export function getRecordPropertyCI(obj: Record<string, unknown>, key: string): unknown {
@@ -52,14 +56,30 @@ export function normalizeDedupFingerprintPart(value: unknown): string {
 }
 
 /** Fingerprint estável para dedup global no preview/relatório (chaves do relatório + valores normalizados). */
-export function reportRowDedupFingerprint(row: Record<string, unknown>, dedupKeys: string[]): string {
+export function reportRowDedupFingerprint(
+  row: Record<string, unknown>,
+  dedupKeys: string[],
+  dedupSummary?: Record<string, unknown>,
+): string {
   if (dedupKeys.length === 0) return '';
   const sorted = [...dedupKeys].sort((a, b) => a.localeCompare(b, 'pt-BR'));
-  return sorted.map((k) => `${k}\0${normalizeDedupFingerprintPart(row[k])}`).join('\x1e');
+  return sorted
+    .map((k) => {
+      const v = Object.prototype.hasOwnProperty.call(row, k) ? row[k] : dedupSummary?.[k];
+      return `${k}\0${normalizeDedupFingerprintPart(v)}`;
+    })
+    .join('\x1e');
 }
 
-function rowHasDedupSubstance(row: Record<string, unknown>, dedupKeys: string[]): boolean {
-  return dedupKeys.some((k) => normalizeDedupFingerprintPart(row[k]) !== '');
+function rowHasDedupSubstance(
+  row: Record<string, unknown>,
+  dedupKeys: string[],
+  dedupSummary?: Record<string, unknown>,
+): boolean {
+  return dedupKeys.some((k) => {
+    const v = Object.prototype.hasOwnProperty.call(row, k) ? row[k] : dedupSummary?.[k];
+    return normalizeDedupFingerprintPart(v) !== '';
+  });
 }
 
 /**
@@ -68,15 +88,18 @@ function rowHasDedupSubstance(row: Record<string, unknown>, dedupKeys: string[])
  */
 export function computeGlobalDuplicateRowIndicesByType(
   typeKeysInOrder: string[],
-  rowInfo: Map<string, { rows: Record<string, unknown>[]; dedupKeys: string[] }>,
+  rowInfo: Map<
+    string,
+    { rows: Record<string, unknown>[]; dedupKeys: string[]; dedupSummary?: Record<string, unknown> }
+  >,
 ): Map<string, Set<number>> {
   const byFp = new Map<string, { typeKey: string; rowIndex: number }[]>();
   for (const typeKey of typeKeysInOrder) {
     const pack = rowInfo.get(typeKey);
     if (!pack?.dedupKeys.length) continue;
     pack.rows.forEach((row, rowIndex) => {
-      if (!rowHasDedupSubstance(row, pack.dedupKeys)) return;
-      const fp = reportRowDedupFingerprint(row, pack.dedupKeys);
+      if (!rowHasDedupSubstance(row, pack.dedupKeys, pack.dedupSummary)) return;
+      const fp = reportRowDedupFingerprint(row, pack.dedupKeys, pack.dedupSummary);
       const list = byFp.get(fp) ?? [];
       list.push({ typeKey, rowIndex });
       byFp.set(fp, list);
@@ -97,18 +120,38 @@ export function computeGlobalDuplicateRowIndicesByType(
 export function buildByTypeWithGlobalDedupRemoved(
   byType: Record<string, unknown>,
   typeKeysInOrder: string[],
-  rowInfo: Map<string, { rows: Record<string, unknown>[]; dedupKeys: string[] }>,
+  rowInfo: Map<
+    string,
+    { rows: Record<string, unknown>[]; dedupKeys: string[]; dedupSummary?: Record<string, unknown> }
+  >,
 ): Record<string, unknown> {
   const seen = new Set<string>();
   const out: Record<string, unknown> = { ...byType };
   for (const typeKey of typeKeysInOrder) {
     const pack = rowInfo.get(typeKey);
     const val = out[typeKey];
-    if (!pack?.dedupKeys.length || !Array.isArray(val)) continue;
+    if (!pack?.dedupKeys.length) continue;
+
+    if (isMappedPreviewZipWrapper(val)) {
+      const rows = val[MAPPED_PREVIEW_ROWS_KEY];
+      out[typeKey] = {
+        ...val,
+        [MAPPED_PREVIEW_ROWS_KEY]: rows.filter((row) => {
+          if (!rowHasDedupSubstance(row, pack.dedupKeys, pack.dedupSummary)) return true;
+          const fp = reportRowDedupFingerprint(row, pack.dedupKeys, pack.dedupSummary);
+          if (seen.has(fp)) return false;
+          seen.add(fp);
+          return true;
+        }),
+      };
+      continue;
+    }
+
+    if (!Array.isArray(val)) continue;
     const rows = val as Record<string, unknown>[];
     out[typeKey] = rows.filter((row) => {
-      if (!rowHasDedupSubstance(row, pack.dedupKeys)) return true;
-      const fp = reportRowDedupFingerprint(row, pack.dedupKeys);
+      if (!rowHasDedupSubstance(row, pack.dedupKeys, pack.dedupSummary)) return true;
+      const fp = reportRowDedupFingerprint(row, pack.dedupKeys, pack.dedupSummary);
       if (seen.has(fp)) return false;
       seen.add(fp);
       return true;
