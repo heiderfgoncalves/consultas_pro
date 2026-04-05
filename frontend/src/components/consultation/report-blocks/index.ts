@@ -8,3 +8,4 @@ export { default as ClientInfoCard } from './ClientInfoCard';
 export { default as FinancialSummaryCards } from './FinancialSummaryCards';
 export { default as ReportFooter } from './ReportFooter';
 export { default as CustomBlockRenderer } from './CustomBlockRenderer';
+export { default as IconPicker, getIconByName, ICON_CATALOG } from './IconPicker';

@@ -1,91 +1,109 @@
 import { useState } from 'react';
 import { type ConsultationBlock } from '@/stores/consultationStore';
 import {
-  AlertTriangle, Gauge, DollarSign, FileText, CheckCircle,
-  User, Hash, Tag, Image as ImageIcon, Pencil, Settings2, Trash2, Plus,
+  AlertTriangle, Gauge, Award, DollarSign, TrendingUp,
+  ShieldAlert, Building2, FileX, Users, FileWarning, FileText,
+  User, Hash, Tag, Image as ImageIcon, Settings2, Trash2, Plus, CheckCircle,
 } from 'lucide-react';
-import { EditableText, SectionHeader, PlaceholderTable, PlaceholderScore, ReportFooter } from './report-blocks';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { EditableText } from './report-blocks';
 
 const iconMap: Record<string, any> = {
-  AlertTriangle, Gauge, FileText,
+  AlertTriangle, Gauge, Award, DollarSign, TrendingUp, ShieldAlert, Building2, FileX, Users, FileWarning,
 };
 
 interface BaseReportSkeletonProps {
   blocks: ConsultationBlock[];
   logo?: string | null;
   onLogoChange?: (logo: string | null) => void;
-  onEditSection?: (sectionId: string) => void;
 }
 
-function ExprField({ expr, className }: { expr: string; className?: string }) {
-  const [value, setValue] = useState(expr);
-  return (
-    <EditableText
-      value={value}
-      onChange={setValue}
-      className={`font-mono text-[11px] text-primary/80 ${className ?? ''}`}
-    />
-  );
+function Expr({ children }: { children: string }) {
+  return <code className="text-[10px] font-mono text-primary/70 bg-primary/5 px-1 py-0.5 rounded border border-dashed border-primary/20">{children}</code>;
 }
 
-function SectionWrapper({ id, title, onEdit, onRemove, children }: {
+function SectionWrap({ id, title, children, onEdit }: {
   id: string;
   title: string;
-  onEdit?: (id: string) => void;
-  onRemove?: (id: string) => void;
   children: React.ReactNode;
+  onEdit: (id: string) => void;
 }) {
   return (
     <div className="group/section relative">
-      <div className="absolute -left-1 top-0 bottom-0 w-0.5 bg-transparent group-hover/section:bg-primary/30 transition-colors rounded-full" />
-      <div className="flex items-center justify-between mb-1.5">
-        <EditableText
-          value={title}
-          onChange={() => {}}
-          className="text-[10px] font-bold uppercase text-muted-foreground tracking-wider"
-          tag="span"
-        />
-        <div className="opacity-0 group-hover/section:opacity-100 transition-opacity flex items-center gap-1">
-          {onEdit && (
-            <button onClick={() => onEdit(id)} className="text-[9px] text-primary hover:text-primary/80 flex items-center gap-0.5 border border-primary/30 rounded px-1.5 py-0.5 bg-primary/5 cursor-pointer">
-              <Settings2 className="w-2.5 h-2.5" /> Editar
-            </button>
-          )}
-          {onRemove && (
-            <button onClick={() => onRemove(id)} className="text-[9px] text-destructive hover:text-destructive/80 flex items-center gap-0.5 border border-destructive/30 rounded px-1.5 py-0.5 bg-destructive/5 cursor-pointer">
-              <Trash2 className="w-2.5 h-2.5" />
-            </button>
-          )}
-        </div>
+      <div className="flex items-center justify-between mb-1">
+        <span className="text-[9px] font-medium uppercase text-muted-foreground/60 tracking-wider">{title}</span>
+        <button
+          onClick={() => onEdit(id)}
+          className="opacity-0 group-hover/section:opacity-100 transition-opacity text-[9px] text-primary flex items-center gap-0.5 border border-primary/30 rounded px-1.5 py-0.5 bg-primary/5 hover:bg-primary/10 cursor-pointer"
+        >
+          <Settings2 className="w-2.5 h-2.5" /> Editar
+        </button>
       </div>
       {children}
     </div>
   );
 }
 
-export default function BaseReportSkeleton({
-  blocks,
-  logo,
-  onLogoChange,
-  onEditSection,
-}: BaseReportSkeletonProps) {
-  return (
-    <div className="p-5 space-y-4 text-xs bg-card">
+type SectionEditField = { label: string; expression: string };
+type SectionEditState = { id: string; title: string; fields: SectionEditField[] } | null;
 
-      {/* ===== HEADER — espelho do ReportHeader preview ===== */}
-      <SectionWrapper id="header" title="Header" onEdit={onEditSection}>
-        <div className="pb-3" style={{ borderBottom: '3px solid hsl(var(--primary))' }}>
+export default function BaseReportSkeleton({ blocks, logo, onLogoChange }: BaseReportSkeletonProps) {
+  const [editingSection, setEditingSection] = useState<SectionEditState>(null);
+
+  const sectionData: Record<string, { title: string; fields: SectionEditField[] }> = {
+    header: { title: 'Header', fields: [
+      { label: 'Empresa', expression: '{$template.company}' },
+      { label: 'Título', expression: 'Relatório Analítico de Crédito' },
+      { label: 'Data', expression: '{$template.date}' },
+      { label: 'Protocolo', expression: '{$template.protocol}' },
+    ]},
+    'client-info': { title: 'Dados Pessoais', fields: [
+      { label: 'Cliente Analisado', expression: '{$cliente.nome}' },
+      { label: 'Documento', expression: '{$cliente.documento}' },
+      { label: 'Tipo de Relatório', expression: 'Padrão' },
+    ]},
+    'financial-summary': { title: 'Resumo Financeiro', fields: [
+      { label: 'Total Apontado', expression: '{$RESUMO_FINANCEIRO.totalApontado}' },
+      { label: 'Total Deduzido', expression: '{$RESUMO_FINANCEIRO.totalDeduzido}' },
+      { label: 'Risco Bacen (Vencido)', expression: '{$RESUMO_FINANCEIRO.riscoBacenVencido}' },
+    ]},
+    score: { title: 'Score de Crédito', fields: [
+      { label: 'Score', expression: '{$SCORE.valor}' },
+      { label: 'Faixa', expression: '{$SCORE.faixa}' },
+      { label: 'Chance de pagar', expression: '{$SCORE.chancePagar}' },
+      { label: 'Inadimplência', expression: '{$SCORE.probabilidadeInadimplencia}' },
+    ]},
+  };
+
+  const openSectionEditor = (id: string) => {
+    const data = sectionData[id];
+    if (data) {
+      setEditingSection({ id, title: data.title, fields: [...data.fields] });
+    } else {
+      const block = blocks.find((b) => b.id === id);
+      setEditingSection({ id, title: block?.name ?? id, fields: [] });
+    }
+  };
+
+  return (
+    <div className="p-5 space-y-3 text-xs bg-card">
+
+      {/* ===== HEADER ===== */}
+      <SectionWrap id="header" title="Header" onEdit={openSectionEditor}>
+        <div className="pb-2" style={{ borderBottom: '3px solid hsl(var(--primary))' }}>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               {logo ? (
-                <img src={logo} alt="Logo" className="h-[50px] object-contain" />
+                <img src={logo} alt="Logo" className="h-[40px] object-contain" />
               ) : (
                 <button
                   onClick={() => onLogoChange && document.getElementById('skel-logo-input')?.click()}
-                  className="w-[50px] h-[50px] rounded-lg border-2 border-dashed border-border flex flex-col items-center justify-center gap-0.5 hover:border-primary hover:bg-primary/5 transition-colors group cursor-pointer"
+                  className="w-[40px] h-[40px] rounded border-2 border-dashed border-border flex flex-col items-center justify-center cursor-pointer hover:border-primary/40"
                 >
-                  <ImageIcon className="w-4 h-4 text-muted-foreground group-hover:text-primary" />
-                  <span className="text-[7px] text-muted-foreground group-hover:text-primary font-medium">LOGO</span>
+                  <ImageIcon className="w-3.5 h-3.5 text-muted-foreground/50" />
+                  <span className="text-[6px] text-muted-foreground/50">LOGO</span>
                 </button>
               )}
               <input id="skel-logo-input" type="file" accept="image/*" className="hidden" onChange={(e) => {
@@ -93,163 +111,217 @@ export default function BaseReportSkeleton({
                 if (file) { const r = new FileReader(); r.onload = (ev) => onLogoChange?.(ev.target?.result as string); r.readAsDataURL(file); }
               }} />
               <div>
-                <ExprField expr="{$template.company}" className="text-[10px] font-bold text-primary tracking-widest uppercase" />
-                <ExprField expr="Relatório Analítico de Crédito" className="text-[9px] text-muted-foreground" />
+                <div><Expr>{'{$template.company}'}</Expr></div>
+                <div className="mt-0.5 text-[9px] text-muted-foreground">Relatório Analítico de Crédito</div>
               </div>
             </div>
-            <div className="text-right space-y-0.5">
-              <ExprField expr="{$template.date}" className="text-[9px]" />
-              <ExprField expr="PROT: {$template.protocol}" className="text-[9px]" />
+            <div className="text-right">
+              <div><Expr>{'{$template.date}'}</Expr></div>
+              <div className="mt-0.5"><Expr>{'PROT: {$template.protocol}'}</Expr></div>
             </div>
           </div>
         </div>
-      </SectionWrapper>
+      </SectionWrap>
 
-      {/* ===== DADOS DO CLIENTE — espelho do ClientInfoCard preview ===== */}
-      <SectionWrapper id="client-info" title="Dados Pessoais" onEdit={onEditSection}>
-        <div className="rounded-xl border border-border bg-card p-3.5 shadow-sm">
+      {/* ===== DADOS PESSOAIS ===== */}
+      <SectionWrap id="client-info" title="Dados Pessoais" onEdit={openSectionEditor}>
+        <div className="rounded-lg border border-dashed border-border p-3">
           <div className="grid grid-cols-3 gap-3">
-            <div className="flex items-start gap-2.5">
-              <div className="w-9 h-9 rounded-lg bg-muted border border-border flex items-center justify-center flex-shrink-0">
-                <User className="w-[18px] h-[18px] text-muted-foreground" />
-              </div>
+            <div className="flex items-start gap-2">
+              <User className="w-4 h-4 text-muted-foreground/40 mt-0.5 flex-shrink-0" />
               <div>
-                <EditableText value="Cliente Analisado" onChange={() => {}} className="text-[9px] uppercase font-semibold text-muted-foreground tracking-wider" />
-                <ExprField expr="{$json.cliente.nome}" className="text-[13px] font-semibold" />
+                <span className="text-[8px] uppercase text-muted-foreground/60">Cliente Analisado</span>
+                <div><Expr>{'{$cliente.nome}'}</Expr></div>
               </div>
             </div>
-            <div className="flex items-start gap-2.5">
-              <div className="w-9 h-9 rounded-lg bg-muted border border-border flex items-center justify-center flex-shrink-0">
-                <Hash className="w-[18px] h-[18px] text-muted-foreground" />
-              </div>
+            <div className="flex items-start gap-2">
+              <Hash className="w-4 h-4 text-muted-foreground/40 mt-0.5 flex-shrink-0" />
               <div>
-                <EditableText value="Documento" onChange={() => {}} className="text-[9px] uppercase font-semibold text-muted-foreground tracking-wider" />
-                <ExprField expr="{$json.cliente.documento}" className="text-[13px] font-semibold font-mono" />
+                <span className="text-[8px] uppercase text-muted-foreground/60">Documento</span>
+                <div><Expr>{'{$cliente.documento}'}</Expr></div>
               </div>
             </div>
-            <div className="flex items-start gap-2.5">
-              <div className="w-9 h-9 rounded-lg bg-muted border border-border flex items-center justify-center flex-shrink-0">
-                <Tag className="w-[18px] h-[18px] text-muted-foreground" />
-              </div>
+            <div className="flex items-start gap-2">
+              <Tag className="w-4 h-4 text-muted-foreground/40 mt-0.5 flex-shrink-0" />
               <div>
-                <EditableText value="Tipo de Relatório" onChange={() => {}} className="text-[9px] uppercase font-semibold text-muted-foreground tracking-wider" />
-                <ExprField expr="Padrão" className="text-[13px] font-semibold" />
+                <span className="text-[8px] uppercase text-muted-foreground/60">Tipo de Relatório</span>
+                <div className="text-[10px] text-muted-foreground">Padrão</div>
               </div>
             </div>
           </div>
         </div>
-      </SectionWrapper>
+      </SectionWrap>
 
-      {/* ===== RESUMO FINANCEIRO — espelho do FinancialSummaryCards preview ===== */}
-      <SectionWrapper id="financial-summary" title="Resumo Financeiro" onEdit={onEditSection}>
-        <div>
-          <SectionHeader icon={DollarSign} title="Resumo Financeiro" onTitleChange={() => {}} />
-          <div className="grid grid-cols-3 gap-3">
-            <div className="rounded-xl border border-border p-3 relative overflow-hidden shadow-sm">
-              <div className="absolute left-0 top-0 bottom-0 w-1 rounded-l-xl bg-destructive" />
-              <EditableText value="Total Apontado" onChange={() => {}} className="text-[9px] uppercase text-muted-foreground font-semibold pl-2" />
-              <ExprField expr="{$RESUMO_FINANCEIRO.totalApontado}" className="text-lg font-bold text-destructive pl-2 block mt-0.5" />
-              <EditableText value="Soma bruta de apontamentos" onChange={() => {}} className="text-[8px] text-muted-foreground pl-2 mt-0.5" tag="p" />
+      {/* ===== RESUMO FINANCEIRO ===== */}
+      <SectionWrap id="financial-summary" title="Resumo Financeiro" onEdit={openSectionEditor}>
+        <div className="flex items-center gap-1.5 mb-2">
+          <DollarSign className="w-3.5 h-3.5 text-muted-foreground/40" />
+          <span className="text-[9px] font-medium uppercase text-muted-foreground/60 tracking-wider">Resumo Financeiro</span>
+          <div className="flex-1 border-b border-dashed border-border/40" />
+        </div>
+        <div className="grid grid-cols-3 gap-2">
+          <div className="rounded-lg border border-dashed border-border p-2">
+            <div className="flex items-center gap-1 mb-1">
+              <div className="w-0.5 h-full min-h-[2rem] rounded bg-destructive/30 absolute left-0 top-0 bottom-0" />
+              <span className="text-[8px] uppercase text-muted-foreground/60">Total Apontado</span>
             </div>
-            <div className="rounded-xl border border-border p-3 relative overflow-hidden shadow-sm">
-              <div className="absolute left-0 top-0 bottom-0 w-1 rounded-l-xl bg-success" />
-              <EditableText value="Total Deduzido" onChange={() => {}} className="text-[9px] uppercase text-muted-foreground font-semibold pl-2" />
-              <ExprField expr="{$RESUMO_FINANCEIRO.totalDeduzido}" className="text-lg font-bold text-success pl-2 block mt-0.5" />
-              <EditableText value="Sem duplicidades" onChange={() => {}} className="text-[8px] text-muted-foreground pl-2 mt-0.5" tag="p" />
-            </div>
-            <div className="rounded-xl border border-border p-3 relative overflow-hidden shadow-sm">
-              <div className="absolute left-0 top-0 bottom-0 w-1 rounded-l-xl bg-warning" />
-              <EditableText value="Risco Bacen (Vencido)" onChange={() => {}} className="text-[9px] uppercase text-muted-foreground font-semibold pl-2" />
-              <ExprField expr="{$RESUMO_FINANCEIRO.riscoBacenVencido}" className="text-lg font-bold text-warning pl-2 block mt-0.5" />
-              <EditableText value="Prejuízo + Vencido" onChange={() => {}} className="text-[8px] text-muted-foreground pl-2 mt-0.5" tag="p" />
-            </div>
+            <Expr>{'{$RESUMO_FINANCEIRO.totalApontado}'}</Expr>
+            <div className="text-[7px] text-muted-foreground/40 mt-0.5">Soma bruta de apontamentos</div>
+          </div>
+          <div className="rounded-lg border border-dashed border-border p-2">
+            <span className="text-[8px] uppercase text-muted-foreground/60">Total Deduzido</span>
+            <div className="mt-0.5"><Expr>{'{$RESUMO_FINANCEIRO.totalDeduzido}'}</Expr></div>
+            <div className="text-[7px] text-muted-foreground/40 mt-0.5">Sem duplicidades</div>
+          </div>
+          <div className="rounded-lg border border-dashed border-border p-2">
+            <span className="text-[8px] uppercase text-muted-foreground/60">Risco Bacen (Vencido)</span>
+            <div className="mt-0.5"><Expr>{'{$RESUMO_FINANCEIRO.riscoBacenVencido}'}</Expr></div>
+            <div className="text-[7px] text-muted-foreground/40 mt-0.5">Prejuízo + Vencido</div>
           </div>
         </div>
-      </SectionWrapper>
+      </SectionWrap>
 
-      {/* ===== SCORE — espelho da seção de score do preview ===== */}
+      {/* ===== SCORE ===== */}
       {blocks.some((b) => b.id === '5') && (
-        <SectionWrapper id="score" title="Score de Crédito" onEdit={onEditSection}>
-          <div className="rounded-xl border border-border p-5 shadow-sm space-y-4">
-            <div>
-              <EditableText value="Como o mercado enxerga seu CPF hoje (e o que está travando seu crédito)" onChange={() => {}} className="text-[14px] font-bold text-foreground leading-snug block" tag="h3" />
-              <EditableText value="Seu Score é uma estimativa de chance de pagar em dia nos próximos 6 meses." onChange={() => {}} className="text-[10px] text-muted-foreground leading-relaxed block mt-1" tag="p" />
-            </div>
-            <div className="flex items-start gap-6 flex-wrap">
-              <div className="w-[175px] flex-shrink-0 text-center">
-                <div className="w-[120px] h-[65px] mx-auto rounded-lg border-2 border-dashed border-border/60 flex items-center justify-center mb-1">
-                  <Gauge className="w-6 h-6 text-muted-foreground/30" />
-                </div>
-                <ExprField expr="{$SCORE.valor}" className="text-2xl font-semibold block" />
-                <ExprField expr="{$SCORE.faixa}" className="text-[10px] font-semibold uppercase block" />
+        <SectionWrap id="score" title="Score de Crédito" onEdit={openSectionEditor}>
+          <div className="rounded-lg border border-dashed border-border p-3 space-y-2">
+            <span className="text-[9px] text-muted-foreground/60">Como o mercado enxerga seu CPF hoje</span>
+            <div className="flex items-start gap-4">
+              <div className="w-[100px] text-center">
+                <Gauge className="w-8 h-8 text-muted-foreground/20 mx-auto" />
+                <div><Expr>{'{$SCORE.valor}'}</Expr></div>
+                <div><Expr>{'{$SCORE.faixa}'}</Expr></div>
               </div>
-              <div className="flex-1 min-w-0 grid grid-cols-2 gap-2.5">
+              <div className="flex-1 grid grid-cols-2 gap-1.5">
                 {[
-                  { label: 'Faixa', expr: '{$SCORE.faixaMin} a {$SCORE.faixaMax}', desc: 'Risco moderado. Valide renda e estabilidade.' },
-                  { label: 'Score', expr: '{$SCORE.valor}', desc: 'Quanto maior, melhor a predisposição ao crédito.' },
-                  { label: 'Chance de pagar (6 meses)', expr: '{$SCORE.chancePagar}%', desc: 'Estimativa de adimplência nos próximos 6 meses.' },
-                  { label: 'Probabilidade de inadimplência', expr: '{$SCORE.probabilidadeInadimplencia}%', desc: 'Estimativa de inadimplência — use como apoio à decisão.' },
+                  { label: 'Faixa', expr: '{$SCORE.faixaMin} a {$SCORE.faixaMax}' },
+                  { label: 'Score', expr: '{$SCORE.valor}' },
+                  { label: 'Chance de pagar', expr: '{$SCORE.chancePagar}%' },
+                  { label: 'Inadimplência', expr: '{$SCORE.probabilidadeInadimplencia}%' },
                 ].map((m, i) => (
-                  <div key={i} className="flex items-start gap-2 rounded-lg border border-border p-2.5 shadow-sm">
-                    <div className="w-[35px] h-[35px] min-w-[35px] rounded-lg bg-muted border border-border flex items-center justify-center flex-shrink-0">
-                      <Gauge className="w-5 h-5 text-muted-foreground" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <EditableText value={m.label} onChange={() => {}} className="text-[13px] text-muted-foreground font-bold" />
-                      <span className="text-[13px]">: </span>
-                      <ExprField expr={m.expr} className="text-[14px] font-bold inline" />
-                      <EditableText value={m.desc} onChange={() => {}} className="text-[10px] text-muted-foreground mt-0.5 leading-relaxed block" tag="p" />
-                    </div>
+                  <div key={i} className="rounded border border-dashed border-border/60 p-1.5">
+                    <span className="text-[8px] text-muted-foreground/60">{m.label}</span>
+                    <div><Expr>{m.expr}</Expr></div>
                   </div>
                 ))}
               </div>
             </div>
-
-            <div className="rounded-lg bg-muted/50 border border-border p-3">
-              <div className="grid grid-cols-5 gap-2">
-                {[
-                  { label: 'Péssimo', range: '0–200', color: '#dc2626' },
-                  { label: 'Ruim', range: '201–400', color: '#ea580c' },
-                  { label: 'Regular', range: '401–600', color: '#ca8a04' },
-                  { label: 'Bom', range: '601–800', color: '#65a30d' },
-                  { label: 'Ótimo', range: '801–1000', color: '#16a34a' },
-                ].map((band) => (
-                  <div key={band.label} className="flex items-center gap-1.5 text-[11px]">
-                    <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: band.color }} />
-                    <span className="font-medium text-foreground">{band.label}</span>
-                    <span className="text-muted-foreground">{band.range}</span>
-                  </div>
+            <div className="rounded border border-dashed border-border/40 p-2">
+              <div className="flex gap-2">
+                {['Péssimo', 'Ruim', 'Regular', 'Bom', 'Ótimo'].map((b) => (
+                  <span key={b} className="text-[8px] text-muted-foreground/50">{b}</span>
                 ))}
               </div>
-            </div>
-
-            <div className="border-l-[3px] border-primary rounded-r-lg bg-muted/30 p-3">
-              <EditableText value="Hoje seu Score está em Regular (401 a 600) — isso geralmente indica que o mercado enxerga risco moderado." onChange={() => {}} className="text-[10px] text-foreground leading-relaxed block" tag="p" />
             </div>
           </div>
-        </SectionWrapper>
+        </SectionWrap>
       )}
 
       {/* ===== BLOCOS DINÂMICOS ===== */}
       {blocks.filter((b) => b.id !== '5').map((block) => {
         const Icon = iconMap[block.icon] || FileText;
         return (
-          <SectionWrapper key={block.id} id={block.id} title={block.name} onEdit={onEditSection}>
-            <SectionHeader icon={Icon} title={block.name} isEdit badge="— registros" onTitleChange={() => {}} />
-            <PlaceholderTable label={block.name} cols={block.id === '10' ? 3 : 5} />
-            <EditableText value="" onChange={() => {}} className="text-[9px] text-muted-foreground italic" tag="p" placeholder="+ Adicionar informações adicionais..." />
-          </SectionWrapper>
+          <SectionWrap key={block.id} id={block.id} title={block.name} onEdit={openSectionEditor}>
+            <div className="rounded-lg border border-dashed border-border p-3">
+              <div className="flex items-center gap-1.5 mb-2">
+                <Icon className="w-3.5 h-3.5 text-muted-foreground/40" />
+                <span className="text-[9px] font-medium uppercase text-muted-foreground/60 tracking-wider">{block.name}</span>
+                <div className="flex-1 border-b border-dashed border-border/40" />
+                <span className="text-[8px] text-muted-foreground/40">— registros</span>
+              </div>
+              <div className="space-y-1.5">
+                <div className="flex gap-1.5">
+                  {Array.from({ length: block.id === '10' ? 3 : 5 }).map((_, c) => (
+                    <div key={c} className="h-2 rounded border border-dashed border-border/30 flex-1" />
+                  ))}
+                </div>
+                {[1, 2].map((r) => (
+                  <div key={r} className="flex gap-1.5">
+                    {Array.from({ length: block.id === '10' ? 3 : 5 }).map((_, c) => (
+                      <div key={c} className="h-1.5 rounded border border-dashed border-border/20 flex-1" />
+                    ))}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </SectionWrap>
         );
       })}
 
-      {/* ===== BOTÃO ADICIONAR SEÇÃO ===== */}
-      <button className="w-full rounded-lg border-2 border-dashed border-border/60 p-3 hover:border-primary/40 hover:bg-primary/5 transition-colors flex items-center justify-center gap-2 cursor-pointer group">
-        <Plus className="w-4 h-4 text-muted-foreground group-hover:text-primary" />
-        <span className="text-[11px] text-muted-foreground group-hover:text-primary font-medium">Adicionar seção</span>
+      {/* ===== ADD SECTION ===== */}
+      <button className="w-full rounded-lg border-2 border-dashed border-border/40 p-2 hover:border-primary/40 hover:bg-primary/5 transition-colors flex items-center justify-center gap-1.5 cursor-pointer group">
+        <Plus className="w-3.5 h-3.5 text-muted-foreground/50 group-hover:text-primary" />
+        <span className="text-[9px] text-muted-foreground/50 group-hover:text-primary font-medium">Adicionar seção</span>
       </button>
 
       {/* ===== FOOTER ===== */}
-      <ReportFooter mode="skeleton" onDisclaimerChange={() => {}} />
+      <div className="border-t border-dashed border-border/40 pt-2 mt-3">
+        <div className="text-[7px] text-muted-foreground/40 leading-relaxed">
+          Aviso LGPD — Texto configurável do disclaimer
+        </div>
+        <div className="text-center mt-1.5">
+          <Expr>{'{$template.date}'}</Expr>
+          <span className="text-[8px] text-muted-foreground/40 mx-1">•</span>
+          <Expr>{'{$template.protocol}'}</Expr>
+        </div>
+      </div>
+
+      {/* ===== MODAL EDIÇÃO DE SEÇÃO ===== */}
+      <Dialog open={!!editingSection} onOpenChange={(open) => !open && setEditingSection(null)}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="text-sm">Editar seção: {editingSection?.title}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            {editingSection?.fields.map((field, idx) => (
+              <div key={idx} className="grid grid-cols-2 gap-2">
+                <div className="space-y-1">
+                  <label className="text-[10px] text-muted-foreground">Label</label>
+                  <Input
+                    value={field.label}
+                    onChange={(e) => {
+                      setEditingSection((prev) => {
+                        if (!prev) return prev;
+                        const fields = [...prev.fields];
+                        fields[idx] = { ...fields[idx]!, label: e.target.value };
+                        return { ...prev, fields };
+                      });
+                    }}
+                    className="h-8 text-xs"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] text-muted-foreground">Expressão</label>
+                  <Input
+                    value={field.expression}
+                    onChange={(e) => {
+                      setEditingSection((prev) => {
+                        if (!prev) return prev;
+                        const fields = [...prev.fields];
+                        fields[idx] = { ...fields[idx]!, expression: e.target.value };
+                        return { ...prev, fields };
+                      });
+                    }}
+                    className="h-8 text-xs font-mono"
+                  />
+                </div>
+              </div>
+            ))}
+            <button
+              onClick={() => {
+                setEditingSection((prev) => prev ? { ...prev, fields: [...prev.fields, { label: '', expression: '' }] } : prev);
+              }}
+              className="w-full rounded border border-dashed border-border p-2 text-[10px] text-muted-foreground hover:border-primary hover:text-primary flex items-center justify-center gap-1 cursor-pointer"
+            >
+              <Plus className="w-3 h-3" /> Adicionar campo
+            </button>
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="outline" size="sm" className="text-xs" onClick={() => setEditingSection(null)}>Cancelar</Button>
+              <Button size="sm" className="text-xs gradient-primary text-primary-foreground" onClick={() => setEditingSection(null)}>Salvar</Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -195,13 +195,13 @@ export function CustomBlockEditorModal({
 
             <ResizableHandle withHandle />
 
-            {/* Center: Preview */}
+            {/* Center: Layout do bloco */}
             <ResizablePanel defaultSize={40} minSize={25}>
               <div className="h-full flex flex-col">
                 <div className="flex items-center justify-between px-3 py-2 border-b border-border bg-muted/30">
                   <div className="flex items-center gap-2 text-xs font-semibold text-foreground">
                     <Eye className="h-3.5 w-3.5 text-primary" />
-                    Preview
+                    Layout do bloco
                   </div>
                   <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
                     <span className={!showPreview ? 'text-foreground font-medium' : ''}>Esqueleto</span>
@@ -210,7 +210,17 @@ export function CustomBlockEditorModal({
                   </div>
                 </div>
                 <div className="flex-1 overflow-y-auto p-4 bg-card">
-                  <div className="text-xs" dangerouslySetInnerHTML={{ __html: renderedHtml }} />
+                  {!template.trim() ? (
+                    <div className="h-full flex flex-col items-center justify-center rounded-lg border-2 border-dashed border-border/60 p-6 text-center">
+                      <Layers className="w-8 h-8 text-muted-foreground/20 mb-2" />
+                      <p className="text-[11px] text-muted-foreground/60 mb-1">Nenhum conteúdo</p>
+                      <p className="text-[9px] text-muted-foreground/40">Insira blocos da coluna esquerda ou escreva XML na coluna direita</p>
+                    </div>
+                  ) : (
+                    <div className="rounded-lg border-2 border-dashed border-border/40 p-3 min-h-[100px]">
+                      <div className="text-xs" dangerouslySetInnerHTML={{ __html: renderedHtml }} />
+                    </div>
+                  )}
                 </div>
               </div>
             </ResizablePanel>

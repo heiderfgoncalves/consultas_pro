@@ -2,7 +2,7 @@ import { useState, useMemo, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Search, Plus, Minus, Wallet, Save, FileText, Eye, Upload, X,
-  Layers, LayoutGrid, Type as TypeIcon, Variable, PlusCircle,
+  Layers, LayoutGrid, Type as TypeIcon, Variable, PlusCircle, Settings2,
   type LucideIcon,
 } from 'lucide-react';
 import { useAuthStore } from '@/stores/authStore';
@@ -52,10 +52,12 @@ const LAYOUT_BLOCKS: LayoutBlockItem[] = [
   { id: 'lb-free-text', name: 'Texto Livre', description: 'Parágrafo com expressões dinâmicas', icon: TypeIcon, kind: 'free-text' },
 ];
 
-function DraggableCatalogBlock({ block, selected, onToggle }: {
+function DraggableCatalogBlock({ block, selected, onToggle, isAdmin, onEdit }: {
   block: ConsultationBlock;
   selected: boolean;
   onToggle: () => void;
+  isAdmin?: boolean;
+  onEdit?: (block: ConsultationBlock) => void;
 }) {
   const Icon = iconMap[block.icon] || FileText;
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
@@ -88,14 +90,25 @@ function DraggableCatalogBlock({ block, selected, onToggle }: {
           </div>
           <p className="text-[10px] text-muted-foreground mt-0.5 leading-relaxed line-clamp-1">{block.description}</p>
         </div>
-        <button
-          onClick={(e) => { e.stopPropagation(); onToggle(); }}
-          className={`w-5 h-5 rounded-md flex items-center justify-center flex-shrink-0 transition-all duration-200 ${
-            selected ? 'bg-primary text-primary-foreground' : 'border border-border text-muted-foreground group-hover:border-primary/40'
-          }`}
-        >
-          {selected ? <Minus className="w-3 h-3" /> : <Plus className="w-3 h-3" />}
-        </button>
+        <div className="flex items-center gap-1 flex-shrink-0">
+          {isAdmin && onEdit && (
+            <button
+              onClick={(e) => { e.stopPropagation(); onEdit(block); }}
+              className="w-5 h-5 rounded-md flex items-center justify-center border border-border text-muted-foreground hover:border-primary/40 hover:text-primary opacity-0 group-hover:opacity-100 transition-all cursor-pointer"
+              title="Editar bloco"
+            >
+              <Settings2 className="w-3 h-3" />
+            </button>
+          )}
+          <button
+            onClick={(e) => { e.stopPropagation(); onToggle(); }}
+            className={`w-5 h-5 rounded-md flex items-center justify-center flex-shrink-0 transition-all duration-200 ${
+              selected ? 'bg-primary text-primary-foreground' : 'border border-border text-muted-foreground group-hover:border-primary/40'
+            }`}
+          >
+            {selected ? <Minus className="w-3 h-3" /> : <Plus className="w-3 h-3" />}
+          </button>
+        </div>
       </div>
     </motion.div>
   );
@@ -201,6 +214,7 @@ export default function TemplateBuilderEditor({
   const [viewMode, setViewMode] = useState<'skeleton' | 'preview'>('skeleton');
   const [customBlockEditorOpen, setCustomBlockEditorOpen] = useState(false);
   const [customBlocks, setCustomBlocks] = useState<CustomBlockDraft[]>([]);
+  const [editingBlockDraft, setEditingBlockDraft] = useState<Partial<CustomBlockDraft> | undefined>(undefined);
   const { user } = useAuthStore();
 
   const capabilities: TemplateBuilderCapabilities = useMemo(() => createCapabilitiesByMode(builderMode), [builderMode]);
@@ -346,7 +360,17 @@ export default function TemplateBuilderEditor({
                     <div className="space-y-1.5">
                       <AnimatePresence>
                         {filteredBlocks.map((block) => (
-                          <DraggableCatalogBlock key={block.id} block={block} selected={isSelected(block.id)} onToggle={() => toggleBlock(block)} />
+                          <DraggableCatalogBlock
+                            key={block.id}
+                            block={block}
+                            selected={isSelected(block.id)}
+                            onToggle={() => toggleBlock(block)}
+                            isAdmin={builderMode === 'admin'}
+                            onEdit={(b) => {
+                              setEditingBlockDraft({ name: b.name, description: b.description, category: b.category });
+                              setCustomBlockEditorOpen(true);
+                            }}
+                          />
                         ))}
                       </AnimatePresence>
                     </div>
@@ -390,7 +414,7 @@ export default function TemplateBuilderEditor({
 
                         <button
                           type="button"
-                          onClick={() => setCustomBlockEditorOpen(true)}
+                          onClick={() => { setEditingBlockDraft(undefined); setCustomBlockEditorOpen(true); }}
                           className="w-full rounded-lg border border-dashed border-border p-2 hover:border-primary hover:bg-primary/5 transition-colors flex items-center gap-2 cursor-pointer group"
                         >
                           <PlusCircle className="w-4 h-4 text-muted-foreground group-hover:text-primary" />
@@ -545,8 +569,9 @@ export default function TemplateBuilderEditor({
 
       <CustomBlockEditorModal
         open={customBlockEditorOpen}
-        onClose={() => setCustomBlockEditorOpen(false)}
+        onClose={() => { setCustomBlockEditorOpen(false); setEditingBlockDraft(undefined); }}
         fieldTypes={fieldTypes}
+        initialDraft={editingBlockDraft}
         onSave={handleSaveCustomBlock}
       />
     </>
