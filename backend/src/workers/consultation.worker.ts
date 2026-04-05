@@ -1,3 +1,4 @@
+import type { FastifyInstance } from 'fastify';
 import { Worker } from 'bullmq';
 import { prisma } from '../db/prisma';
 import { redis } from '../lib/redis';
@@ -6,9 +7,16 @@ import { env } from '../config/env';
 import { callProviderProduct } from '../modules/providers/provider-client.service';
 import { normalizeProviderPayload } from '../modules/providers/normalization.service';
 import { mergeNormalizedPayloads } from '../modules/providers/merge.service';
+import {
+  computeRetryDelayMs,
+  resolveIntegrationSettingsForConsultationId,
+  sleep,
+} from '../lib/integration-settings';
 import pino from 'pino';
 
 const logger = pino({ level: env.LOG_LEVEL });
+
+const appLike = { log: logger } as unknown as FastifyInstance;
 
 async function processConsultation(consultationId: string) {
   const consultation = await prisma.consultation.findUnique({
@@ -36,6 +44,14 @@ async function processConsultation(consultationId: string) {
     return;
   }
 
+  if (consultation.status === 'COMPLETED') {
+    logger.info({ consultationId }, 'consultation_already_completed_skip');
+    return;
+  }
+
+  const settings = await resolveIntegrationSettingsForConsultationId(prisma, consultationId);
+  const timeoutOverride = settings.providerTimeoutOverrideMs ?? null;
+
   await prisma.consultation.update({
     where: { id: consultationId },
     data: { status: 'PROCESSING' },
@@ -46,6 +62,15 @@ async function processConsultation(consultationId: string) {
 
   for (const item of consultation.items) {
     const product = item.providerProduct;
+
+    const existingSuccess = await prisma.consultationExecution.findFirst({
+      where: { consultationItemId: item.id, status: 'SUCCESS' },
+    });
+    if (existingSuccess?.normalizedPayload != null) {
+      normalizedPayloads.push(existingSuccess.normalizedPayload as Record<string, unknown>);
+      continue;
+    }
+
     const context = {
       subject: {
         document: consultation.subjectDocument,
@@ -58,52 +83,88 @@ async function processConsultation(consultationId: string) {
       companyId: consultation.companyId,
     };
 
-    try {
-      const execution = await callProviderProduct({ prisma, redis, log: logger } as never, product.provider, product, context);
-      const normalized = normalizeProviderPayload(execution.response.payload, product.mappings);
+    const retry = settings.executionRetry;
+    const windowStart = Date.now();
+    let lastError: unknown = null;
+    let succeeded = false;
 
-      normalizedPayloads.push(normalized);
+    for (let attempt = 1; attempt <= retry.maxAttempts; attempt++) {
+      if (Date.now() - windowStart > retry.maxRetryWindowMs) {
+        break;
+      }
 
-      await prisma.consultationExecution.create({
-        data: {
-          consultationId: consultation.id,
-          consultationItemId: item.id,
-          providerId: product.providerId,
-          productId: product.id,
-          status: 'SUCCESS',
-          requestPayload: execution.request as never,
-          rawResponse: execution.response.payload as never,
-          normalizedPayload: normalized as never,
-          providerCost: product.cost,
-          statusCode: execution.response.statusCode,
-          startedAt: new Date(),
-          completedAt: new Date(),
-        },
-      });
-    } catch (error) {
-      failedCount += 1;
+      try {
+        const execution = await callProviderProduct(appLike, product.provider, product, context, {
+          timeoutMsOverride: timeoutOverride,
+        });
+        const normalized = normalizeProviderPayload(execution.response.payload, product.mappings);
 
-      await prisma.consultationExecution.create({
-        data: {
-          consultationId: consultation.id,
-          consultationItemId: item.id,
-          providerId: product.providerId,
-          productId: product.id,
-          status: 'FAILED',
-          errorMessage: error instanceof Error ? error.message : 'Erro desconhecido',
-          startedAt: new Date(),
-          completedAt: new Date(),
-        },
-      });
+        normalizedPayloads.push(normalized);
+
+        await prisma.consultationExecution.create({
+          data: {
+            consultationId: consultation.id,
+            consultationItemId: item.id,
+            providerId: product.providerId,
+            productId: product.id,
+            status: 'SUCCESS',
+            requestPayload: execution.request as never,
+            rawResponse: execution.response.payload as never,
+            normalizedPayload: normalized as never,
+            providerCost: product.cost,
+            statusCode: execution.response.statusCode,
+            startedAt: new Date(),
+            completedAt: new Date(),
+          },
+        });
+        succeeded = true;
+        break;
+      } catch (error) {
+        lastError = error;
+        const canRetry =
+          attempt < retry.maxAttempts && Date.now() - windowStart <= retry.maxRetryWindowMs;
+        if (canRetry) {
+          const delayMs = computeRetryDelayMs(attempt, retry);
+          if (Date.now() - windowStart + delayMs > retry.maxRetryWindowMs) {
+            break;
+          }
+          await sleep(delayMs);
+        }
+      }
     }
+
+    if (succeeded) continue;
+
+    failedCount += 1;
+    await prisma.consultationExecution.create({
+      data: {
+        consultationId: consultation.id,
+        consultationItemId: item.id,
+        providerId: product.providerId,
+        productId: product.id,
+        status: 'FAILED',
+        errorMessage: lastError instanceof Error ? lastError.message : 'Erro desconhecido',
+        startedAt: new Date(),
+        completedAt: new Date(),
+      },
+    });
   }
 
   const mergedPayload = mergeNormalizedPayloads(normalizedPayloads);
-  const status = failedCount === 0
-    ? 'COMPLETED'
-    : normalizedPayloads.length > 0
-      ? 'PARTIAL'
-      : 'FAILED';
+  const status =
+    failedCount === 0
+      ? 'COMPLETED'
+      : normalizedPayloads.length > 0
+        ? 'PARTIAL'
+        : 'FAILED';
+
+  let finalError: string | null = null;
+  if (status === 'FAILED') {
+    finalError =
+      settings.onExhausted === 'require_manual_review'
+        ? 'Consulta requer revisão manual (política de integrações).'
+        : 'Todas as execuções falharam';
+  }
 
   await prisma.consultation.update({
     where: { id: consultation.id },
@@ -112,7 +173,7 @@ async function processConsultation(consultationId: string) {
       mergedPayload: mergedPayload as never,
       renderPayload: mergedPayload as never,
       completedAt: new Date(),
-      errorMessage: status === 'FAILED' ? 'Todas as execuções falharam' : null,
+      errorMessage: finalError,
     },
   });
 
@@ -138,7 +199,7 @@ const worker = new Worker(
   },
   {
     connection: redis,
-    concurrency: 5,
+    concurrency: env.CONSULTATION_WORKER_CONCURRENCY,
   },
 );
 
@@ -150,4 +211,7 @@ worker.on('failed', (job, error) => {
   logger.error({ jobId: job?.id, name: job?.name, error }, 'worker_job_failed');
 });
 
-logger.info('consultation_worker_started');
+logger.info(
+  { concurrency: env.CONSULTATION_WORKER_CONCURRENCY },
+  'consultation_worker_started',
+);

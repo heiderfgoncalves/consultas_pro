@@ -12,6 +12,8 @@ const envSchema = z.object({
   REDIS_URL: z.string().min(1),
   DEFAULT_INVITE_EXPIRATION_HOURS: z.coerce.number().default(72),
   PROVIDER_REQUEST_TIMEOUT_MS: z.coerce.number().default(30000),
+  /** Concorrência do worker BullMQ de execução de consultas (exposto na API admin para leitura). */
+  CONSULTATION_WORKER_CONCURRENCY: z.coerce.number().int().positive().max(50).default(5),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
   /** Origens extras permitidas no CORS, separadas por vírgula (opcional). */
   CORS_ORIGINS: z.string().optional(),

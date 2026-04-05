@@ -11,6 +11,7 @@ import { SYSTEM_TEMPLATE_VARIABLES, buildTypeFieldVariables } from '@/lib/templa
 import { evaluateExpression, type ExpressionContext } from '@/lib/expressionEngine';
 import { MOCK_EXPRESSION_CONTEXT } from '@/lib/expressionMockContext';
 import { ExpressionConsole } from './ExpressionConsole';
+import { IconPicker, getIconByName } from '@/components/consultation/report-blocks';
 
 export type CustomBlockDraft = {
   name: string;
@@ -54,6 +55,7 @@ export function CustomBlockEditorModal({
   const [showPreview, setShowPreview] = useState(false);
   const [variableSearch, setVariableSearch] = useState('');
   const [expandedTypes, setExpandedTypes] = useState<Record<string, boolean>>({});
+  const [iconName, setIconName] = useState('FileText');
 
   const typeFieldVars = useMemo(() => buildTypeFieldVariables(fieldTypes), [fieldTypes]);
   const ctx: ExpressionContext = MOCK_EXPRESSION_CONTEXT;
@@ -100,6 +102,7 @@ export function CustomBlockEditorModal({
       <DialogContent className="max-w-[90vw] w-[90vw] max-h-[85vh] h-[85vh] p-0 overflow-hidden flex flex-col">
         <DialogHeader className="px-4 py-2.5 border-b border-border flex-row items-center justify-between shrink-0">
           <div className="flex items-center gap-3">
+            <IconPicker currentIcon={getIconByName(iconName)} onSelect={(name) => setIconName(name)} />
             <DialogTitle className="text-sm font-bold">Editor de Bloco Customizado</DialogTitle>
             <Input placeholder="Nome do bloco..." value={name} onChange={(e) => setName(e.target.value)} className="h-7 text-xs w-48" />
             <Input placeholder="Descrição..." value={description} onChange={(e) => setDescription(e.target.value)} className="h-7 text-xs w-48" />

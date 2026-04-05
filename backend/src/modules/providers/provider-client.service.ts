@@ -93,14 +93,16 @@ export async function callProviderProduct(
   provider: ProviderLike,
   product: ProviderProduct,
   context: Record<string, unknown>,
+  callOpts?: { timeoutMsOverride?: number | null },
 ) {
+  const timeoutMs = callOpts?.timeoutMsOverride ?? product.timeoutMs;
   return callProviderOperation(app, provider, {
     path: product.endpointPath,
     method: product.method,
     headersTemplate: product.headersTemplate,
     queryTemplate: product.queryTemplate,
     bodyTemplate: product.bodyTemplate,
-    timeoutMs: product.timeoutMs,
+    timeoutMs,
   }, context);
 }
 

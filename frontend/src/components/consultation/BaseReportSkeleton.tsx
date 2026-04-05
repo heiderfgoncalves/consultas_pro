@@ -18,6 +18,7 @@ interface BaseReportSkeletonProps {
   blocks: ConsultationBlock[];
   logo?: string | null;
   onLogoChange?: (logo: string | null) => void;
+  onEditSection?: (sectionId: string) => void;
 }
 
 function Expr({ children }: { children: string }) {
@@ -49,7 +50,7 @@ function SectionWrap({ id, title, children, onEdit }: {
 type SectionEditField = { label: string; expression: string };
 type SectionEditState = { id: string; title: string; fields: SectionEditField[] } | null;
 
-export default function BaseReportSkeleton({ blocks, logo, onLogoChange }: BaseReportSkeletonProps) {
+export default function BaseReportSkeleton({ blocks, logo, onLogoChange, onEditSection }: BaseReportSkeletonProps) {
   const [editingSection, setEditingSection] = useState<SectionEditState>(null);
 
   const sectionData: Record<string, { title: string; fields: SectionEditField[] }> = {
@@ -78,6 +79,10 @@ export default function BaseReportSkeleton({ blocks, logo, onLogoChange }: BaseR
   };
 
   const openSectionEditor = (id: string) => {
+    if (onEditSection) {
+      onEditSection(id);
+      return;
+    }
     const data = sectionData[id];
     if (data) {
       setEditingSection({ id, title: data.title, fields: [...data.fields] });

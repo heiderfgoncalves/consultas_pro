@@ -217,6 +217,8 @@ export default function TemplatesAdminTab({
           showBalance={false}
           builderMode={builderMode}
           fieldTypes={fieldTypes}
+          accessToken={accessToken}
+          availableConsultationBlocks={consultations}
           onSave={(payload) => {
             const nextClassic: ClassicTemplateState = {
               name: payload.name,

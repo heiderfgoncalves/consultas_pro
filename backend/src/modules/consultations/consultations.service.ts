@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client';
 import { ConflictError, NotFoundError, ValidationError } from '../../core/errors';
 import { consultationExecutionQueue } from '../../queues';
 import { normalizeDocument } from '../../lib/documents';
+import { getEffectiveIntegrationSettingsForCompany } from '../../lib/integration-settings';
 
 export async function createConsultation(app: FastifyInstance, input: {
   requestedByUserId: string;
@@ -33,6 +34,13 @@ export async function createConsultation(app: FastifyInstance, input: {
 
   if (input.companyId && (!companyWallet || companyWallet.balance.lessThan(totalCost))) {
     throw new ConflictError('Saldo insuficiente para emitir a consulta');
+  }
+
+  if (input.companyId) {
+    const integrationSettings = await getEffectiveIntegrationSettingsForCompany(app.prisma, input.companyId);
+    if (integrationSettings.pauseNewConsultations) {
+      throw new ConflictError('Novas consultas estão pausadas pela configuração de integrações.');
+    }
   }
 
   const consultation = await app.prisma.$transaction(async (tx) => {
@@ -89,9 +97,13 @@ export async function createConsultation(app: FastifyInstance, input: {
     return created;
   });
 
-  await consultationExecutionQueue.add('consultation.execute', {
-    consultationId: consultation.id,
-  });
+  const queueSettings = await getEffectiveIntegrationSettingsForCompany(app.prisma, input.companyId);
+
+  await consultationExecutionQueue.add(
+    'consultation.execute',
+    { consultationId: consultation.id },
+    { priority: queueSettings.queueJobPriority },
+  );
 
   return consultation;
 }

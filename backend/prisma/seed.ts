@@ -389,6 +389,69 @@ async function main() {
       },
     });
   }
+
+  const templateBaseBlock = {
+    name: 'Template Base',
+    description: 'Estrutura base do relatório com header, dados pessoais, resumo financeiro e footer',
+    category: 'system',
+    template: `<section name="Header">
+  <value>{$template.company}</value>
+  <value>Relatório Analítico de Crédito</value>
+  <value>{$template.date}</value>
+  <value>{$template.protocol}</value>
+</section>
+<section name="Dados Pessoais">
+  <card><label>Cliente Analisado</label><value>{$cliente.nome}</value></card>
+  <card><label>Documento</label><value>{$cliente.documento}</value></card>
+  <card><label>Tipo de Relatório</label><value>Padrão</value></card>
+</section>
+<section name="Resumo Financeiro">
+  <card><label>Total Apontado</label><value>{$RESUMO_FINANCEIRO.totalApontado}</value></card>
+  <card><label>Total Deduzido</label><value>{$RESUMO_FINANCEIRO.totalDeduzido}</value></card>
+  <card><label>Risco Bacen (Vencido)</label><value>{$RESUMO_FINANCEIRO.riscoBacenVencido}</value></card>
+</section>`,
+  };
+
+  const scoreBlock = {
+    name: 'Score de Crédito',
+    description: 'Bloco de score e métricas de crédito',
+    category: 'score',
+    template: `<section name="Score de Crédito">
+  <speedometer value="{$SCORE.valor}" max="1000" />
+  <card><label>Faixa</label><value>{$SCORE.faixa}</value></card>
+  <card><label>Chance de pagar</label><value>{$SCORE.chancePagar}</value></card>
+  <card><label>Inadimplência</label><value>{$SCORE.probabilidadeInadimplencia}</value></card>
+</section>`,
+  };
+
+  for (const block of [templateBaseBlock, scoreBlock]) {
+    const existing = await prisma.customBlock.findFirst({
+      where: { tenantId: tenant.id, name: block.name },
+    });
+
+    if (existing) {
+      await prisma.customBlock.update({
+        where: { id: existing.id },
+        data: {
+          description: block.description,
+          category: block.category,
+          template: block.template,
+          skeleton: block.template,
+          isSystem: true,
+        },
+      });
+    } else {
+      await prisma.customBlock.create({
+        data: {
+          tenantId: tenant.id,
+          ...block,
+          skeleton: block.template,
+          variables: [],
+          isSystem: true,
+        },
+      });
+    }
+  }
 }
 
 main()

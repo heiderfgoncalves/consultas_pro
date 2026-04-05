@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Search, Plus, Minus, Wallet, Save, FileText, Eye, Upload, X,
@@ -19,9 +19,13 @@ import { VariablesPanel } from '@/components/integrations/template-builder/Varia
 import { ExpressionConsole } from '@/components/integrations/template-builder/ExpressionConsole';
 import { CustomBlockEditorModal } from '@/components/integrations/template-builder/CustomBlockEditorModal';
 import type { CustomBlockDraft } from '@/components/integrations/template-builder/CustomBlockEditorModal';
-import type { ConsultationFieldType } from '@/types/integrations';
+import type { ConsultationFieldType, ProviderConsultation } from '@/types/integrations';
 import type { TemplateBuilderCapabilities } from '@/types/template-layout';
 import { createCapabilitiesByMode } from '@/lib/templateLayoutTransforms';
+import { createCustomBlockApi, getCustomBlocksApi } from '@/api/admin-integrations';
+import type { CustomBlockDefinition } from '@/types/custom-blocks';
+import { useQuery, useMutation } from '@tanstack/react-query';
+import { toast } from 'sonner';
 import {
   DndContext, closestCenter, PointerSensor, useSensor, useSensors,
   type DragEndEvent, type DragStartEvent, DragOverlay,
@@ -191,6 +195,8 @@ type TemplateBuilderEditorProps = {
   showBalance?: boolean;
   builderMode?: 'admin' | 'user';
   fieldTypes?: ConsultationFieldType[];
+  accessToken?: string | null;
+  availableConsultationBlocks?: ProviderConsultation[];
 };
 
 export default function TemplateBuilderEditor({
@@ -203,6 +209,8 @@ export default function TemplateBuilderEditor({
   showBalance = true,
   builderMode = 'admin',
   fieldTypes = [],
+  accessToken = null,
+  availableConsultationBlocks = [],
 }: TemplateBuilderEditorProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [activeCategory, setActiveCategory] = useState('Todos');
@@ -220,13 +228,73 @@ export default function TemplateBuilderEditor({
   const capabilities: TemplateBuilderCapabilities = useMemo(() => createCapabilitiesByMode(builderMode), [builderMode]);
   const totalPrice = blocks.reduce((sum, b) => sum + b.price, 0);
 
+  const adminConsultationBlocks = useMemo<ConsultationBlock[]>(() => {
+    return availableConsultationBlocks.map((consultation, index) => ({
+      id: consultation.id,
+      name: consultation.name,
+      description: consultation.sampleResponse
+        ? 'Bloco derivado do produto real com sampleResponse do provedor'
+        : 'Bloco derivado do produto real',
+      price: consultation.consultationPrice ?? consultation.cost ?? 0,
+      category: 'Consulta',
+      icon: fieldTypes.find((f) => f.key === consultation.fieldMappings[0]?.fieldTypeKey)?.icon ?? 'FileText',
+    }));
+  }, [availableConsultationBlocks, fieldTypes]);
+
+  const sourceBlocks = builderMode === 'admin' && adminConsultationBlocks.length > 0
+    ? adminConsultationBlocks
+    : availableBlocks;
+
   const filteredBlocks = useMemo(() => {
-    return availableBlocks.filter((b) => {
+    return sourceBlocks.filter((b) => {
       const matchesSearch = b.name.toLowerCase().includes(searchQuery.toLowerCase()) || b.description.toLowerCase().includes(searchQuery.toLowerCase());
       const matchesCategory = activeCategory === 'Todos' || b.category === activeCategory;
       return matchesSearch && matchesCategory;
     });
-  }, [searchQuery, activeCategory]);
+  }, [searchQuery, activeCategory, sourceBlocks]);
+
+  const customBlocksQuery = useQuery({
+    queryKey: ['custom-blocks'],
+    queryFn: () => getCustomBlocksApi(accessToken),
+    enabled: !!accessToken && builderMode === 'admin',
+  });
+
+  const createCustomBlockMutation = useMutation({
+    mutationFn: (draft: CustomBlockDraft) =>
+      createCustomBlockApi(accessToken, {
+        name: draft.name,
+        description: draft.description,
+        category: draft.category,
+        template: draft.template,
+        skeleton: draft.template,
+      }),
+    onSuccess: (block) => {
+      setCustomBlocks((prev) => [...prev, {
+        name: block.name,
+        description: block.description ?? '',
+        category: block.category,
+        template: block.template,
+      }]);
+      void customBlocksQuery.refetch();
+      toast.success('Bloco customizado salvo');
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || 'Falha ao salvar bloco customizado');
+    },
+  });
+
+  useEffect(() => {
+    if ((customBlocksQuery.data ?? []).length > 0) {
+      setCustomBlocks(
+        customBlocksQuery.data!.map((block) => ({
+          name: block.name,
+          description: block.description ?? '',
+          category: block.category,
+          template: block.template,
+        })),
+      );
+    }
+  }, [customBlocksQuery.data]);
 
   const isSelected = (id: string) => blocks.some((b) => b.id === id);
   const toggleBlock = (block: ConsultationBlock) => {
@@ -290,6 +358,10 @@ export default function TemplateBuilderEditor({
   };
 
   const handleSaveCustomBlock = (draft: CustomBlockDraft) => {
+    if (builderMode === 'admin' && accessToken) {
+      void createCustomBlockMutation.mutateAsync(draft);
+      return;
+    }
     setCustomBlocks((prev) => [...prev, draft]);
   };
 
@@ -474,14 +546,20 @@ export default function TemplateBuilderEditor({
                     />
                   </div>
                 ) : (
-                  <div className="flex-1 overflow-y-auto scrollbar-thin">
+                  <div className={`flex-1 overflow-y-auto scrollbar-thin transition-all duration-200 ${activeDragItem ? 'shadow-[inset_0_0_0_2px_hsl(var(--primary)/0.25)] bg-primary/5' : ''}`}>
                     <BaseReportSkeleton
                       blocks={blocks}
                       logo={reportLogo}
                       onLogoChange={setReportLogo}
                       onEditSection={(sectionId) => {
-                        // TODO: open section editor modal
-                        console.log('Edit section:', sectionId);
+                        const block = filteredBlocks.find((b) => b.id === sectionId);
+                        setEditingBlockDraft({
+                          name: block?.name ?? sectionId,
+                          description: block?.description ?? `Seção ${sectionId}`,
+                          category: block?.category ?? 'section',
+                          template: '',
+                        });
+                        setCustomBlockEditorOpen(true);
                       }}
                     />
                   </div>

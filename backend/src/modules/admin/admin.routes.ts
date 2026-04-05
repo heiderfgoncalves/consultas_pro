@@ -45,6 +45,10 @@ import {
 } from './admin.schemas';
 import { logAdminAudit } from './admin.service';
 import {
+  getIntegrationSettingsAdmin,
+  patchIntegrationSettingsAdmin,
+} from './integration-settings.service';
+import {
   getEndpointAccessSnapshot,
   replaceEndpointAccessMatrix,
 } from './endpoint-access.service';
@@ -143,6 +147,22 @@ export async function registerAdminRoutes(app: FastifyInstance) {
       queuedConsultations,
       recentTests,
     });
+  });
+
+  app.get('/admin/integration-settings', adminOnly, async (_request, reply) => {
+    return ok(reply, await getIntegrationSettingsAdmin(app));
+  });
+
+  app.patch('/admin/integration-settings', adminOnly, async (request, reply) => {
+    const updated = await patchIntegrationSettingsAdmin(app, request.body);
+    await logAdminAudit(app, {
+      actorUserId: request.authUser?.userId,
+      action: 'INTEGRATION_SETTINGS_UPDATED',
+      entityType: 'TENANT',
+      entityId: updated.tenantId,
+      metadata: { tenantSlug: updated.tenantSlug },
+    });
+    return ok(reply, updated);
   });
 
   app.get('/admin/users', adminOnly, async (_request, reply) => {

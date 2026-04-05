@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import type { HttpMethod, Prisma, ProviderAuthType, ProviderProduct } from '@prisma/client';
 import { ConflictError, NotFoundError } from '../../core/errors';
+import { getAdminTargetTenant, getEffectiveIntegrationSettingsForTenant } from '../../lib/integration-settings';
 import { callProviderOperation, callProviderProduct } from './provider-client.service';
 import { normalizeProviderPayload } from './normalization.service';
 import { mergeNormalizedPayloads } from './merge.service';
@@ -61,6 +62,15 @@ export async function testProviderProduct(app: FastifyInstance, input: {
   const execution = await callProviderProduct(app, product.provider, forCall, input.context);
   const normalized = normalizeProviderPayload(execution.response.payload, product.mappings);
 
+  const adminTenant = await getAdminTargetTenant(app.prisma);
+  const integrationSettings = await getEffectiveIntegrationSettingsForTenant(
+    app.prisma,
+    adminTenant?.id ?? null,
+  );
+  if (integrationSettings.verboseProviderTestLogs) {
+    app.log.debug({ productId: input.productId, request: execution.request }, 'provider_test_verbose');
+  }
+
   const log = await app.prisma.providerTestLog.create({
     data: {
       providerId: product.providerId,
@@ -109,6 +119,15 @@ export async function testProviderProductDraft(app: FastifyInstance, input: {
   } as ProviderProduct;
 
   const execution = await callProviderProduct(app, provider, productStub, input.context);
+
+  const adminTenantDraft = await getAdminTargetTenant(app.prisma);
+  const integrationSettingsDraft = await getEffectiveIntegrationSettingsForTenant(
+    app.prisma,
+    adminTenantDraft?.id ?? null,
+  );
+  if (integrationSettingsDraft.verboseProviderTestLogs) {
+    app.log.debug({ providerId: input.providerId, request: execution.request }, 'provider_test_verbose_draft');
+  }
 
   const log = await app.prisma.providerTestLog.create({
     data: {

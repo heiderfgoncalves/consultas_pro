@@ -17,7 +17,7 @@ import { Navigate, useSearchParams } from 'react-router-dom';
 import {
   Server, Plus, Pencil, Trash2, Database,
   Play, Tag, ChevronDown, ChevronRight, Search, RefreshCcw,
-  Code2, Link2, Save, Hash, Filter, Undo2, Loader2, Layers3,
+  Code2, Link2, Save, Hash, Filter, Undo2, Loader2, Layers3, Cog,
 } from 'lucide-react';
 import { useAuthStore } from '@/stores/authStore';
 import { PageHeader } from '@/components/shared/StatCard';
@@ -41,6 +41,7 @@ import type {
 import JsonFieldMapper from '@/components/integrations/JsonFieldMapper';
 import TypeReportFieldsConfig from '@/components/integrations/TypeReportFieldsConfig';
 import TemplatesAdminTab from '@/components/integrations/TemplatesAdminTab';
+import IntegrationsSettingsTab from '@/components/integrations/IntegrationsSettingsTab';
 import { buildTypeLinkedConsultationMappedPreview } from '@/lib/consultationMappedPreview';
 import {
   buildSingleGroupTypeItemFilterConfig,
@@ -55,6 +56,7 @@ import {
   INTEGRATIONS_TAB_QUERY_KEY,
   parseIntegrationsTabFromSearch,
   tabToIntegrationsAbaParam,
+  type IntegrationsTab,
 } from '@/lib/integrationsTabQuery';
 import {
   authToApi,
@@ -1117,14 +1119,14 @@ export default function IntegrationsPage() {
   const [savingProvider, setSavingProvider] = useState(false);
   const [savingFieldType, setSavingFieldType] = useState(false);
   const [importingDefaultFieldTypes, setImportingDefaultFieldTypes] = useState(false);
-  const [integrationsTab, setIntegrationsTab] = useState<'providers' | 'consultations' | 'types' | 'templates'>(() =>
+  const [integrationsTab, setIntegrationsTab] = useState<IntegrationsTab>(() =>
     parseIntegrationsTabFromSearch(
       new URLSearchParams(typeof window !== 'undefined' ? window.location.search : ''),
     ) ?? 'providers',
   );
 
   const setIntegrationsTabWithUrl = useCallback(
-    (tab: 'providers' | 'consultations' | 'types' | 'templates') => {
+    (tab: IntegrationsTab) => {
       setIntegrationsTab(tab);
       setSearchParams(
         (prev) => {
@@ -1646,7 +1648,7 @@ export default function IntegrationsPage() {
 
       <Tabs
         value={integrationsTab}
-        onValueChange={(v) => setIntegrationsTabWithUrl(v as 'providers' | 'consultations' | 'types' | 'templates')}
+        onValueChange={(v) => setIntegrationsTabWithUrl(v as IntegrationsTab)}
         className="space-y-4"
       >
         <div className="flex flex-wrap items-center justify-between gap-2">
@@ -1662,6 +1664,9 @@ export default function IntegrationsPage() {
             </TabsTrigger>
             <TabsTrigger value="templates" className="text-sm h-8 gap-2 px-4 rounded-md shrink-0">
               <Layers3 className="w-4 h-4" /> Templates
+            </TabsTrigger>
+            <TabsTrigger value="settings" className="text-sm h-8 gap-2 px-4 rounded-md shrink-0">
+              <Cog className="w-4 h-4" /> Configurações
             </TabsTrigger>
           </TabsList>
           {integrationsTab === 'providers' && (
@@ -2224,6 +2229,12 @@ export default function IntegrationsPage() {
               </div>
             </div>
           </div>
+        </TabsContent>
+
+        <TabsContent value="settings" className="space-y-2">
+          {integrationsTab === 'settings' && (
+            <IntegrationsSettingsTab accessToken={accessToken} enabled={enabled} />
+          )}
         </TabsContent>
 
         <TabsContent value="templates" className="space-y-2">

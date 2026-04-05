@@ -9,6 +9,11 @@ import type {
   TestLogEntry,
   TypeReportFieldConfig,
 } from '@/types/integrations';
+import type {
+  CreateCustomBlockPayload,
+  CustomBlockDefinition,
+  UpdateCustomBlockPayload,
+} from '@/types/custom-blocks';
 import { PATH_KEY_UI_META } from '@/lib/integrations-constants';
 import { assignKeysToReportFields } from '@/lib/reportFieldKeys';
 import { parseTypeItemFiltersRecord } from '@/lib/typeItemFilters';
@@ -432,6 +437,43 @@ export async function patchProductApi(
     method: 'PATCH',
     token: tok(accessToken),
     body: JSON.stringify(body),
+  });
+}
+
+export async function getCustomBlocksApi(accessToken: string | null) {
+  return apiRequest<CustomBlockDefinition[]>('/admin/custom-blocks', {
+    method: 'GET',
+    token: tok(accessToken),
+  });
+}
+
+export async function createCustomBlockApi(
+  accessToken: string | null,
+  body: CreateCustomBlockPayload,
+) {
+  return apiRequest<CustomBlockDefinition>('/admin/custom-blocks', {
+    method: 'POST',
+    token: tok(accessToken),
+    body: JSON.stringify(body),
+  });
+}
+
+export async function patchCustomBlockApi(
+  accessToken: string | null,
+  blockId: string,
+  body: UpdateCustomBlockPayload,
+) {
+  return apiRequest<CustomBlockDefinition>(`/admin/custom-blocks/${blockId}`, {
+    method: 'PATCH',
+    token: tok(accessToken),
+    body: JSON.stringify(body),
+  });
+}
+
+export async function deleteCustomBlockApi(accessToken: string | null, blockId: string) {
+  return apiRequest<{ deleted: boolean }>(`/admin/custom-blocks/${blockId}`, {
+    method: 'DELETE',
+    token: tok(accessToken),
   });
 }
 
