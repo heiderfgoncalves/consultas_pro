@@ -74,6 +74,7 @@ import {
   testProductApi,
   testProductDraftApi,
   type ApiProviderTestResult,
+  type ApiTestLog,
 } from '@/api/admin-integrations';
 
 type ConsultationTestInput =
@@ -118,6 +119,20 @@ const linkActionCls = 'text-xs font-medium transition-colors flex items-center g
 /** Valor do Select ao criar consulta nova (não confundir com id de produto). */
 const CONSULTATION_PICKER_NEW = '__new__';
 
+const CONSULTATION_PICKER_STORAGE_KEY = 'consultas-pro:integrations-consultation-picker';
+
+function readStoredConsultationPicker(consultations: ProviderConsultation[]): string | null {
+  try {
+    const raw = sessionStorage.getItem(CONSULTATION_PICKER_STORAGE_KEY);
+    if (!raw) return null;
+    if (raw === CONSULTATION_PICKER_NEW) return CONSULTATION_PICKER_NEW;
+    if (consultations.some((c) => c.id === raw)) return raw;
+  } catch {
+    /* storage indisponível */
+  }
+  return null;
+}
+
 type TestLogRow = {
   id: string;
   productId?: string | null;
@@ -130,7 +145,7 @@ type TestLogRow = {
 type ConsultationEditorHandle = {
   save: () => void;
   revert: () => void;
-  loadResponseFromLog: (entry: TestLogRow) => void;
+  loadResponseFromLog: (entry: TestLogRow, opts?: { silent?: boolean }) => void;
 };
 
 const TYPES_TAB_FILTER_OPS: { value: MappingItemFilterOp; label: string }[] = [
@@ -552,10 +567,10 @@ const ConsultationEditor = forwardRef(function ConsultationEditor(
   const path = (form.endpoint || '').trim();
   const fullUrlLabel = baseUrl && path ? `${baseUrl.replace(/\/$/, '')}${path.startsWith('/') ? '' : '/'}${path}` : baseUrl || path || '—';
 
-  const loadResponseFromLog = useCallback((entry: TestLogRow) => {
+  const loadResponseFromLog = useCallback((entry: TestLogRow, opts?: { silent?: boolean }) => {
     setTestJson(entry.responseJson);
     setForm((f) => ({ ...f, sampleResponse: entry.responseJson }));
-    toast.success('JSON carregado do log');
+    if (!opts?.silent) toast.success('JSON carregado do log');
   }, []);
 
   const applyProviderResponsePayload = (payload: unknown) => {
@@ -1095,6 +1110,9 @@ export default function IntegrationsPage() {
   const [importingDefaultFieldTypes, setImportingDefaultFieldTypes] = useState(false);
   const [integrationsTab, setIntegrationsTab] = useState<'providers' | 'consultations' | 'types'>('providers');
 
+  const consultationPickerRef = useRef(consultationPicker);
+  consultationPickerRef.current = consultationPicker;
+
   const cardTestFnsRef = useRef<Record<string, () => Promise<void>>>({});
   const newConsultationTestRef = useRef<(() => Promise<void>) | null>(null);
   const consultationEditorRef = useRef<ConsultationEditorHandle | null>(null);
@@ -1168,18 +1186,34 @@ export default function IntegrationsPage() {
   );
 
   useEffect(() => {
+    if (consultationPicker == null) return;
+    try {
+      sessionStorage.setItem(CONSULTATION_PICKER_STORAGE_KEY, consultationPicker);
+    } catch {
+      /* ignore */
+    }
+  }, [consultationPicker]);
+
+  useEffect(() => {
     if (integrationsTab !== 'consultations' || providersQuery.isLoading) return;
 
     if (consultationPicker != null && consultationPicker !== CONSULTATION_PICKER_NEW) {
       if (!consultations.some((c) => c.id === consultationPicker)) {
-        setConsultationPicker(recentConsultations[0]?.id ?? CONSULTATION_PICKER_NEW);
+        const restored = readStoredConsultationPicker(consultations);
+        const next =
+          restored ??
+          recentConsultations[0]?.id ??
+          CONSULTATION_PICKER_NEW;
+        setConsultationPicker(next);
         setConsultationEditorNonce((n) => n + 1);
       }
       return;
     }
 
     if (consultationPicker === null) {
-      if (recentConsultations.length === 0) setConsultationPicker(CONSULTATION_PICKER_NEW);
+      const restored = readStoredConsultationPicker(consultations);
+      if (restored) setConsultationPicker(restored);
+      else if (recentConsultations.length === 0) setConsultationPicker(CONSULTATION_PICKER_NEW);
       else setConsultationPicker(recentConsultations[0].id);
     }
   }, [
@@ -1232,6 +1266,63 @@ export default function IntegrationsPage() {
     });
   }, [consultationPicker, testLogForPicker]);
 
+  /**
+   * Evita reaplicar o mesmo log ao só refazer o fetch; alinha JSON do editor ao item do dropdown.
+   * Não inclui remount do editor no “skip”: após reverter, o texto volta ao sampleResponse salvo sem sobrescrever com o log.
+   */
+  const prevSyncedTestLogRef = useRef<{
+    picker: string | null;
+    logId: string;
+    newProviderId?: string;
+  } | null>(null);
+
+  useEffect(() => {
+    if (integrationsTab !== 'consultations') return;
+    if (consultationPicker == null) return;
+
+    if (!selectedTestLogId) {
+      prevSyncedTestLogRef.current = null;
+      return;
+    }
+
+    const entry = testLogForPicker.find((t) => t.id === selectedTestLogId);
+    if (!entry) return;
+
+    if (consultationPicker !== CONSULTATION_PICKER_NEW) {
+      if (entry.productId !== consultationPicker) return;
+    } else if (entry.productId != null) {
+      return;
+    }
+
+    const prev = prevSyncedTestLogRef.current;
+    const sameDraftProvider =
+      consultationPicker !== CONSULTATION_PICKER_NEW ||
+      prev?.newProviderId === newConsultationProviderId;
+    if (
+      prev &&
+      prev.picker === consultationPicker &&
+      prev.logId === selectedTestLogId &&
+      sameDraftProvider
+    ) {
+      return;
+    }
+
+    prevSyncedTestLogRef.current = {
+      picker: consultationPicker,
+      logId: selectedTestLogId,
+      ...(consultationPicker === CONSULTATION_PICKER_NEW
+        ? { newProviderId: newConsultationProviderId }
+        : {}),
+    };
+    consultationEditorRef.current?.loadResponseFromLog(entry, { silent: true });
+  }, [
+    integrationsTab,
+    consultationPicker,
+    newConsultationProviderId,
+    selectedTestLogId,
+    testLogForPicker,
+  ]);
+
   const findApiProvider = (id: string) => apiProviders.find((p) => p.id === id);
   const findConsultation = (id: string) => consultations.find((c) => c.id === id);
 
@@ -1258,9 +1349,24 @@ export default function IntegrationsPage() {
         ...payload,
       });
     },
-    onSuccess: () => {
+    onSuccess: async () => {
       toast.success('Teste executado');
-      void queryClient.invalidateQueries({ queryKey: ['admin-test-logs'] });
+      await queryClient.refetchQueries({ queryKey: ['admin-test-logs'] });
+      const logs = queryClient.getQueryData<ApiTestLog[]>(['admin-test-logs']) ?? [];
+      const sorted = [...mapTestLogs(logs)].sort(
+        (a, b) => new Date(b.testedAt).getTime() - new Date(a.testedAt).getTime(),
+      );
+      const pick = consultationPickerRef.current;
+      const filtered =
+        pick === CONSULTATION_PICKER_NEW
+          ? sorted.filter((t) => t.productId == null)
+          : pick == null
+            ? []
+            : sorted.filter((t) => t.productId === pick);
+      if (filtered.length > 0) {
+        setSelectedTestLogId(filtered[0].id);
+        setTestLogSelectKey((k) => k + 1);
+      }
     },
     onError: (e: Error) => toast.error(e.message || 'Falha no teste'),
   });

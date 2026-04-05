@@ -91,6 +91,7 @@ export function emptyTypeItemFilterConfig(): TypeItemFilterConfig {
     version: 2,
     groups: [],
     fieldMappings: [],
+    dedupFieldIds: [],
   };
 }
 
@@ -104,6 +105,7 @@ export function cloneTypeItemFilterConfig(config?: TypeItemFilterConfig): TypeIt
       rules: group.rules.map((rule) => ({ ...rule })),
     })),
     fieldMappings: normalized.fieldMappings.map((mapping) => ({ ...mapping })),
+    dedupFieldIds: [...normalized.dedupFieldIds],
   };
 }
 
@@ -116,6 +118,7 @@ export function normalizeTypeItemFilterConfig(raw: unknown): TypeItemFilterConfi
       version: 2,
       groups: rules.length ? [{ id: createId('group_legacy'), joinOperator: 'and', rules }] : [],
       fieldMappings: [],
+      dedupFieldIds: [],
     };
   }
 
@@ -132,11 +135,15 @@ export function normalizeTypeItemFilterConfig(raw: unknown): TypeItemFilterConfi
         .map((mapping, index) => normalizeFieldMapping(mapping, index))
         .filter((mapping): mapping is TypeItemFieldMapping => !!mapping)
     : [];
+  const dedupFieldIds = Array.isArray(item.dedupFieldIds)
+    ? item.dedupFieldIds.filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
+    : [];
 
   return {
     version: 2,
     groups: groups.filter((g) => g.rules.length > 0),
     fieldMappings,
+    dedupFieldIds,
   };
 }
 

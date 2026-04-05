@@ -93,6 +93,7 @@ export interface TypeItemFilterConfig {
   version: 2;
   groups: TypeItemFilterGroup[];
   fieldMappings: TypeItemFieldMapping[];
+  dedupFieldIds: string[];
 }
 
 export interface Provider {

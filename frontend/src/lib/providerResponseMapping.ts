@@ -1,13 +1,28 @@
 import type { MappingItemFilter, TypeItemFilterConfig } from '@/types/integrations';
 import { getActiveTypeItemFilterGroups, normalizeTypeItemFilterConfig } from '@/lib/typeItemFilters';
 
+/** Lê propriedade com tolerância a maiúsculas/minúsculas (retornos usam INFORMANTE, telas às vezes informante). */
+export function getRecordPropertyCI(obj: Record<string, unknown>, key: string): unknown {
+  const k = key.trim();
+  if (!k) return undefined;
+  if (Object.prototype.hasOwnProperty.call(obj, k)) return obj[k];
+  const lower = k.toLowerCase();
+  for (const prop of Object.keys(obj)) {
+    if (prop.toLowerCase() === lower) return obj[prop];
+  }
+  return undefined;
+}
+
 export function getValueAtJsonPath(root: unknown, path: string): unknown {
   if (!path) return root;
   const parts = path.split('.').filter(Boolean);
   let cur: unknown = root;
   for (const part of parts) {
     if (cur == null || typeof cur !== 'object') return undefined;
-    cur = (cur as Record<string, unknown>)[part];
+    const rec = cur as Record<string, unknown>;
+    const next = getRecordPropertyCI(rec, part);
+    if (next === undefined) return undefined;
+    cur = next;
   }
   return cur;
 }
@@ -19,7 +34,7 @@ function normalizeCell(v: unknown): string {
 }
 
 function matchesFilter(item: Record<string, unknown>, f: MappingItemFilter): boolean {
-  const cell = normalizeCell(item[f.field]);
+  const cell = normalizeCell(getRecordPropertyCI(item, f.field));
   const target = f.value.trim();
   switch (f.op) {
     case 'eq':
@@ -62,7 +77,74 @@ function matchesFilterConfig(
   return result;
 }
 
-/** Aplica critérios em cada elemento quando o valor em `jsonPath` é um array de objetos. */
+function dedupeObjectArrayByFieldPaths(
+  arr: Record<string, unknown>[],
+  fieldPaths: string[],
+): Record<string, unknown>[] {
+  if (fieldPaths.length === 0 || arr.length <= 1) return arr;
+  const seen = new Set<string>();
+  const out: Record<string, unknown>[] = [];
+  for (const item of arr) {
+    const signature = fieldPaths
+      .map((path) => JSON.stringify(getValueAtJsonPath(item, path) ?? null))
+      .join('\x1e');
+    if (seen.has(signature)) continue;
+    seen.add(signature);
+    out.push(item);
+  }
+  return out;
+}
+
+function dedupeValueDeep(value: unknown, fieldPaths: string[]): unknown {
+  if (fieldPaths.length === 0) return value;
+  if (Array.isArray(value)) {
+    const nested = value.map((item) => dedupeValueDeep(item, fieldPaths));
+    const recordsOnly = nested.every(
+      (item) => item !== null && typeof item === 'object' && !Array.isArray(item),
+    );
+    if (recordsOnly) {
+      return dedupeObjectArrayByFieldPaths(nested as Record<string, unknown>[], fieldPaths);
+    }
+    return nested;
+  }
+  if (value && typeof value === 'object' && !Array.isArray(value)) {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>).map(([key, nested]) => [
+        key,
+        dedupeValueDeep(nested, fieldPaths),
+      ]),
+    );
+  }
+  return value;
+}
+
+function getDedupFieldPaths(config: TypeItemFilterConfig): string[] {
+  if (!config.dedupFieldIds.length || !config.fieldMappings.length) return [];
+  const selected = new Set(config.dedupFieldIds);
+  return config.fieldMappings
+    .filter((mapping) => selected.has(mapping.reportFieldId))
+    .map((mapping) => mapping.jsonPath.trim())
+    .filter((path) => path.length > 0);
+}
+
+function isPrimitiveArrayElement(el: unknown): boolean {
+  return el === null
+    || el === undefined
+    || typeof el === 'string'
+    || typeof el === 'number'
+    || typeof el === 'boolean';
+}
+
+function isPrimitiveLikeArray(arr: unknown[]): boolean {
+  if (arr.length === 0) return true;
+  return arr.every(isPrimitiveArrayElement);
+}
+
+/**
+ * Quando o valor é um array de objetos, filtra por critério em cada objeto.
+ * Elementos que não são objetos (ex.: strings em array paralelo) permanecem —
+ * caso contrário critérios ativos esvaziariam arrays de primitivos no preview.
+ */
 export function applyMappingItemFilters(
   value: unknown,
   filters: MappingItemFilter[] | TypeItemFilterConfig | undefined,
@@ -70,11 +152,67 @@ export function applyMappingItemFilters(
   const groups = getActiveTypeItemFilterGroups(normalizeTypeItemFilterConfig(filters));
   if (!groups.length) return value;
   if (!Array.isArray(value)) return value;
-  return value.filter(el => {
-    if (!el || typeof el !== 'object' || Array.isArray(el)) return false;
+  return value.filter((el) => {
+    if (el == null) return false;
+    if (typeof el !== 'object' || Array.isArray(el)) return true;
     const obj = el as Record<string, unknown>;
     return matchesFilterConfig(obj, filters);
   });
+}
+
+/**
+ * Provedores costumam enviar “colunas” paralelas (`data`, `valor`, … como arrays)
+ * e um único escalar (ex.: `data_inclusao`). Converte em lista de objetos-linha só para o preview.
+ */
+function zipOneLevelColumnarObject(rec: Record<string, unknown>): Record<string, unknown> | unknown[] {
+  const arrayKeys: string[] = [];
+  const scalars: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(rec)) {
+    if (!Array.isArray(v)) {
+      scalars[k] = v;
+      continue;
+    }
+    if (!isPrimitiveLikeArray(v)) {
+      return rec;
+    }
+    arrayKeys.push(k);
+  }
+  if (arrayKeys.length < 2) {
+    return rec;
+  }
+  const lengths = arrayKeys.map(k => (rec[k] as unknown[]).length);
+  const n = lengths[0]!;
+  if (n === 0 || lengths.some(len => len !== n)) {
+    return rec;
+  }
+  const rows: Record<string, unknown>[] = [];
+  for (let i = 0; i < n; i += 1) {
+    const row: Record<string, unknown> = { ...scalars };
+    for (const k of arrayKeys) {
+      row[k] = (rec[k] as unknown[])[i];
+    }
+    rows.push(row);
+  }
+  return rows;
+}
+
+function zipColumnarParallelArraysForPreview(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map(el => zipColumnarParallelArraysForPreview(el));
+  }
+  if (!value || typeof value !== 'object') {
+    return value;
+  }
+  const rec = value as Record<string, unknown>;
+  const zipped = zipOneLevelColumnarObject(rec);
+  if (Array.isArray(zipped)) {
+    return zipped.map(row => zipColumnarParallelArraysForPreview(row));
+  }
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(zipped)) {
+    out[k] = zipColumnarParallelArraysForPreview(v);
+  }
+  return out;
 }
 
 export function hasVisiblePreviewValue(value: unknown): boolean {
@@ -95,18 +233,24 @@ export function filterValueForPreviewDeep(
 ): { value: unknown; hasData: boolean } {
   const normalized = normalizeTypeItemFilterConfig(filters);
   const activeGroups = getActiveTypeItemFilterGroups(normalized);
-  if (!activeGroups.length) {
+  const dedupFieldPaths = getDedupFieldPaths(normalized);
+  if (!activeGroups.length && dedupFieldPaths.length === 0) {
     return { value, hasData: hasVisiblePreviewValue(value) };
   }
 
+  const applyDedup = (nextValue: unknown) => dedupeValueDeep(nextValue, dedupFieldPaths);
+
   if (Array.isArray(value)) {
-    const directlyFiltered = applyMappingItemFilters(value, normalized);
+    const directlyFiltered = activeGroups.length > 0
+      ? applyMappingItemFilters(value, normalized)
+      : value;
     if (directlyFiltered !== value) {
+      const deduped = applyDedup(directlyFiltered);
       return {
-        value: directlyFiltered,
-        hasData: Array.isArray(directlyFiltered)
-          ? directlyFiltered.length > 0
-          : hasVisiblePreviewValue(directlyFiltered),
+        value: deduped,
+        hasData: Array.isArray(deduped)
+          ? deduped.length > 0
+          : hasVisiblePreviewValue(deduped),
       };
     }
 
@@ -115,7 +259,11 @@ export function filterValueForPreviewDeep(
       const nested = filterValueForPreviewDeep(item, normalized);
       if (nested.hasData) nestedItems.push(nested.value);
     }
-    return { value: nestedItems, hasData: nestedItems.length > 0 };
+    const deduped = applyDedup(nestedItems);
+    return {
+      value: deduped,
+      hasData: Array.isArray(deduped) ? deduped.length > 0 : hasVisiblePreviewValue(deduped),
+    };
   }
 
   if (value && typeof value === 'object') {
@@ -131,14 +279,16 @@ export function filterValueForPreviewDeep(
     }
 
     if (matchedNestedChild) {
-      return { value: nextObject, hasData: true };
+      const deduped = applyDedup(nextObject);
+      return { value: deduped, hasData: hasVisiblePreviewValue(deduped) };
     }
 
     return { value: {}, hasData: false };
   }
 
   // Critérios de item aplicam a arrays de objetos; em folhas (string, número, etc.) não há como filtrar — mostrar o valor.
-  return { value, hasData: hasVisiblePreviewValue(value) };
+  const deduped = applyDedup(value);
+  return { value: deduped, hasData: hasVisiblePreviewValue(deduped) };
 }
 
 export function formatDeepFilteredValueAtPath(
@@ -154,8 +304,9 @@ export function formatDeepFilteredValueAtPath(
       return { text: lineFallback, hasData: lineFallback.trim().length > 0 };
     }
     const filtered = filterValueForPreviewDeep(value, filters);
+    const forDisplay = zipColumnarParallelArraysForPreview(filtered.value);
     return {
-      text: JSON.stringify(filtered.value, null, 2) || '—',
+      text: JSON.stringify(forDisplay, null, 2) || '—',
       hasData: filtered.hasData,
     };
   } catch {

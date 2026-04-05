@@ -1,27 +1,35 @@
-import { useState, useRef, useCallback, useMemo, useEffect } from 'react';
+import { useState, useRef, useCallback, useMemo, useEffect, useLayoutEffect, type ReactNode } from 'react';
 import {
-  Tag, GripVertical, Pencil, Check, X,
+  Tag, GripVertical, Pencil, Check, X, Copy,
   Move, Code2, Eye, Trash2, User, AlertTriangle, Gauge, FileWarning,
   Building2, FileX, Users, DollarSign, TrendingUp, Award, Hash,
-  Settings2, CheckSquare, Plus,
+  Settings2, Plus, Search, ChevronLeft, ChevronRight,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from '@/components/ui/resizable';
 import type { ConsultationFieldType, FieldMapping, TypeItemFilterConfig } from '@/types/integrations';
-import { formatDeepFilteredValueAtPath, getValueAtJsonPath } from '@/lib/providerResponseMapping';
+import { formatDeepFilteredValueAtPath, getRecordPropertyCI, getValueAtJsonPath } from '@/lib/providerResponseMapping';
 import {
   cloneTypeItemFilterConfig,
   countActiveTypeItemRules,
   emptyTypeItemFilterConfig,
+  getActiveTypeItemFilterGroups,
   normalizeTypeItemFilterConfig,
 } from '@/lib/typeItemFilters';
 import TypeCriteriaDialog from '@/components/integrations/TypeCriteriaDialog';
+import {
+  MappedJsonPreviewCanvas,
+  computeJsonLineGutterMeta,
+  type LineGutterMeta,
+} from '@/components/integrations/MappedJsonPreviewCanvas';
 import { cn } from '@/lib/utils';
+import { dedupeReportFieldKeys, slugifyReportFieldKey } from '@/lib/reportFieldKeys';
+import { toast } from 'sonner';
+import { findTextMatches, toAbsoluteMatchRanges, type TextMatch } from '@/lib/jsonSearchHighlight';
 
 interface JsonSection {
   path: string;
@@ -125,19 +133,32 @@ function resolveSectionForJsonPath(sections: JsonSection[], jsonPath: string): J
   return candidates[0];
 }
 
+/**
+ * Ancora em `jsonPath`: a seção atual no JSON é a fonte do intervalo de linhas.
+ * Com `trustUiLines`, reaproveita resize manual só quando as linhas salvas ainda
+ * caem dentro dessa seção. Sem isso (ex.: outro log / texto do JSON mudou),
+ * usa sempre o bloco inteiro do path — evita sombra e “Lx–Ly” presos a retorno antigo.
+ */
 function resolveRegionBounds(
   sections: JsonSection[],
   mapping: Pick<FieldMapping, 'jsonPath' | 'uiStartLine' | 'uiEndLine'>,
+  options: { trustUiLines: boolean },
 ): { startLine: number; endLine: number } | null {
-  if (
-    typeof mapping.uiStartLine === 'number'
-    && typeof mapping.uiEndLine === 'number'
-    && mapping.uiEndLine >= mapping.uiStartLine
-  ) {
-    return { startLine: mapping.uiStartLine, endLine: mapping.uiEndLine };
-  }
   const section = resolveSectionForJsonPath(sections, mapping.jsonPath);
   if (!section) return null;
+  if (options.trustUiLines) {
+    const us = mapping.uiStartLine;
+    const ue = mapping.uiEndLine;
+    if (
+      typeof us === 'number'
+      && typeof ue === 'number'
+      && ue >= us
+      && us >= section.startLine
+      && ue <= section.endLine
+    ) {
+      return { startLine: us, endLine: ue };
+    }
+  }
   return { startLine: section.startLine, endLine: section.endLine };
 }
 
@@ -212,7 +233,86 @@ function extractJsonKeys(jsonStr: string): string[] {
   }
 }
 
+const SEARCH_MARK_RETORNO =
+  'box-decoration-clone rounded-[1px] bg-yellow-300/95 py-0 leading-[inherit] text-foreground dark:bg-yellow-500/45 dark:text-foreground';
+const SEARCH_MARK_RETORNO_ACTIVE =
+  'box-decoration-clone rounded-[1px] bg-amber-400/95 py-0 leading-[inherit] text-foreground ring-1 ring-amber-600 dark:bg-amber-500 dark:ring-amber-200';
+
+/** Tipografia e fluxo idênticos ao `<textarea>` para o espelho de highlight. */
+const JSON_EDITOR_SYNC_CLASS =
+  'w-full min-h-full overflow-auto p-3 font-mono text-sm leading-6 [tab-size:4] [scrollbar-width:thin] whitespace-pre [word-break:normal] [overflow-wrap:normal]';
+
+function scrollTextareasToMatchLine(
+  ta: HTMLTextAreaElement | null,
+  mirror: HTMLPreElement | null,
+  lineIndex: number,
+) {
+  if (!ta) return;
+  const cs = getComputedStyle(ta);
+  const rawLh = cs.lineHeight;
+  let lineHeightPx = 24;
+  if (rawLh.endsWith('px')) lineHeightPx = parseFloat(rawLh) || 24;
+  const padTop = parseFloat(cs.paddingTop) || 0;
+  const targetY = padTop + lineIndex * lineHeightPx;
+  const st = Math.round(Math.max(0, targetY - ta.clientHeight / 2 + lineHeightPx / 2));
+  ta.scrollTop = st;
+  if (mirror) {
+    mirror.scrollTop = st;
+    mirror.scrollLeft = ta.scrollLeft;
+  }
+}
+
+function renderRetornoFlatTextWithMatches(
+  text: string,
+  absRanges: { start: number; end: number; globalIndex: number }[],
+  activeGlobalIndex: number,
+): ReactNode {
+  if (absRanges.length === 0) return text;
+  let pos = 0;
+  const parts: ReactNode[] = [];
+  for (const r of absRanges) {
+    if (r.start < pos) continue;
+    if (r.start > pos) parts.push(text.slice(pos, r.start));
+    const cls = r.globalIndex === activeGlobalIndex ? SEARCH_MARK_RETORNO_ACTIVE : SEARCH_MARK_RETORNO;
+    parts.push(
+      <mark key={`m-${r.globalIndex}`} className={cls}>
+        {text.slice(r.start, r.end)}
+      </mark>,
+    );
+    pos = r.end;
+  }
+  if (pos < text.length) parts.push(text.slice(pos));
+  return <>{parts}</>;
+}
+
+function renderRetornoLineWithMatches(
+  line: string,
+  lineIndex: number,
+  matches: TextMatch[],
+  activeGlobalIndex: number,
+): ReactNode {
+  const lineMatches = matches.filter((m) => m.line === lineIndex).sort((a, b) => a.startInLine - b.startInLine);
+  if (lineMatches.length === 0) return line || ' ';
+  const text = line || ' ';
+  let pos = 0;
+  const parts: ReactNode[] = [];
+  let k = 0;
+  for (const m of lineMatches) {
+    if (m.startInLine > pos) parts.push(text.slice(pos, m.startInLine));
+    const cls = m.globalIndex === activeGlobalIndex ? SEARCH_MARK_RETORNO_ACTIVE : SEARCH_MARK_RETORNO;
+    parts.push(
+      <mark key={`${m.globalIndex}-${k++}`} className={cls}>
+        {text.slice(m.startInLine, m.endInLine)}
+      </mark>,
+    );
+    pos = m.endInLine;
+  }
+  if (pos < text.length) parts.push(text.slice(pos));
+  return <>{parts}</>;
+}
+
 const LINE_HEIGHT = 24; // px por linha (alinhado a text-sm / leading-6)
+const PREVIEW_LINE_HEIGHT = 24; // min-h-[1.5rem] no canvas de preview
 const REGION_DRAG_THRESHOLD_PX = 5; // evita confundir clique de seleção com arraste
 
 const SENTINEL_EMPTY = '__empty__';
@@ -332,7 +432,7 @@ function collectFilterSuggestionsForMappedRegions(
   try {
     root = JSON.parse(jsonStr) as unknown;
   } catch {
-    return { fields: [], valuesByField: {}, allValues: [] };
+    return { fields: [], valuesByField: {}, allValues: [], allPaths: [] };
   }
 
   for (const r of regions) {
@@ -376,44 +476,72 @@ function parsePreviewPartText(text: string): unknown {
   }
 }
 
-function dedupeObjectArrayByPaths(arr: unknown[], fieldPaths: string[]): unknown[] {
-  if (fieldPaths.length === 0 || arr.length <= 1) return arr;
-  const seen = new Set<string>();
-  const out: unknown[] = [];
-  for (const el of arr) {
-    if (!el || typeof el !== 'object' || Array.isArray(el)) {
-      out.push(el);
-      continue;
+function collectValuesAtPath(value: unknown, path: string): unknown[] {
+  const parts = path.split('.').filter(Boolean);
+  if (parts.length === 0) return [];
+
+  const walk = (node: unknown, index: number): unknown[] => {
+    if (node == null) return [];
+    if (index >= parts.length) return [node];
+    if (Array.isArray(node)) {
+      return node.flatMap((item) => walk(item, index));
     }
-    const sig = fieldPaths
-      .map((p) => JSON.stringify(getValueAtJsonPath(el, p) ?? null))
-      .join('\x1e');
-    if (seen.has(sig)) continue;
-    seen.add(sig);
-    out.push(el);
-  }
-  return out;
+    if (typeof node !== 'object') return [];
+    const next = getRecordPropertyCI(node as Record<string, unknown>, parts[index]!);
+    if (next === undefined) return [];
+    return walk(next, index + 1);
+  };
+
+  return walk(value, 0);
 }
 
-function dedupeArraysDeep(value: unknown, fieldPaths: string[]): unknown {
-  if (fieldPaths.length === 0) return value;
-  if (Array.isArray(value)) {
-    const mapped = value.map((v) => dedupeArraysDeep(v, fieldPaths));
-    const allRecords = mapped.every(
-      (x) => x !== null && typeof x === 'object' && !Array.isArray(x),
-    );
-    if (allRecords && mapped.length > 0) {
-      return dedupeObjectArrayByPaths(mapped, fieldPaths);
+/** Preview: objetos só com arrays do mesmo tamanho viram lista de linhas (cada índice = uma ocorrência). */
+function zipAlignedMappedPreviewRows(obj: Record<string, unknown>): unknown {
+  const arrayEntries: [string, unknown[]][] = [];
+  const scalars: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(obj)) {
+    if (Array.isArray(v)) arrayEntries.push([k, v]);
+    else scalars[k] = v;
+  }
+  if (arrayEntries.length < 2) return obj;
+  const lengths = arrayEntries.map(([, a]) => a.length);
+  const n = lengths[0]!;
+  if (n === 0 || lengths.some(len => len !== n)) return obj;
+  const rows: Record<string, unknown>[] = [];
+  for (let i = 0; i < n; i += 1) {
+    const row: Record<string, unknown> = { ...scalars };
+    for (const [k, arr] of arrayEntries) {
+      row[k] = arr[i];
     }
-    return mapped;
+    rows.push(row);
   }
-  if (value && typeof value === 'object' && !Array.isArray(value)) {
-    const o = value as Record<string, unknown>;
-    return Object.fromEntries(
-      Object.entries(o).map(([k, v]) => [k, dedupeArraysDeep(v, fieldPaths)]),
-    );
+  return rows;
+}
+
+function summarizeTypeItemCriteria(config: TypeItemFilterConfig): string {
+  const groups = getActiveTypeItemFilterGroups(normalizeTypeItemFilterConfig(config));
+  const bits: string[] = [];
+  for (const g of groups) {
+    for (const r of g.rules) {
+      if (!r.field.trim()) continue;
+      const opLabel =
+        r.op === 'eq' ? '='
+        : r.op === 'contains' ? 'contém'
+        : r.op === 'startsWith' ? 'começa'
+        : r.op === 'endsWith' ? 'termina'
+        : r.op === 'regex' ? '~'
+        : r.op;
+      bits.push(`${r.field} ${opLabel} ${r.value}`.trim());
+    }
   }
-  return value;
+  return bits.join(' · ');
+}
+
+/** Uma entrada por linha da origem; não remove repetidos (origem/contrato repetem entre linhas). */
+function normalizeMappedFieldValue(values: unknown[]): unknown {
+  if (values.length === 0) return null;
+  if (values.length === 1) return values[0];
+  return values;
 }
 
 export default function JsonFieldMapper({
@@ -434,7 +562,7 @@ export default function JsonFieldMapper({
     const { sections } = parseJsonSections(json);
     return mappings
       .map((m, i) => {
-        const bounds = resolveRegionBounds(sections, m);
+        const bounds = resolveRegionBounds(sections, m, { trustUiLines: false });
         if (!bounds) return null;
         return {
           regionId: `${m.fieldTypeKey}::${m.jsonPath}::${i}`,
@@ -447,13 +575,23 @@ export default function JsonFieldMapper({
       .filter((r): r is MappedRegion => r !== null);
   });
   const [selectedRegion, setSelectedRegion] = useState<string | null>(null);
-  const [dedupEnabled, setDedupEnabled] = useState(false);
-  const [dedupFields, setDedupFields] = useState<string[]>([]);
   const [openFilterTypeKey, setOpenFilterTypeKey] = useState<string | null>(null);
   const [draftTypeFilters, setDraftTypeFilters] = useState<Record<string, TypeItemFilterConfig>>({});
+  const [retornoSearch, setRetornoSearch] = useState('');
+  const [previewSearch, setPreviewSearch] = useState('');
+  const [retornoActiveIdx, setRetornoActiveIdx] = useState(0);
+  const [previewActiveIdx, setPreviewActiveIdx] = useState(0);
   const jsonContainerRef = useRef<HTMLDivElement>(null);
+  const jsonViewScrollRef = useRef<HTMLDivElement>(null);
+  const previewScrollRef = useRef<HTMLDivElement>(null);
+  const editTextareaRef = useRef<HTMLTextAreaElement>(null);
+  const editHighlightPreRef = useRef<HTMLPreElement>(null);
   const skipNextRegionLineClick = useRef(false);
   const prevMappingsSigRef = useRef<string | null>(null);
+  /** Último JSON aplicado; quando muda (troca de log / colar retorno), não reutiliza uiStart/uiEnd. */
+  const prevJsonTextRef = useRef<string | null>(null);
+  const onMappingsChangeRef = useRef(onMappingsChange);
+  onMappingsChangeRef.current = onMappingsChange;
   /** Atualizado em todo dragover; o drop usa isto para não perder a seção (state/React 18 ou dragleave). */
   const hoveredSectionRef = useRef<JsonSection | null>(null);
 
@@ -506,9 +644,6 @@ export default function JsonFieldMapper({
     initialEnd: number;
   } | null>(null);
 
-  const { lines, sections } = useMemo(() => parseJsonSections(json), [json]);
-  const allJsonKeys = useMemo(() => extractJsonKeys(json), [json]);
-
   const toFieldMappings = useCallback(
     (regions: MappedRegion[]): FieldMapping[] =>
       regions.map(r => ({
@@ -530,24 +665,77 @@ export default function JsonFieldMapper({
   );
 
   useEffect(() => {
+    const jsonTextChanged = prevJsonTextRef.current !== json;
+    prevJsonTextRef.current = json;
+    const trustUiLines = !jsonTextChanged;
+
     const { sections: nextSections } = parseJsonSections(json);
     prevMappingsSigRef.current = mappingsSig;
-    setMappedRegions(
-      mappings
-        .map((m, i) => {
-          const bounds = resolveRegionBounds(nextSections, m);
-          if (!bounds) return null;
-          return {
-            regionId: `${m.fieldTypeKey}::${m.jsonPath}::${i}`,
-            fieldTypeKey: m.fieldTypeKey,
-            startLine: bounds.startLine,
-            endLine: bounds.endLine,
-            path: m.jsonPath,
-          };
-        })
-        .filter((r): r is MappedRegion => r !== null),
-    );
+
+    const nextRegions = mappings
+      .map((m, i) => {
+        const bounds = resolveRegionBounds(nextSections, m, { trustUiLines });
+        if (!bounds) return null;
+        return {
+          regionId: `${m.fieldTypeKey}::${m.jsonPath}::${i}`,
+          fieldTypeKey: m.fieldTypeKey,
+          startLine: bounds.startLine,
+          endLine: bounds.endLine,
+          path: m.jsonPath,
+        };
+      })
+      .filter((r): r is MappedRegion => r !== null);
+
+    setMappedRegions(nextRegions);
+
+    if (jsonTextChanged && mappings.length > 0) {
+      const aligned = mappings.map((m) => {
+        const bounds = resolveRegionBounds(nextSections, m, { trustUiLines: false });
+        if (!bounds) return m;
+        if (m.uiStartLine === bounds.startLine && m.uiEndLine === bounds.endLine) return m;
+        return { ...m, uiStartLine: bounds.startLine, uiEndLine: bounds.endLine };
+      });
+      const touched = aligned.some((fm, i) => {
+        const old = mappings[i];
+        if (!old) return false;
+        return fm.uiStartLine !== old.uiStartLine || fm.uiEndLine !== old.uiEndLine;
+      });
+      if (touched) {
+        onMappingsChangeRef.current(aligned);
+      }
+    }
   }, [json, mappingsSig, mappings]);
+
+  const activeJson = isEditing ? editBuffer : json;
+  const { lines, sections } = useMemo(() => parseJsonSections(activeJson), [activeJson]);
+
+  /** Em edição: recalcula trechos só por jsonPath (sem confiar em linhas UI). Em visualização: estado do arraste/resize. */
+  const displayRegions = useMemo((): MappedRegion[] => {
+    if (!isEditing) return mappedRegions;
+    let buf = editBuffer.trim();
+    if (!buf) buf = '{}';
+    try {
+      JSON.parse(buf);
+    } catch {
+      return mappedRegions;
+    }
+    const { sections: sec } = parseJsonSections(buf);
+    return mappings
+      .map((m, i) => {
+        const bounds = resolveRegionBounds(sec, m, { trustUiLines: false });
+        if (!bounds) return null;
+        return {
+          regionId: `${m.fieldTypeKey}::${m.jsonPath}::${i}`,
+          fieldTypeKey: m.fieldTypeKey,
+          startLine: bounds.startLine,
+          endLine: bounds.endLine,
+          path: m.jsonPath,
+        };
+      })
+      .filter((r): r is MappedRegion => r !== null);
+  }, [isEditing, editBuffer, mappings, mappedRegions]);
+
+  const allJsonKeys = useMemo(() => extractJsonKeys(activeJson), [activeJson]);
 
   const setFiltersForType = useCallback(
     (fieldTypeKey: string, nextConfig: TypeItemFilterConfig) => {
@@ -785,7 +973,7 @@ export default function JsonFieldMapper({
   };
 
   const getRegionsForLine = (lineIdx: number) =>
-    mappedRegions.filter(r => lineIdx >= r.startLine && lineIdx <= r.endLine);
+    displayRegions.filter(r => lineIdx >= r.startLine && lineIdx <= r.endLine);
 
   /** Região usada para arraste, resize e clique: a selecionada, se estiver nesta linha; senão a primeira. */
   const getPrimaryRegionForLine = (lineIdx: number) => {
@@ -800,11 +988,8 @@ export default function JsonFieldMapper({
       JSON.parse(editBuffer);
       onJsonChange(editBuffer);
       setIsEditing(false);
-      setMappedRegions([]);
-      onMappingsChange([]);
-      onTypeFiltersChange({});
     } catch {
-      // invalid JSON
+      toast.error('JSON inválido — corrija antes de salvar');
     }
   };
 
@@ -816,36 +1001,36 @@ export default function JsonFieldMapper({
   const typeKeysInOrder = useMemo(() => {
     const seen = new Set<string>();
     const order: string[] = [];
-    for (const r of mappedRegions) {
+    for (const r of displayRegions) {
       if (!seen.has(r.fieldTypeKey)) {
         seen.add(r.fieldTypeKey);
         order.push(r.fieldTypeKey);
       }
     }
     return order;
-  }, [mappedRegions]);
+  }, [displayRegions]);
 
   const suggestionsByType = useMemo(() => {
-    const keys = [...new Set(mappedRegions.map(r => r.fieldTypeKey))];
+    const keys = [...new Set(displayRegions.map(r => r.fieldTypeKey))];
     const out: Record<string, ReturnType<typeof collectFilterSuggestionsForMappedRegions>> = {};
     for (const k of keys) {
-      const regs = mappedRegions.filter(r => r.fieldTypeKey === k);
-      out[k] = collectFilterSuggestionsForMappedRegions(json, lines, regs);
+      const regs = displayRegions.filter(r => r.fieldTypeKey === k);
+      out[k] = collectFilterSuggestionsForMappedRegions(activeJson, lines, regs);
     }
     return out;
-  }, [json, mappedRegions, lines]);
+  }, [activeJson, displayRegions, lines]);
 
   const previewByType = useMemo(() => {
     return typeKeysInOrder.map(fieldTypeKey => {
       const ft = fieldTypes.find(f => f.key === fieldTypeKey);
       if (!ft) return null;
-      const regions = mappedRegions.filter(r => r.fieldTypeKey === fieldTypeKey);
+      const regions = displayRegions.filter(r => r.fieldTypeKey === fieldTypeKey);
       const filters = openFilterTypeKey === fieldTypeKey
         ? (draftTypeFilters[fieldTypeKey] ?? typeFilters[fieldTypeKey])
         : typeFilters[fieldTypeKey];
       const parts = regions.map(region => {
         const fallback = lineSlicePreview(region);
-        const preview = getMappedValuePreview(json, region.path, filters, fallback);
+        const preview = getMappedValuePreview(activeJson, region.path, filters, fallback);
         return { regionId: region.regionId, path: region.path, text: preview.text, hasData: preview.hasData };
       }).filter(part => countActiveTypeItemRules(filters) === 0 || part.hasData);
       const filterCfg = filters ?? emptyTypeItemFilterConfig();
@@ -854,31 +1039,232 @@ export default function JsonFieldMapper({
       }
       return { fieldTypeKey, ft, parts, filters: filterCfg };
     }).filter(Boolean) as PreviewDisplayRow[];
-  }, [typeKeysInOrder, mappedRegions, fieldTypes, json, typeFilters, openFilterTypeKey, draftTypeFilters, lineSlicePreview]);
+  }, [typeKeysInOrder, displayRegions, fieldTypes, activeJson, typeFilters, openFilterTypeKey, draftTypeFilters, lineSlicePreview]);
 
-  const mergedPreviewObject = useMemo((): Record<string, unknown> => {
-    const out: Record<string, unknown> = {};
+  /** JSON por tipo: chave raiz = tipo, filhos = campos mapeados; faixa na linha = tipo de consulta. */
+  const mappedPreviewPayload = useMemo(() => {
+    const byType: Record<string, unknown> = {};
+    const keyToMeta = new Map<string, LineGutterMeta>();
+    const duplicateFieldKeys = new Set<string>();
+
     for (const row of previewByType) {
-      if (row.parts.length === 0) {
-        out[row.fieldTypeKey] = null;
-        continue;
-      }
-      const inner: Record<string, unknown> = {};
-      for (const p of row.parts) {
-        inner[p.path] = parsePreviewPartText(p.text);
-      }
-      out[row.fieldTypeKey] = inner;
+      const filters =
+        openFilterTypeKey === row.fieldTypeKey
+          ? (draftTypeFilters[row.fieldTypeKey] ?? typeFilters[row.fieldTypeKey])
+          : typeFilters[row.fieldTypeKey];
+      const filterCfg = filters ?? emptyTypeItemFilterConfig();
+      const parsedParts = row.parts.map((part) => parsePreviewPartText(part.text));
+      const fieldsById = new Map((row.ft.reportFieldConfig?.fields ?? []).map((field) => [field.id, field]));
+      const mappedFieldRows = filterCfg.fieldMappings
+        .filter((mapping) => mapping.jsonPath.trim().length > 0)
+        .map((mapping) => {
+          const fieldDef = fieldsById.get(mapping.reportFieldId);
+          const baseKey = fieldDef?.key
+            ?? slugifyReportFieldKey(mapping.reportFieldLabel || mapping.reportFieldId || 'campo');
+          const values = parsedParts.flatMap((partValue) => collectValuesAtPath(partValue, mapping.jsonPath));
+          return {
+            baseKey,
+            value: normalizeMappedFieldValue(values),
+            reportFieldId: mapping.reportFieldId,
+          };
+        });
+      const colors = getColors(row.ft.color);
+      keyToMeta.set(row.fieldTypeKey, {
+        barClass: colors.solid,
+        title: `${row.ft.label} · tipo ${row.ft.key}`,
+      });
+      const displayFieldKeys = dedupeReportFieldKeys(mappedFieldRows.map((item) => item.baseKey));
+      const dedupFieldIdSet = new Set(filterCfg.dedupFieldIds);
+      const block: Record<string, unknown> = {};
+      mappedFieldRows.forEach((fieldRow, index) => {
+        const displayKey = displayFieldKeys[index]!;
+        block[displayKey] = fieldRow.value;
+        if (dedupFieldIdSet.has(fieldRow.reportFieldId)) {
+          duplicateFieldKeys.add(`${row.fieldTypeKey}.${displayKey}`);
+        }
+      });
+      byType[row.fieldTypeKey] = zipAlignedMappedPreviewRows(block);
     }
-    if (dedupEnabled && dedupFields.length > 0) {
-      return dedupeArraysDeep(out, dedupFields) as Record<string, unknown>;
-    }
-    return out;
-  }, [previewByType, dedupEnabled, dedupFields]);
 
-  const mergedPreviewJson = useMemo(
-    () => JSON.stringify(mergedPreviewObject, null, 2),
-    [mergedPreviewObject],
+    const jsonText = JSON.stringify(byType, null, 2);
+    const lineMeta = computeJsonLineGutterMeta(jsonText, keyToMeta, duplicateFieldKeys);
+    return { jsonText, lineMeta };
+  }, [
+    previewByType,
+    openFilterTypeKey,
+    draftTypeFilters,
+    typeFilters,
+  ]);
+
+  const dedupMarkedByType = useMemo(() => {
+    return previewByType
+      .map(({ fieldTypeKey, ft, filters }) => {
+        if (!filters.dedupFieldIds.length) return null;
+        const fieldsById = new Map((ft.reportFieldConfig?.fields ?? []).map((field) => [field.id, field]));
+        const labels = filters.dedupFieldIds
+          .map((fieldId) => fieldsById.get(fieldId))
+          .filter((field): field is NonNullable<typeof field> => !!field)
+          .map((field) => field.label || field.key || field.id);
+        return labels.length > 0 ? { fieldTypeKey, labels } : null;
+      })
+      .filter((item): item is { fieldTypeKey: string; labels: string[] } => !!item);
+  }, [previewByType]);
+
+  const retornoMatches = useMemo(
+    () => findTextMatches(activeJson, retornoSearch),
+    [activeJson, retornoSearch],
   );
+  /** Offsets no `editBuffer` alinhados ao textarea (espelho de busca). */
+  const retornoEditAbsRanges = useMemo(
+    () => toAbsoluteMatchRanges(editBuffer, retornoMatches),
+    [editBuffer, retornoMatches],
+  );
+  const previewMatches = useMemo(
+    () => findTextMatches(mappedPreviewPayload.jsonText, previewSearch),
+    [mappedPreviewPayload.jsonText, previewSearch],
+  );
+
+  const retornoSafeIdx = useMemo(() => {
+    if (retornoMatches.length === 0) return 0;
+    return Math.min(retornoActiveIdx, retornoMatches.length - 1);
+  }, [retornoActiveIdx, retornoMatches.length]);
+
+  const previewSafeIdx = useMemo(() => {
+    if (previewMatches.length === 0) return 0;
+    return Math.min(previewActiveIdx, previewMatches.length - 1);
+  }, [previewActiveIdx, previewMatches.length]);
+
+  /** Evita re-scroll a cada tecla: `matches` muda com o texto, mas só devemos centralizar ao buscar ou ao mudar o índice. */
+  const retornoMatchesRef = useRef(retornoMatches);
+  retornoMatchesRef.current = retornoMatches;
+  const previewMatchesRef = useRef(previewMatches);
+  previewMatchesRef.current = previewMatches;
+
+  useEffect(() => {
+    setRetornoActiveIdx(0);
+  }, [retornoSearch]);
+
+  useEffect(() => {
+    setPreviewActiveIdx(0);
+  }, [previewSearch]);
+
+  useEffect(() => {
+    if (retornoMatches.length === 0) {
+      setRetornoActiveIdx(0);
+      return;
+    }
+    setRetornoActiveIdx((i) => Math.min(i, retornoMatches.length - 1));
+  }, [retornoMatches.length]);
+
+  useEffect(() => {
+    if (previewMatches.length === 0) {
+      setPreviewActiveIdx(0);
+      return;
+    }
+    setPreviewActiveIdx((i) => Math.min(i, previewMatches.length - 1));
+  }, [previewMatches.length]);
+
+  useLayoutEffect(() => {
+    if (!isEditing) return;
+    const q = retornoSearch.trim();
+    const matches = retornoMatchesRef.current;
+    if (!q || matches.length === 0) return;
+    const m = matches[retornoSafeIdx];
+    if (!m) return;
+    const run = () => {
+      scrollTextareasToMatchLine(editTextareaRef.current, editHighlightPreRef.current, m.line);
+    };
+    run();
+    const t = requestAnimationFrame(run);
+    return () => cancelAnimationFrame(t);
+  }, [isEditing, retornoSafeIdx, retornoSearch]);
+
+  useLayoutEffect(() => {
+    if (isEditing) return;
+    const q = retornoSearch.trim();
+    if (!q || retornoMatches.length === 0) return;
+    const m = retornoMatches[retornoSafeIdx];
+    if (!m) return;
+    const run = () => {
+      const el = jsonViewScrollRef.current;
+      if (el) {
+        const lh = LINE_HEIGHT;
+        el.scrollTop = Math.round(Math.max(0, m.line * lh - el.clientHeight / 2 + lh / 2));
+      }
+    };
+    run();
+    const t = requestAnimationFrame(run);
+    return () => cancelAnimationFrame(t);
+  }, [isEditing, retornoSafeIdx, retornoSearch, retornoMatches]);
+
+  useEffect(() => {
+    const q = previewSearch.trim();
+    const matches = previewMatchesRef.current;
+    if (!q || matches.length === 0) return;
+    const m = matches[previewSafeIdx];
+    if (!m) return;
+    const el = previewScrollRef.current;
+    if (el) {
+      const lh = PREVIEW_LINE_HEIGHT;
+      el.scrollTop = Math.max(0, m.line * lh - el.clientHeight / 2 + lh / 2);
+    }
+  }, [previewSafeIdx, previewSearch]);
+
+  const goRetornoPrev = useCallback(() => {
+    setRetornoActiveIdx((i) => {
+      const n = retornoMatches.length;
+      if (n === 0) return 0;
+      const cur = Math.min(i, n - 1);
+      return (cur - 1 + n) % n;
+    });
+  }, [retornoMatches.length]);
+
+  const goRetornoNext = useCallback(() => {
+    setRetornoActiveIdx((i) => {
+      const n = retornoMatches.length;
+      if (n === 0) return 0;
+      const cur = Math.min(i, n - 1);
+      return (cur + 1) % n;
+    });
+  }, [retornoMatches.length]);
+
+  const goPreviewPrev = useCallback(() => {
+    setPreviewActiveIdx((i) => {
+      const n = previewMatches.length;
+      if (n === 0) return 0;
+      const cur = Math.min(i, n - 1);
+      return (cur - 1 + n) % n;
+    });
+  }, [previewMatches.length]);
+
+  const goPreviewNext = useCallback(() => {
+    setPreviewActiveIdx((i) => {
+      const n = previewMatches.length;
+      if (n === 0) return 0;
+      const cur = Math.min(i, n - 1);
+      return (cur + 1) % n;
+    });
+  }, [previewMatches.length]);
+
+  const copyRetornoJson = useCallback(async () => {
+    const text = activeJson.trim() || '{}';
+    try {
+      await navigator.clipboard.writeText(text);
+      toast.success('JSON de retorno copiado');
+    } catch {
+      toast.error('Não foi possível copiar');
+    }
+  }, [activeJson]);
+
+  const copyPreviewJson = useCallback(async () => {
+    const text = mappedPreviewPayload.jsonText.trim() || '{}';
+    try {
+      await navigator.clipboard.writeText(text);
+      toast.success('Preview copiado');
+    } catch {
+      toast.error('Não foi possível copiar');
+    }
+  }, [mappedPreviewPayload.jsonText]);
 
   return (
     <div className="h-[460px] border border-border rounded-md overflow-hidden bg-card"
@@ -890,36 +1276,82 @@ export default function JsonFieldMapper({
         {/* LEFT: JSON with line numbers */}
         <ResizablePanel defaultSize={50} minSize={22} className="min-h-0 min-w-0">
           <div className="flex min-h-0 min-w-0 flex-col h-full">
-            <div className="flex shrink-0 items-center justify-between px-3 h-9 border-b border-border bg-muted/40">
+            <div className="flex shrink-0 items-center justify-between gap-2 px-3 h-9 border-b border-border bg-muted/40">
               <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-2 min-w-0">
                 <Code2 className="w-4 h-4 shrink-0" /> <span className="truncate">{jsonColumnTitle}</span>
               </span>
-              {!isEditing ? (
-                <button onClick={() => { setEditBuffer(json); setIsEditing(true); }}
-                  className="text-xs text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1.5">
-                  <Pencil className="w-3.5 h-3.5" /> Editar
-                </button>
-              ) : (
-                <div className="flex gap-2">
-                  <button onClick={saveEdit} className="text-xs text-emerald-600 hover:text-emerald-500 flex items-center gap-1">
-                    <Check className="w-3.5 h-3.5" /> OK
+              <div className="flex shrink-0 items-center gap-1">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                  aria-label="Copiar JSON de retorno"
+                  title="Copiar JSON de retorno"
+                  onClick={() => void copyRetornoJson()}
+                >
+                  <Copy className="h-4 w-4" />
+                </Button>
+                {!isEditing ? (
+                  <button onClick={() => { setEditBuffer(json); setIsEditing(true); }}
+                    className="text-xs text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1.5">
+                    <Pencil className="w-3.5 h-3.5" /> Editar
                   </button>
-                  <button onClick={() => setIsEditing(false)} className="text-xs text-muted-foreground hover:text-foreground">
-                    <X className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              )}
+                ) : (
+                  <div className="flex gap-2">
+                    <button onClick={saveEdit} className="text-xs text-emerald-600 hover:text-emerald-500 flex items-center gap-1">
+                      <Check className="w-3.5 h-3.5" /> OK
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditBuffer(json);
+                        setIsEditing(false);
+                      }}
+                      className="text-xs text-muted-foreground hover:text-foreground"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
 
+            <div className="flex min-h-0 min-w-0 flex-1 flex-col">
             {isEditing ? (
-              <textarea
-                value={editBuffer}
-                onChange={e => setEditBuffer(e.target.value)}
-                className="flex-1 min-h-0 min-w-0 p-3 text-sm font-mono bg-background text-foreground resize-none focus:outline-none leading-6 overflow-x-auto overflow-y-auto [scrollbar-width:thin]"
-                spellCheck={false}
-              />
+              <div className="relative min-h-0 flex-1 overflow-hidden">
+                <pre
+                  ref={editHighlightPreRef}
+                  className={`pointer-events-none absolute inset-0 m-0 bg-background text-foreground/90 ${JSON_EDITOR_SYNC_CLASS}`}
+                  aria-hidden
+                >
+                  {retornoSearch.trim()
+                    ? retornoEditAbsRanges.length > 0
+                      ? renderRetornoFlatTextWithMatches(editBuffer, retornoEditAbsRanges, retornoSafeIdx)
+                      : editBuffer
+                    : editBuffer}
+                </pre>
+                <textarea
+                  ref={editTextareaRef}
+                  value={editBuffer}
+                  onChange={e => setEditBuffer(e.target.value)}
+                  onScroll={(e) => {
+                    const t = e.currentTarget;
+                    const p = editHighlightPreRef.current;
+                    if (p) {
+                      p.scrollTop = t.scrollTop;
+                      p.scrollLeft = t.scrollLeft;
+                    }
+                  }}
+                  spellCheck={false}
+                  className={`relative z-10 block h-full min-h-[5rem] resize-none bg-transparent text-transparent caret-foreground focus:outline-none selection:bg-primary/25 ${JSON_EDITOR_SYNC_CLASS}`}
+                />
+              </div>
             ) : (
-              <div className="min-h-0 min-w-0 flex-1 overflow-x-auto overflow-y-auto [scrollbar-width:thin] overscroll-x-contain">
+              <div
+                ref={jsonViewScrollRef}
+                className="min-h-0 min-w-0 flex-1 overflow-x-auto overflow-y-auto [scrollbar-width:thin] overscroll-x-contain"
+              >
                 <div
                   ref={jsonContainerRef}
                   className="select-none relative w-max min-w-full"
@@ -941,8 +1373,8 @@ export default function JsonFieldMapper({
                     const region = getPrimaryRegionForLine(i);
                     const ft = region ? fieldTypes.find(f => f.key === region.fieldTypeKey) : null;
                     const primaryColors = ft ? getColors(ft.color) : null;
-                    const startsOnLine = mappedRegions.filter(r => r.startLine === i);
-                    const endsOnLine = mappedRegions.filter(r => r.endLine === i);
+                    const startsOnLine = displayRegions.filter(r => r.startLine === i);
+                    const endsOnLine = displayRegions.filter(r => r.endLine === i);
                     const dragHoverLine =
                       hoveredSection && draggedType
                       && i >= hoveredSection.startLine && i <= hoveredSection.endLine;
@@ -1028,7 +1460,9 @@ export default function JsonFieldMapper({
                         </span>
                         <div className="relative z-10 flex min-h-0 flex-1 items-center">
                           <pre className="px-2 pr-24 whitespace-pre text-foreground/90 leading-6">
-                            {line || ' '}
+                            {retornoSearch.trim()
+                              ? renderRetornoLineWithMatches(line, i, retornoMatches, retornoSafeIdx)
+                              : line || ' '}
                           </pre>
                           {startsOnLine.length > 0 && (
                             <div
@@ -1064,6 +1498,67 @@ export default function JsonFieldMapper({
                 </div>
               </div>
             )}
+              <div className="flex min-h-9 shrink-0 w-full min-w-0 border-t border-border bg-muted/30 px-2 py-1.5">
+                <div className="flex min-w-0 flex-1 items-center gap-0.5 rounded-md border border-input bg-background pl-2 pr-1 shadow-sm">
+                  <Search className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
+                  <Input
+                    placeholder="Buscar no JSON…"
+                    value={retornoSearch}
+                    onChange={(e) => setRetornoSearch(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        goRetornoNext();
+                      }
+                    }}
+                    className="h-8 min-w-0 flex-1 border-0 bg-transparent px-1.5 text-xs shadow-none focus-visible:ring-0 focus-visible:ring-offset-0"
+                    aria-label="Buscar no JSON de retorno"
+                  />
+                  {retornoSearch.trim() ? (
+                    <>
+                      <span className="shrink-0 tabular-nums text-[11px] text-muted-foreground" aria-live="polite">
+                        {retornoMatches.length ? retornoSafeIdx + 1 : 0}/{retornoMatches.length}
+                      </span>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 shrink-0"
+                        disabled={retornoMatches.length === 0}
+                        aria-label="Ocorrência anterior"
+                        onClick={goRetornoPrev}
+                      >
+                        <ChevronLeft className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 shrink-0"
+                        disabled={retornoMatches.length === 0}
+                        aria-label="Próxima ocorrência"
+                        onClick={goRetornoNext}
+                      >
+                        <ChevronRight className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 shrink-0 text-muted-foreground hover:text-foreground"
+                        aria-label="Limpar busca"
+                        onClick={() => {
+                          setRetornoSearch('');
+                          setRetornoActiveIdx(0);
+                        }}
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+                    </>
+                  ) : null}
+                </div>
+              </div>
+            </div>
           </div>
         </ResizablePanel>
 
@@ -1081,13 +1576,14 @@ export default function JsonFieldMapper({
               <div className="space-y-2 py-1.5 pl-1.5 pr-4 pb-1.5">
                 {fieldTypes.map(ft => {
                   const colors = getColors(ft.color);
-                  const regionsForType = mappedRegions.filter(r => r.fieldTypeKey === ft.key);
+                  const regionsForType = displayRegions.filter(r => r.fieldTypeKey === ft.key);
                   const isMapped = regionsForType.length > 0;
-                  const suggest = suggestionsByType[ft.key] ?? { fields: [], valuesByField: {}, allValues: [] };
+                  const suggest = suggestionsByType[ft.key] ?? { fields: [], valuesByField: {}, allValues: [], allPaths: [] };
                   const filterConfig = openFilterTypeKey === ft.key
                     ? (draftTypeFilters[ft.key] ?? typeFilters[ft.key] ?? emptyTypeItemFilterConfig())
                     : (typeFilters[ft.key] ?? emptyTypeItemFilterConfig());
                   const activeCriteriaCount = countActiveTypeItemRules(filterConfig);
+                  const criteriaSummary = summarizeTypeItemCriteria(filterConfig);
 
                   return (
                     <div
@@ -1177,25 +1673,38 @@ export default function JsonFieldMapper({
                             {regionsForType.map(r => (
                               <div
                                 key={r.regionId}
-                                className="flex items-center gap-1 rounded border border-border/60 bg-background/70 px-2 py-1"
+                                className="rounded border border-border/60 bg-background/70 px-2 py-1"
                               >
-                                <code className="min-w-0 flex-1 truncate text-[10px] font-mono text-muted-foreground">
-                                  {r.path}
-                                </code>
-                                <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground">
-                                  L{r.startLine + 1}–{r.endLine + 1}
-                                </span>
-                                <button
-                                  type="button"
-                                  className="shrink-0 cursor-pointer p-0.5 text-muted-foreground hover:text-destructive"
-                                  onClick={e => {
-                                    e.stopPropagation();
-                                    removeRegionById(r.regionId);
-                                  }}
-                                  aria-label="Remover trecho"
-                                >
-                                  <Trash2 className="h-3 w-3" />
-                                </button>
+                                <div className="flex items-center gap-1">
+                                  <code
+                                    className="min-w-0 flex-1 truncate text-[10px] font-mono text-muted-foreground"
+                                    title="Referência (jsonPath) no retorno"
+                                  >
+                                    {r.path}
+                                  </code>
+                                  <span
+                                    className="shrink-0 text-[10px] tabular-nums text-muted-foreground"
+                                    title="Posição neste JSON de exemplo (muda se o texto mudar; o path é estável)"
+                                  >
+                                    L{r.startLine + 1}–{r.endLine + 1}
+                                  </span>
+                                  <button
+                                    type="button"
+                                    className="shrink-0 cursor-pointer p-0.5 text-muted-foreground hover:text-destructive"
+                                    onClick={e => {
+                                      e.stopPropagation();
+                                      removeRegionById(r.regionId);
+                                    }}
+                                    aria-label="Remover trecho"
+                                  >
+                                    <Trash2 className="h-3 w-3" />
+                                  </button>
+                                </div>
+                                {criteriaSummary ? (
+                                  <p className="mt-0.5 text-[9px] leading-snug text-primary/90">
+                                    Filtro: {criteriaSummary}
+                                  </p>
+                                ) : null}
                               </div>
                             ))}
                           </div>
@@ -1245,148 +1754,165 @@ export default function JsonFieldMapper({
         {/* RIGHT: Preview — all data summary + dedup */}
         <ResizablePanel defaultSize={28} minSize={18} className="min-h-0 min-w-[12rem]">
           <div className="flex min-h-0 min-w-0 flex-col h-full">
-            <div className="flex shrink-0 items-center justify-between px-3 h-9 border-b border-border bg-muted/40">
-              <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-2">
-                <Eye className="w-4 h-4" /> Preview
+            <div className="flex shrink-0 items-center justify-between gap-2 px-3 h-9 border-b border-border bg-muted/40">
+              <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-2 min-w-0">
+                <Eye className="w-4 h-4 shrink-0" /> Preview
               </span>
-              {mappedRegions.length > 0 && (
-                <span className="text-xs text-muted-foreground">
-                  {mappedRegions.length} trecho{mappedRegions.length > 1 ? 's' : ''} · {typeKeysInOrder.length} tipo
-                  {typeKeysInOrder.length > 1 ? 's' : ''}
-                </span>
-              )}
+              <div className="flex shrink-0 items-center gap-2">
+                {displayRegions.length > 0 && (
+                  <span className="text-xs text-muted-foreground">
+                    {displayRegions.length} trecho{displayRegions.length > 1 ? 's' : ''} · {typeKeysInOrder.length} tipo
+                    {typeKeysInOrder.length > 1 ? 's' : ''}
+                  </span>
+                )}
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                  aria-label="Copiar JSON do preview"
+                  title="Copiar JSON do preview"
+                  onClick={() => void copyPreviewJson()}
+                >
+                  <Copy className="h-4 w-4" />
+                </Button>
+              </div>
             </div>
             <ScrollArea className="flex-1 min-h-0 min-w-0">
               {previewByType.length > 0 ? (
                 <div className="flex min-h-0 flex-col gap-2 p-2 pr-4">
-                  <div className="shrink-0 rounded-md border border-border bg-muted/15 p-2">
-                    <div className="flex items-center gap-1.5">
-                      <Checkbox
-                        id="dedup"
-                        checked={dedupEnabled}
-                        onCheckedChange={(v) => setDedupEnabled(!!v)}
-                        className="h-4 w-4 shrink-0"
-                      />
-                      <label
-                        htmlFor="dedup"
-                        className="flex cursor-pointer items-center gap-1.5 text-xs font-medium text-foreground"
-                      >
-                        <Settings2 className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                        Remover duplicidade em arrays
-                      </label>
-                    </div>
-                    {dedupEnabled && (
-                      <div className="mt-2 space-y-1.5 border-t border-border/60 pt-2">
-                        <p className="text-[10px] text-muted-foreground">
-                          Campos que identificam a mesma linha (valores do JSON à esquerda):
-                        </p>
-                        <div className="flex max-h-24 flex-wrap gap-1 overflow-y-auto [scrollbar-width:thin]">
-                          {allJsonKeys.slice(0, 24).map((key) => (
+                  <MappedJsonPreviewCanvas
+                    jsonText={mappedPreviewPayload.jsonText}
+                    lineMeta={mappedPreviewPayload.lineMeta}
+                    highlightQuery={previewSearch}
+                    highlightNavigation={
+                      previewSearch.trim() && previewMatches.length > 0
+                        ? { matches: previewMatches, activeIndex: previewSafeIdx }
+                        : undefined
+                    }
+                    scrollBodyRef={previewScrollRef}
+                    footer={
+                      <div className="flex flex-col gap-1.5">
+                        {dedupMarkedByType.length > 0 && (
+                          <div className="flex flex-wrap items-center gap-1">
+                            <span className="text-[9px] uppercase tracking-wide text-muted-foreground">Duplicidade</span>
+                            {dedupMarkedByType.map((item) => (
+                              <span
+                                key={item.fieldTypeKey}
+                                className="inline-flex items-center rounded border border-amber-500/30 bg-amber-500/8 px-1.5 py-0.5 text-[9px] text-amber-600 dark:text-amber-400"
+                                title={`Campos deduplicados de ${item.fieldTypeKey}: ${item.labels.join(', ')}`}
+                              >
+                                {item.fieldTypeKey}: {item.labels.join(' + ')}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                          <span className="text-[9px] font-medium uppercase tracking-wide text-muted-foreground">
+                            Tipo
+                          </span>
+                        {previewByType.map(({ fieldTypeKey, ft, filters, parts, emptyPreviewReason }) => {
+                          const colors = getColors(ft.color);
+                          const isSelected = selectedRegion === ft.key;
+                          const rules = countActiveTypeItemRules(filters);
+                          return (
                             <button
-                              key={key}
+                              key={fieldTypeKey}
                               type="button"
-                              onClick={() =>
-                                setDedupFields((prev) =>
-                                  prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key],
-                                )
-                              }
+                              onClick={() => setSelectedRegion(ft.key === selectedRegion ? null : ft.key)}
                               className={cn(
-                                'cursor-pointer rounded-md border px-1.5 py-0.5 font-mono text-[10px] transition-colors',
-                                dedupFields.includes(key)
-                                  ? 'border-primary/40 bg-primary/12 text-primary'
-                                  : 'border-border text-muted-foreground hover:border-primary/25',
+                                'inline-flex cursor-pointer items-center gap-1 rounded-md text-[9px] text-muted-foreground transition-colors hover:text-foreground',
+                                isSelected && 'text-foreground',
                               )}
+                              title={`${ft.label}${
+                                rules > 0 ? ` · ${rules} critério(s)` : ''
+                              }${emptyPreviewReason === 'filtered' ? ' · nada passou no filtro' : ''}${
+                                parts.length === 0 ? ' · sem trecho' : ''
+                              }`}
                             >
-                              {dedupFields.includes(key) && (
-                                <CheckSquare className="mr-0.5 inline h-3 w-3 align-text-bottom" />
-                              )}
-                              {key.split('.').pop()}
+                              <span
+                                className={cn('h-2 w-2 shrink-0 rounded-sm', colors.solid)}
+                                aria-hidden
+                              />
+                              <span className="font-mono">{ft.key}</span>
                             </button>
-                          ))}
+                          );
+                        })}
                         </div>
                       </div>
-                    )}
-                  </div>
-
-                  <div className="shrink-0 space-y-1">
-                    <div className="flex flex-wrap items-center gap-1">
-                      <span className="w-full text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                        Tipos no JSON
-                      </span>
-                      {previewByType.map(({ fieldTypeKey, ft, filters, parts, emptyPreviewReason }) => {
-                        const colors = getColors(ft.color);
-                        const isSelected = selectedRegion === ft.key;
-                        const rules = countActiveTypeItemRules(filters);
-                        const muted = parts.length === 0;
-                        return (
-                          <button
-                            key={fieldTypeKey}
-                            type="button"
-                            onClick={() => setSelectedRegion(ft.key === selectedRegion ? null : ft.key)}
-                            className={cn(
-                              'inline-flex cursor-pointer items-center gap-1 rounded-full border bg-background/90 py-0.5 pl-0.5 pr-2 text-[10px] font-medium transition-all',
-                              colors.border,
-                              'border-l-[3px]',
-                              isSelected ? 'ring-1 ring-primary/45 shadow-sm' : 'opacity-95 hover:opacity-100',
-                              muted ? 'opacity-60' : '',
-                            )}
-                            title={`${ft.label} · chave ${ft.key}${
-                              rules > 0 ? ` · ${rules} critério(s)` : ''
-                            }${emptyPreviewReason === 'filtered' ? ' · nada passou no filtro' : ''}`}
-                          >
-                            <span
-                              className={cn(
-                                'flex h-5 w-5 shrink-0 items-center justify-center rounded-full',
-                                colors.bg,
-                              )}
-                            >
-                              <FieldIcon icon={ft.icon} className={cn('h-3 w-3 shrink-0', colors.text)} />
-                            </span>
-                            <span className="max-w-[7rem] truncate text-foreground">{ft.key}</span>
-                            {rules > 0 && (
-                              <span className="tabular-nums text-muted-foreground">·{rules}</span>
-                            )}
-                          </button>
-                        );
-                      })}
-                    </div>
-                    <p className="text-[10px] leading-snug text-muted-foreground">
-                      Cada chave de 1º nível é o tipo; dentro, cada chave é o <code className="text-foreground/80">jsonPath</code> do trecho
-                      (já filtrado). <span className="text-foreground/70">null</span> quando nenhum item passa nos critérios.
-                    </p>
-                  </div>
-
-                  <div
-                    className={cn(
-                      'flex min-h-0 flex-1 flex-col overflow-hidden rounded-md border border-border bg-background/90',
-                      mappedRegions.length > 0 ? 'min-h-[12rem]' : '',
-                    )}
-                  >
-                    <div className="flex items-center justify-between border-b border-border/70 px-2 py-1">
-                      <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-                        JSON consolidado
-                      </span>
-                      <Badge variant="outline" className="h-5 px-1.5 font-mono text-[9px] font-normal text-muted-foreground">
-                        somente leitura
-                      </Badge>
-                    </div>
-                    <pre
-                      className="m-0 max-h-[min(20rem,45vh)] flex-1 overflow-auto whitespace-pre p-2.5 font-mono text-[11px] leading-relaxed text-foreground/90 [scrollbar-width:thin]"
-                      tabIndex={0}
-                    >
-                      {mergedPreviewJson}
-                    </pre>
-                  </div>
+                    }
+                  />
                 </div>
               ) : (
                 <div className="flex h-full flex-col items-center justify-center p-4 text-center">
                   <Move className="mb-2 h-6 w-6 text-muted-foreground/20" />
                   <p className="px-2 text-sm leading-relaxed text-muted-foreground">
-                    Arraste um tipo para o JSON — o preview mostrará um único objeto com cada tipo e os caminhos mapeados
+                    Arraste um tipo para o JSON — o preview unifica os campos mapeados na configuração do tipo (chaves do
+                    relatório), com a faixa colorida indicando a origem por tipo
                   </p>
                 </div>
               )}
             </ScrollArea>
+            <div className="flex min-h-9 shrink-0 w-full min-w-0 border-t border-border bg-muted/30 px-2 py-1.5">
+              <div className="flex min-w-0 flex-1 items-center gap-0.5 rounded-md border border-input bg-background pl-2 pr-1 shadow-sm">
+                <Search className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
+                <Input
+                  placeholder="Buscar no preview…"
+                  value={previewSearch}
+                  onChange={(e) => setPreviewSearch(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      goPreviewNext();
+                    }
+                  }}
+                  className="h-8 min-w-0 flex-1 border-0 bg-transparent px-1.5 text-xs shadow-none focus-visible:ring-0 focus-visible:ring-offset-0"
+                  aria-label="Buscar no preview"
+                />
+                {previewSearch.trim() ? (
+                  <>
+                    <span className="shrink-0 tabular-nums text-[11px] text-muted-foreground" aria-live="polite">
+                      {previewMatches.length ? previewSafeIdx + 1 : 0}/{previewMatches.length}
+                    </span>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 shrink-0"
+                      disabled={previewMatches.length === 0}
+                      aria-label="Ocorrência anterior"
+                      onClick={goPreviewPrev}
+                    >
+                      <ChevronLeft className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 shrink-0"
+                      disabled={previewMatches.length === 0}
+                      aria-label="Próxima ocorrência"
+                      onClick={goPreviewNext}
+                    >
+                      <ChevronRight className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 shrink-0 text-muted-foreground hover:text-foreground"
+                      aria-label="Limpar busca"
+                      onClick={() => {
+                        setPreviewSearch('');
+                        setPreviewActiveIdx(0);
+                      }}
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </>
+                ) : null}
+              </div>
+            </div>
           </div>
         </ResizablePanel>
       </ResizablePanelGroup>

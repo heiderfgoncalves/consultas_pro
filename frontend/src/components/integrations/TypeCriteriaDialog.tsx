@@ -49,6 +49,7 @@ import {
 } from '@/lib/typeItemFilters';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
   Dialog,
   DialogContent,
@@ -313,6 +314,7 @@ export default function TypeCriteriaDialog({
 
   const upsertFieldMapping = (reportFieldId: string, reportFieldLabel: string, jsonPath: string) => {
     const nextMappings = draftConfig.fieldMappings.filter((mapping) => mapping.reportFieldId !== reportFieldId);
+    const nextDedupFieldIds = draftConfig.dedupFieldIds.filter((fieldId) => fieldId !== reportFieldId);
     if (jsonPath !== SENTINEL_EMPTY) {
       nextMappings.push({
         id: draftConfig.fieldMappings.find((mapping) => mapping.reportFieldId === reportFieldId)?.id ?? `${reportFieldId}_${Date.now()}`,
@@ -324,6 +326,19 @@ export default function TypeCriteriaDialog({
     onDraftChange({
       ...draftConfig,
       fieldMappings: nextMappings,
+      dedupFieldIds: nextDedupFieldIds,
+    });
+  };
+
+  const toggleDedupField = (reportFieldId: string, checked: boolean) => {
+    const nextDedupFieldIds = checked
+      ? draftConfig.dedupFieldIds.includes(reportFieldId)
+        ? draftConfig.dedupFieldIds
+        : [...draftConfig.dedupFieldIds, reportFieldId]
+      : draftConfig.dedupFieldIds.filter((fieldId) => fieldId !== reportFieldId);
+    onDraftChange({
+      ...draftConfig,
+      dedupFieldIds: nextDedupFieldIds,
     });
   };
 
@@ -339,7 +354,7 @@ export default function TypeCriteriaDialog({
       <DialogContent
         ref={setCriteriaModalEl}
         showClose={false}
-        className="flex max-h-[92vh] w-[min(72rem,calc(100vw-1.5rem))] max-w-[min(72rem,95vw)] flex-col gap-0 overflow-hidden border border-border/60 bg-background p-0 shadow-sm sm:rounded-lg"
+        className="flex max-h-[92vh] w-[min(72rem,calc(100vw-1.5rem))] max-w-[min(72rem,95vw)] flex-col gap-0 overflow-hidden border border-border/60 bg-background p-5 shadow-sm sm:rounded-lg"
         onOpenAutoFocus={(e) => e.preventDefault()}
       >
         <DialogHeader className="sr-only">
@@ -347,7 +362,7 @@ export default function TypeCriteriaDialog({
         </DialogHeader>
 
         <ScrollArea className="min-h-0 flex-1">
-          <div className="flex flex-col gap-y-4 px-4 pb-4 pt-4 md:flex-row md:items-stretch md:gap-0">
+          <div className="flex flex-col gap-y-4 md:flex-row md:items-stretch md:gap-0">
             <section className="min-w-0 flex-1 space-y-3 md:min-w-0 md:flex-[1_1_0%] md:pr-5">
               <div className="space-y-0.5">
                 <div className="flex items-center gap-2">
@@ -364,15 +379,18 @@ export default function TypeCriteriaDialog({
                 </div>
               ) : (
                 <div className="rounded-lg border border-border/50 bg-muted/10">
-                  <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)] gap-2 border-b border-border/50 px-2 py-1.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                  <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)_auto] gap-2 border-b border-border/50 px-2 py-1.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
                     <span>Campo do tipo</span>
                     <span>Campo do JSON</span>
+                    <span className="text-center">Deduplicar</span>
                   </div>
                   <div className="space-y-1 p-2">
                     {reportFields.map((field) => {
                       const selected = draftConfig.fieldMappings.find((mapping) => mapping.reportFieldId === field.id)?.jsonPath ?? SENTINEL_EMPTY;
+                      const isMapped = selected !== SENTINEL_EMPTY;
+                      const dedupChecked = isMapped && draftConfig.dedupFieldIds.includes(field.id);
                       return (
-                        <div key={field.id} className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)] items-center gap-2 rounded-md border border-border/50 bg-background/90 px-2 py-1.5">
+                        <div key={field.id} className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)_auto] items-center gap-2 rounded-md border border-border/50 bg-background/90 px-2 py-1.5">
                           <div className="flex min-w-0 items-center gap-2">
                             <div
                               className="flex h-8 w-8 shrink-0 items-center justify-center rounded border border-border/50 bg-muted/25 text-muted-foreground"
@@ -425,6 +443,15 @@ export default function TypeCriteriaDialog({
                               ))}
                             </SelectContent>
                           </Select>
+                          <div className="flex items-center justify-center px-1">
+                            <Checkbox
+                              checked={dedupChecked}
+                              disabled={!isMapped}
+                              onCheckedChange={(value) => toggleDedupField(field.id, value === true)}
+                              aria-label={`Deduplicar por ${field.label || 'campo sem nome'}`}
+                              className="h-4 w-4"
+                            />
+                          </div>
                         </div>
                       );
                     })}
@@ -439,7 +466,7 @@ export default function TypeCriteriaDialog({
             </section>
 
             <div
-              className="hidden shrink-0 self-stretch border-0 border-l border-dashed border-muted-foreground/25 md:mx-1 md:block dark:border-muted-foreground/20"
+              className="shrink-0 self-stretch border-0 border-l-2 border-dashed border-muted-foreground/20 md:mx-1 dark:border-muted-foreground/20"
               aria-hidden
             />
 
