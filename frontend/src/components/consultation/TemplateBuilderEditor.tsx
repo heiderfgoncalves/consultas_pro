@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useEffect } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Search, Plus, Minus, Wallet, Save, FileText, Eye, Upload, X,
@@ -23,16 +23,20 @@ import type { ConsultationFieldType, ProviderConsultation } from '@/types/integr
 import type { TemplateBuilderCapabilities } from '@/types/template-layout';
 import { createCapabilitiesByMode } from '@/lib/templateLayoutTransforms';
 import { createCustomBlockApi, getCustomBlocksApi } from '@/api/admin-integrations';
-import type { CustomBlockDefinition } from '@/types/custom-blocks';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
+  DEFAULT_SECTIONS, createSection, createField, sectionToXml, xmlToFields,
+  type TemplateSection,
+} from '@/lib/templateSectionUtils';
+import {
   DndContext, closestCenter, PointerSensor, useSensor, useSensors,
   type DragEndEvent, type DragStartEvent, DragOverlay,
-  useDroppable, type DragOverEvent,
+  useDroppable,
 } from '@dnd-kit/core';
 import { useDraggable } from '@dnd-kit/core';
-import { arrayMove } from '@dnd-kit/sortable';
+import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 
 const iconMap: Record<string, LucideIcon> = {
   AlertTriangle: FileText, Gauge: FileText, Award: FileText, DollarSign: FileText,
@@ -47,7 +51,7 @@ type LayoutBlockItem = {
   name: string;
   description: string;
   icon: LucideIcon;
-  kind: 'card-kpi' | 'container' | 'free-text' | 'custom';
+  kind: 'card-kpi' | 'container' | 'free-text';
 };
 
 const LAYOUT_BLOCKS: LayoutBlockItem[] = [
@@ -71,20 +75,12 @@ function DraggableCatalogBlock({ block, selected, onToggle, isAdmin, onEdit }: {
 
   return (
     <motion.div
-      ref={setNodeRef}
-      layout
-      whileHover={{ scale: 1.01 }}
-      whileTap={{ scale: 0.99 }}
-      className={`rounded-xl border p-3 cursor-grab active:cursor-grabbing transition-all duration-200 group ${
-        selected ? 'border-primary bg-primary/5 shadow-glow' : 'border-border bg-card hover:border-primary/30 hover:shadow-elevated'
-      } ${isDragging ? 'opacity-40 scale-95' : ''}`}
-      {...attributes}
-      {...listeners}
+      ref={setNodeRef} layout whileHover={{ scale: 1.01 }} whileTap={{ scale: 0.99 }}
+      className={`rounded-xl border p-3 cursor-grab active:cursor-grabbing transition-all duration-200 group ${selected ? 'border-primary bg-primary/5 shadow-glow' : 'border-border bg-card hover:border-primary/30 hover:shadow-elevated'} ${isDragging ? 'opacity-40 scale-95' : ''}`}
+      {...attributes} {...listeners}
     >
       <div className="flex items-start gap-2.5">
-        <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 transition-all duration-200 ${
-          selected ? 'bg-primary/15 text-primary' : 'bg-muted text-muted-foreground group-hover:bg-primary/10 group-hover:text-primary'
-        }`}>
+        <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 transition-all duration-200 ${selected ? 'bg-primary/15 text-primary' : 'bg-muted text-muted-foreground group-hover:bg-primary/10 group-hover:text-primary'}`}>
           <Icon className="w-3.5 h-3.5" />
         </div>
         <div className="flex-1 min-w-0">
@@ -96,20 +92,13 @@ function DraggableCatalogBlock({ block, selected, onToggle, isAdmin, onEdit }: {
         </div>
         <div className="flex items-center gap-1 flex-shrink-0">
           {isAdmin && onEdit && (
-            <button
-              onClick={(e) => { e.stopPropagation(); onEdit(block); }}
-              className="w-5 h-5 rounded-md flex items-center justify-center border border-border text-muted-foreground hover:border-primary/40 hover:text-primary opacity-0 group-hover:opacity-100 transition-all cursor-pointer"
-              title="Editar bloco"
-            >
+            <button onClick={(e) => { e.stopPropagation(); onEdit(block); }}
+              className="w-5 h-5 rounded-md flex items-center justify-center border border-border text-muted-foreground hover:border-primary/40 hover:text-primary opacity-0 group-hover:opacity-100 transition-all cursor-pointer" title="Editar bloco">
               <Settings2 className="w-3 h-3" />
             </button>
           )}
-          <button
-            onClick={(e) => { e.stopPropagation(); onToggle(); }}
-            className={`w-5 h-5 rounded-md flex items-center justify-center flex-shrink-0 transition-all duration-200 ${
-              selected ? 'bg-primary text-primary-foreground' : 'border border-border text-muted-foreground group-hover:border-primary/40'
-            }`}
-          >
+          <button onClick={(e) => { e.stopPropagation(); onToggle(); }}
+            className={`w-5 h-5 rounded-md flex items-center justify-center flex-shrink-0 transition-all duration-200 ${selected ? 'bg-primary text-primary-foreground' : 'border border-border text-muted-foreground group-hover:border-primary/40'}`}>
             {selected ? <Minus className="w-3 h-3" /> : <Plus className="w-3 h-3" />}
           </button>
         </div>
@@ -118,56 +107,10 @@ function DraggableCatalogBlock({ block, selected, onToggle, isAdmin, onEdit }: {
   );
 }
 
-function DropIndicator({ id, isOver }: { id: string; isOver?: boolean }) {
-  const { setNodeRef, isOver: over } = useDroppable({ id });
-  const active = isOver || over;
-  return (
-    <div ref={setNodeRef} className={`transition-all duration-200 ${active ? 'h-8 my-1' : 'h-1 my-0'}`}>
-      {active && (
-        <div className="h-full rounded-lg border-2 border-dashed border-primary bg-primary/10 flex items-center justify-center">
-          <span className="text-[10px] text-primary font-medium">Soltar aqui</span>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function PreviewDropZone({ children, hasBlocks, activeDragItem }: { children: React.ReactNode; hasBlocks: boolean; activeDragItem: ConsultationBlock | null }) {
-  const { isOver, setNodeRef } = useDroppable({ id: 'preview-drop-zone' });
-  const Icon = activeDragItem ? (iconMap[activeDragItem.icon] || FileText) : FileText;
-
-  return (
-    <div ref={setNodeRef} className={`flex-1 overflow-y-auto scrollbar-thin transition-all duration-300 ${isOver && !hasBlocks ? 'bg-primary/5 ring-2 ring-primary/30 ring-inset' : ''}`}>
-      {!hasBlocks && !isOver && (
-        <div className="flex flex-col items-center justify-center h-full p-8 text-center">
-          <div className="w-14 h-14 rounded-2xl flex items-center justify-center mb-3 bg-muted">
-            <FileText className="w-7 h-7 text-muted-foreground" />
-          </div>
-          <p className="text-sm font-medium text-foreground mb-1">Nenhum bloco selecionado</p>
-          <p className="text-xs text-muted-foreground">Arraste blocos do catálogo ou clique para adicionar</p>
-        </div>
-      )}
-      {isOver && !hasBlocks && activeDragItem && (
-        <div className="flex items-center justify-center h-full p-8">
-          <div className="w-full max-w-md opacity-50 pointer-events-none">
-            <div className="rounded-lg border-2 border-dashed border-primary/40 bg-primary/5 p-4 space-y-3">
-              <div className="flex items-center gap-2">
-                <div className="w-7 h-7 rounded-lg border border-dashed border-primary/30 flex items-center justify-center">
-                  <Icon className="w-3.5 h-3.5 text-primary/50" />
-                </div>
-                <div className="space-y-1 flex-1">
-                  <div className="h-2.5 w-24 rounded border border-dashed border-primary/30" />
-                  <div className="h-2 w-16 rounded border border-dashed border-primary/20" />
-                </div>
-              </div>
-              <p className="text-[10px] text-primary/60 font-medium text-center">{activeDragItem.name}</p>
-            </div>
-          </div>
-        </div>
-      )}
-      {children}
-    </div>
-  );
+function SortableSection({ id, children }: { id: string; children: React.ReactNode }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
+  const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1 };
+  return <div ref={setNodeRef} style={style} {...attributes} {...listeners}>{children}</div>;
 }
 
 function CatalogDragOverlay({ block }: { block: ConsultationBlock }) {
@@ -200,17 +143,9 @@ type TemplateBuilderEditorProps = {
 };
 
 export default function TemplateBuilderEditor({
-  open = true,
-  mode = 'modal',
-  onClose,
-  initialBlocks,
-  templateName: initialName,
-  onSave,
-  showBalance = true,
-  builderMode = 'admin',
-  fieldTypes = [],
-  accessToken = null,
-  availableConsultationBlocks = [],
+  open = true, mode = 'modal', onClose, initialBlocks, templateName: initialName,
+  onSave, showBalance = true, builderMode = 'admin', fieldTypes = [],
+  accessToken = null, availableConsultationBlocks = [],
 }: TemplateBuilderEditorProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [activeCategory, setActiveCategory] = useState('Todos');
@@ -218,32 +153,27 @@ export default function TemplateBuilderEditor({
   const [templateName, setTemplateName] = useState(initialName || '');
   const [reportLogo, setReportLogo] = useState<string | null>(null);
   const [activeDragItem, setActiveDragItem] = useState<ConsultationBlock | null>(null);
-  const [overDropId, setOverDropId] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'skeleton' | 'preview'>('skeleton');
   const [customBlockEditorOpen, setCustomBlockEditorOpen] = useState(false);
   const [customBlocks, setCustomBlocks] = useState<CustomBlockDraft[]>([]);
   const [editingBlockDraft, setEditingBlockDraft] = useState<Partial<CustomBlockDraft> | undefined>(undefined);
+  const [editingSectionId, setEditingSectionId] = useState<string | null>(null);
+  const [templateSections, setTemplateSections] = useState<TemplateSection[]>(() => JSON.parse(JSON.stringify(DEFAULT_SECTIONS)));
   const { user } = useAuthStore();
 
   const capabilities: TemplateBuilderCapabilities = useMemo(() => createCapabilitiesByMode(builderMode), [builderMode]);
   const totalPrice = blocks.reduce((sum, b) => sum + b.price, 0);
 
   const adminConsultationBlocks = useMemo<ConsultationBlock[]>(() => {
-    return availableConsultationBlocks.map((consultation, index) => ({
-      id: consultation.id,
-      name: consultation.name,
-      description: consultation.sampleResponse
-        ? 'Bloco derivado do produto real com sampleResponse do provedor'
-        : 'Bloco derivado do produto real',
-      price: consultation.consultationPrice ?? consultation.cost ?? 0,
-      category: 'Consulta',
-      icon: fieldTypes.find((f) => f.key === consultation.fieldMappings[0]?.fieldTypeKey)?.icon ?? 'FileText',
+    return availableConsultationBlocks.map((c) => ({
+      id: c.id, name: c.name,
+      description: c.sampleResponse ? 'Produto real do provedor' : 'Produto do provedor',
+      price: c.consultationPrice ?? c.cost ?? 0, category: 'Consulta',
+      icon: fieldTypes.find((f) => f.key === c.fieldMappings[0]?.fieldTypeKey)?.icon ?? 'FileText',
     }));
   }, [availableConsultationBlocks, fieldTypes]);
 
-  const sourceBlocks = builderMode === 'admin' && adminConsultationBlocks.length > 0
-    ? adminConsultationBlocks
-    : availableBlocks;
+  const sourceBlocks = builderMode === 'admin' && adminConsultationBlocks.length > 0 ? adminConsultationBlocks : availableBlocks;
 
   const filteredBlocks = useMemo(() => {
     return sourceBlocks.filter((b) => {
@@ -260,39 +190,14 @@ export default function TemplateBuilderEditor({
   });
 
   const createCustomBlockMutation = useMutation({
-    mutationFn: (draft: CustomBlockDraft) =>
-      createCustomBlockApi(accessToken, {
-        name: draft.name,
-        description: draft.description,
-        category: draft.category,
-        template: draft.template,
-        skeleton: draft.template,
-      }),
-    onSuccess: (block) => {
-      setCustomBlocks((prev) => [...prev, {
-        name: block.name,
-        description: block.description ?? '',
-        category: block.category,
-        template: block.template,
-      }]);
-      void customBlocksQuery.refetch();
-      toast.success('Bloco customizado salvo');
-    },
-    onError: (error: Error) => {
-      toast.error(error.message || 'Falha ao salvar bloco customizado');
-    },
+    mutationFn: (draft: CustomBlockDraft) => createCustomBlockApi(accessToken, { name: draft.name, description: draft.description, category: draft.category, template: draft.template, skeleton: draft.template }),
+    onSuccess: (block) => { setCustomBlocks((prev) => [...prev, { name: block.name, description: block.description ?? '', category: block.category, template: block.template }]); void customBlocksQuery.refetch(); toast.success('Bloco salvo'); },
+    onError: (error: Error) => toast.error(error.message || 'Falha ao salvar bloco'),
   });
 
   useEffect(() => {
     if ((customBlocksQuery.data ?? []).length > 0) {
-      setCustomBlocks(
-        customBlocksQuery.data!.map((block) => ({
-          name: block.name,
-          description: block.description ?? '',
-          category: block.category,
-          template: block.template,
-        })),
-      );
+      setCustomBlocks(customBlocksQuery.data!.map((b) => ({ name: b.name, description: b.description ?? '', category: b.category, template: b.template })));
     }
   }, [customBlocksQuery.data]);
 
@@ -309,55 +214,60 @@ export default function TemplateBuilderEditor({
     if (data?.type === 'catalog') setActiveDragItem(data.block);
   };
 
-  const handleDragOver = (event: DragOverEvent) => {
-    setOverDropId(event.over ? String(event.over.id) : null);
-  };
-
   const handleDragEnd = (event: DragEndEvent) => {
     setActiveDragItem(null);
-    setOverDropId(null);
     const { active, over } = event;
     if (!over) return;
-
     const activeId = String(active.id);
+
     if (activeId.startsWith('catalog-')) {
       const data = active.data.current;
       if (!data?.block || isSelected(data.block.id)) return;
-      const overId = String(over.id);
-      if (overId.startsWith('gap-')) {
-        const idx = parseInt(overId.replace('gap-', ''), 10);
-        setBlocks((prev) => { const next = [...prev]; next.splice(idx, 0, data.block); return next; });
-      } else if (overId === 'preview-drop-zone') {
-        setBlocks((prev) => [...prev, data.block]);
-      } else {
-        const idx = blocks.findIndex((b) => b.id === overId);
-        if (idx >= 0) setBlocks((prev) => { const next = [...prev]; next.splice(idx, 0, data.block); return next; });
-        else setBlocks((prev) => [...prev, data.block]);
-      }
+      setBlocks((prev) => [...prev, data.block]);
       return;
     }
 
-    if (active.id !== over.id) {
-      const oldIdx = blocks.findIndex((b) => b.id === String(active.id));
-      const overStr = String(over.id);
-      let newIdx: number;
-      if (overStr.startsWith('gap-')) {
-        newIdx = parseInt(overStr.replace('gap-', ''), 10);
-        if (newIdx > oldIdx) newIdx--;
-      } else {
-        newIdx = blocks.findIndex((b) => b.id === overStr);
+    if (activeId.startsWith('section-')) {
+      const oldIdx = templateSections.findIndex((s) => `section-${s.id}` === activeId);
+      const newIdx = templateSections.findIndex((s) => `section-${s.id}` === String(over.id));
+      if (oldIdx >= 0 && newIdx >= 0 && oldIdx !== newIdx) {
+        setTemplateSections((prev) => arrayMove(prev, oldIdx, newIdx));
       }
-      if (oldIdx >= 0 && newIdx >= 0) setBlocks((prev) => arrayMove(prev, oldIdx, newIdx));
     }
   };
 
-  const handleReorder = useCallback((newBlocks: ConsultationBlock[]) => setBlocks(newBlocks), []);
+  const handleFieldExpressionChange = (sectionId: string, fieldId: string, value: string) => {
+    setTemplateSections((prev) => prev.map((s) => s.id !== sectionId ? s : {
+      ...s, fields: s.fields.map((f) => f.id !== fieldId ? f : { ...f, expression: value }),
+    }));
+  };
 
-  const handleInsertVariable = (expression: string) => {
-    // For now, variable insertion is available via the VariablesPanel for reference
+  const handleFieldLabelChange = (sectionId: string, fieldId: string, value: string) => {
+    setTemplateSections((prev) => prev.map((s) => s.id !== sectionId ? s : {
+      ...s, fields: s.fields.map((f) => f.id !== fieldId ? f : { ...f, label: value }),
+    }));
+  };
+
+  const handleEditSection = (sectionId: string) => {
+    const section = templateSections.find((s) => s.id === sectionId);
+    if (!section) return;
+    setEditingSectionId(sectionId);
+    setEditingBlockDraft({
+      name: section.title,
+      description: `Seção com ${section.fields.length} campos`,
+      category: 'section',
+      template: sectionToXml(section),
+    });
+    setCustomBlockEditorOpen(true);
   };
 
   const handleSaveCustomBlock = (draft: CustomBlockDraft) => {
+    if (editingSectionId) {
+      const newFields = xmlToFields(draft.template);
+      setTemplateSections((prev) => prev.map((s) => s.id !== editingSectionId ? s : { ...s, title: draft.name, fields: newFields.length > 0 ? newFields : s.fields }));
+      setEditingSectionId(null);
+      return;
+    }
     if (builderMode === 'admin' && accessToken) {
       void createCustomBlockMutation.mutateAsync(draft);
       return;
@@ -365,30 +275,36 @@ export default function TemplateBuilderEditor({
     setCustomBlocks((prev) => [...prev, draft]);
   };
 
+  const handleAddSection = () => {
+    const newSection = createSection('Nova seção', [createField('Campo', '{$}')]);
+    setTemplateSections((prev) => [...prev, newSection]);
+  };
+
+  const addLayoutBlock = (kind: LayoutBlockItem['kind']) => {
+    const sectionMap: Record<string, () => TemplateSection> = {
+      'card-kpi': () => createSection('Card KPI', [createField('Label', '{$}'), createField('Valor', '{$}')]),
+      'container': () => createSection('Container', []),
+      'free-text': () => createSection('Texto Livre', [createField('Conteúdo', 'Texto editável aqui')]),
+    };
+    const factory = sectionMap[kind];
+    if (factory) setTemplateSections((prev) => [...prev, factory()]);
+  };
+
+  const handleInsertVariable = (expression: string) => {
+    toast.info(`Variável copiada: ${expression}`, { duration: 2000 });
+  };
+
   const titleText = initialName ? `Editar: ${initialName}` : 'Novo Template';
+  const sectionIds = templateSections.map((s) => `section-${s.id}`);
 
   const headerToolbar = (
     <>
       <div className="flex items-center gap-3">
-        {mode === 'embedded' ? (
-          <h2 className="text-sm font-bold text-foreground">{titleText}</h2>
-        ) : (
-          <DialogTitle className="text-sm font-bold">{titleText}</DialogTitle>
-        )}
-        <Input
-          placeholder="Nome do template..."
-          value={templateName}
-          onChange={(e) => setTemplateName(e.target.value)}
-          className="h-7 text-xs w-48"
-        />
+        {mode === 'embedded' ? <h2 className="text-sm font-bold text-foreground">{titleText}</h2> : <DialogTitle className="text-sm font-bold">{titleText}</DialogTitle>}
+        <Input placeholder="Nome do template..." value={templateName} onChange={(e) => setTemplateName(e.target.value)} className="h-7 text-xs w-48" />
       </div>
       <div className="flex items-center gap-2">
-        <Button
-          variant="outline"
-          size="sm"
-          className="text-xs h-7 gap-1"
-          onClick={() => onSave?.({ name: templateName, blocks, logo: reportLogo })}
-        >
+        <Button variant="outline" size="sm" className="text-xs h-7 gap-1" onClick={() => onSave?.({ name: templateName, blocks, logo: reportLogo })}>
           <Save className="w-3 h-3" /> Salvar
         </Button>
       </div>
@@ -398,19 +314,15 @@ export default function TemplateBuilderEditor({
   const content = (
     <>
       {mode === 'embedded' ? (
-        <div className="px-4 py-2.5 border-b border-border flex flex-row items-center justify-between shrink-0">
-          {headerToolbar}
-        </div>
+        <div className="px-4 py-2.5 border-b border-border flex flex-row items-center justify-between shrink-0">{headerToolbar}</div>
       ) : (
-        <DialogHeader className="px-4 py-2.5 border-b border-border flex-row items-center justify-between">
-          {headerToolbar}
-        </DialogHeader>
+        <DialogHeader className="px-4 py-2.5 border-b border-border flex-row items-center justify-between">{headerToolbar}</DialogHeader>
       )}
 
       <div className="flex-1 overflow-hidden flex flex-col">
-        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={handleDragStart} onDragOver={handleDragOver} onDragEnd={handleDragEnd}>
+        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
           <ResizablePanelGroup direction="horizontal" className="flex-1">
-            {/* ===== LEFT COLUMN ===== */}
+            {/* LEFT COLUMN */}
             <ResizablePanel defaultSize={28} minSize={18} maxSize={40}>
               <div className="flex flex-col h-full">
                 <div className="px-3 py-2 border-b border-border bg-card/50">
@@ -424,31 +336,19 @@ export default function TemplateBuilderEditor({
                     ))}
                   </div>
                 </div>
-
                 <div className="flex-1 overflow-y-auto scrollbar-thin p-2 space-y-3">
-                  {/* Tipos de consulta */}
                   <div>
                     <div className="text-[10px] uppercase tracking-wide text-muted-foreground mb-1.5 px-1">Tipos de consulta</div>
                     <div className="space-y-1.5">
                       <AnimatePresence>
                         {filteredBlocks.map((block) => (
-                          <DraggableCatalogBlock
-                            key={block.id}
-                            block={block}
-                            selected={isSelected(block.id)}
-                            onToggle={() => toggleBlock(block)}
-                            isAdmin={builderMode === 'admin'}
-                            onEdit={(b) => {
-                              setEditingBlockDraft({ name: b.name, description: b.description, category: b.category });
-                              setCustomBlockEditorOpen(true);
-                            }}
-                          />
+                          <DraggableCatalogBlock key={block.id} block={block} selected={isSelected(block.id)} onToggle={() => toggleBlock(block)} isAdmin={builderMode === 'admin'}
+                            onEdit={(b) => { setEditingSectionId(null); setEditingBlockDraft({ name: b.name, description: b.description, category: b.category }); setCustomBlockEditorOpen(true); }} />
                         ))}
                       </AnimatePresence>
                     </div>
                   </div>
 
-                  {/* Blocos de layout (admin only) */}
                   {builderMode === 'admin' && (
                     <div>
                       <div className="text-[10px] uppercase tracking-wide text-muted-foreground mb-1.5 px-1">Blocos de layout</div>
@@ -456,26 +356,21 @@ export default function TemplateBuilderEditor({
                         {LAYOUT_BLOCKS.map((lb) => {
                           const LbIcon = lb.icon;
                           return (
-                            <div key={lb.id} className="rounded-lg border border-border p-2 hover:border-primary/30 transition-colors cursor-pointer group">
+                            <button key={lb.id} onClick={() => addLayoutBlock(lb.kind)} className="w-full rounded-lg border border-border p-2 hover:border-primary/30 transition-colors cursor-pointer group text-left">
                               <div className="flex items-center gap-2">
-                                <div className="w-6 h-6 rounded-md bg-muted flex items-center justify-center group-hover:bg-primary/10">
-                                  <LbIcon className="w-3 h-3 text-muted-foreground group-hover:text-primary" />
-                                </div>
+                                <div className="w-6 h-6 rounded-md bg-muted flex items-center justify-center group-hover:bg-primary/10"><LbIcon className="w-3 h-3 text-muted-foreground group-hover:text-primary" /></div>
                                 <div className="flex-1 min-w-0">
                                   <p className="text-[11px] font-medium text-foreground">{lb.name}</p>
                                   <p className="text-[9px] text-muted-foreground line-clamp-1">{lb.description}</p>
                                 </div>
                               </div>
-                            </div>
+                            </button>
                           );
                         })}
-
                         {customBlocks.map((cb, i) => (
                           <div key={`custom-${i}`} className="rounded-lg border border-dashed border-primary/30 p-2 bg-primary/5">
                             <div className="flex items-center gap-2">
-                              <div className="w-6 h-6 rounded-md bg-primary/10 flex items-center justify-center">
-                                <Variable className="w-3 h-3 text-primary" />
-                              </div>
+                              <div className="w-6 h-6 rounded-md bg-primary/10 flex items-center justify-center"><Variable className="w-3 h-3 text-primary" /></div>
                               <div className="flex-1 min-w-0">
                                 <p className="text-[11px] font-medium text-foreground">{cb.name}</p>
                                 <p className="text-[9px] text-muted-foreground line-clamp-1">{cb.description || 'Bloco customizado'}</p>
@@ -483,12 +378,8 @@ export default function TemplateBuilderEditor({
                             </div>
                           </div>
                         ))}
-
-                        <button
-                          type="button"
-                          onClick={() => { setEditingBlockDraft(undefined); setCustomBlockEditorOpen(true); }}
-                          className="w-full rounded-lg border border-dashed border-border p-2 hover:border-primary hover:bg-primary/5 transition-colors flex items-center gap-2 cursor-pointer group"
-                        >
+                        <button type="button" onClick={() => { setEditingSectionId(null); setEditingBlockDraft(undefined); setCustomBlockEditorOpen(true); }}
+                          className="w-full rounded-lg border border-dashed border-border p-2 hover:border-primary hover:bg-primary/5 transition-colors flex items-center gap-2 cursor-pointer group">
                           <PlusCircle className="w-4 h-4 text-muted-foreground group-hover:text-primary" />
                           <span className="text-[11px] text-muted-foreground group-hover:text-primary font-medium">Criar bloco customizado</span>
                         </button>
@@ -497,11 +388,7 @@ export default function TemplateBuilderEditor({
                   )}
 
                   {fieldTypes.length > 0 && (
-                    <VariablesPanel
-                      fieldTypes={fieldTypes}
-                      capabilities={capabilities}
-                      onInsertVariable={handleInsertVariable}
-                    />
+                    <VariablesPanel fieldTypes={fieldTypes} capabilities={capabilities} onInsertVariable={handleInsertVariable} />
                   )}
                 </div>
               </div>
@@ -509,7 +396,7 @@ export default function TemplateBuilderEditor({
 
             <ResizableHandle withHandle />
 
-            {/* ===== MIDDLE COLUMN ===== */}
+            {/* MIDDLE COLUMN */}
             <ResizablePanel defaultSize={47} minSize={25}>
               <div className="flex flex-col h-full">
                 <div className="flex items-center justify-between px-3 py-2 border-b border-border bg-card/50">
@@ -519,67 +406,38 @@ export default function TemplateBuilderEditor({
                   <div className="flex items-center gap-2">
                     <span className="text-[10px] text-muted-foreground bg-muted px-2 py-0.5 rounded-full">{blocks.length} blocos</span>
                     <div className="flex items-center gap-1.5">
-                      <Label htmlFor="view-toggle" className={`text-[10px] cursor-pointer ${viewMode === 'skeleton' ? 'text-foreground font-medium' : 'text-muted-foreground'}`}>
-                        Esqueleto
-                      </Label>
-                      <Switch
-                        id="view-toggle"
-                        checked={viewMode === 'preview'}
-                        onCheckedChange={(checked) => setViewMode(checked ? 'preview' : 'skeleton')}
-                        className="h-4 w-7"
-                      />
-                      <Label htmlFor="view-toggle" className={`text-[10px] cursor-pointer ${viewMode === 'preview' ? 'text-foreground font-medium' : 'text-muted-foreground'}`}>
-                        Preview
-                      </Label>
+                      <Label htmlFor="view-toggle" className={`text-[10px] cursor-pointer ${viewMode === 'skeleton' ? 'text-foreground font-medium' : 'text-muted-foreground'}`}>Esqueleto</Label>
+                      <Switch id="view-toggle" checked={viewMode === 'preview'} onCheckedChange={(c) => setViewMode(c ? 'preview' : 'skeleton')} className="h-4 w-7" />
+                      <Label htmlFor="view-toggle" className={`text-[10px] cursor-pointer ${viewMode === 'preview' ? 'text-foreground font-medium' : 'text-muted-foreground'}`}>Preview</Label>
                     </div>
                   </div>
                 </div>
 
                 {viewMode === 'preview' ? (
                   <div className="flex-1 overflow-y-auto scrollbar-thin">
-                    <ConsultationPreview
-                      blocks={blocks}
-                      document="403.406.588-51"
-                      clientName="JULIANO CAMPOS PEREIRA"
-                      logo={reportLogo}
-                      mode="preview"
-                    />
+                    <ConsultationPreview blocks={blocks} document="403.406.588-51" clientName="JULIANO CAMPOS PEREIRA" logo={reportLogo} mode="preview" />
                   </div>
                 ) : (
-                  <PreviewDropZone hasBlocks={blocks.length > 0} activeDragItem={activeDragItem}>
-                    <div className={`transition-all duration-200 ${activeDragItem ? 'shadow-[inset_0_0_0_2px_hsl(var(--primary)/0.25)] bg-primary/5' : ''}`}>
-                      <DropIndicator id="gap-0" isOver={overDropId === 'gap-0'} />
+                  <div className={`flex-1 overflow-y-auto scrollbar-thin transition-all duration-200 ${activeDragItem ? 'ring-2 ring-primary/25 ring-inset bg-primary/5' : ''}`}>
+                    <SortableContext items={sectionIds} strategy={verticalListSortingStrategy}>
                       <BaseReportSkeleton
-                        blocks={blocks}
+                        sections={templateSections}
                         logo={reportLogo}
                         onLogoChange={setReportLogo}
-                        onEditSection={(sectionId) => {
-                          const block = filteredBlocks.find((b) => b.id === sectionId);
-                          setEditingBlockDraft({
-                            name: block?.name ?? sectionId,
-                            description: block?.description ?? `Seção ${sectionId}`,
-                            category: block?.category ?? 'section',
-                            template: block ? `<section name="${block.name}">\n  <text>${block.description}</text>\n</section>` : '',
-                          });
-                          setCustomBlockEditorOpen(true);
-                        }}
+                        onEditSection={handleEditSection}
+                        onAddSection={handleAddSection}
+                        onFieldExpressionChange={handleFieldExpressionChange}
+                        onFieldLabelChange={handleFieldLabelChange}
                       />
-                      {blocks.map((block, index) => (
-                        <DropIndicator
-                          key={`gap-${index + 1}`}
-                          id={`gap-${index + 1}`}
-                          isOver={overDropId === `gap-${index + 1}`}
-                        />
-                      ))}
-                    </div>
-                  </PreviewDropZone>
+                    </SortableContext>
+                  </div>
                 )}
               </div>
             </ResizablePanel>
 
             <ResizableHandle withHandle />
 
-            {/* ===== RIGHT COLUMN ===== */}
+            {/* RIGHT COLUMN */}
             <ResizablePanel defaultSize={25} minSize={16} maxSize={35}>
               <div className="flex flex-col h-full">
                 <div className="px-3 py-2 border-b border-border bg-card/50">
@@ -599,16 +457,11 @@ export default function TemplateBuilderEditor({
                         <span className="text-[11px] text-muted-foreground group-hover:text-primary">Carregar logo</span>
                         <input type="file" accept="image/*" className="hidden" onChange={(e) => {
                           const file = e.target.files?.[0];
-                          if (file) {
-                            const reader = new FileReader();
-                            reader.onload = (ev) => setReportLogo(ev.target?.result as string);
-                            reader.readAsDataURL(file);
-                          }
+                          if (file) { const reader = new FileReader(); reader.onload = (ev) => setReportLogo(ev.target?.result as string); reader.readAsDataURL(file); }
                         }} />
                       </label>
                     )}
                   </div>
-
                   <div className="space-y-1">
                     <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Blocos ({blocks.length})</label>
                     {blocks.length === 0 ? (
@@ -627,7 +480,6 @@ export default function TemplateBuilderEditor({
                       </div>
                     )}
                   </div>
-
                   <div className="border-t border-border pt-2 space-y-1.5">
                     <div className="flex justify-between text-xs">
                       <span className="text-muted-foreground">Subtotal</span>
@@ -635,9 +487,7 @@ export default function TemplateBuilderEditor({
                     </div>
                     {showBalance && (
                       <div className="flex justify-between text-xs">
-                        <span className="text-muted-foreground flex items-center gap-1">
-                          <Wallet className="w-3 h-3" /> Saldo
-                        </span>
+                        <span className="text-muted-foreground flex items-center gap-1"><Wallet className="w-3 h-3" /> Saldo</span>
                         <span className="font-semibold text-success">R$ {user?.balance.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
                       </div>
                     )}
@@ -648,16 +498,12 @@ export default function TemplateBuilderEditor({
           </ResizablePanelGroup>
           <DragOverlay>{activeDragItem && <CatalogDragOverlay block={activeDragItem} />}</DragOverlay>
         </DndContext>
-
-        {/* Console de expressões — 3 colunas, fora do ResizablePanelGroup */}
-        <div className="shrink-0">
-          <ExpressionConsole defaultCollapsed={true} />
-        </div>
+        <div className="shrink-0"><ExpressionConsole defaultCollapsed={true} /></div>
       </div>
 
       <CustomBlockEditorModal
         open={customBlockEditorOpen}
-        onClose={() => { setCustomBlockEditorOpen(false); setEditingBlockDraft(undefined); }}
+        onClose={() => { setCustomBlockEditorOpen(false); setEditingBlockDraft(undefined); setEditingSectionId(null); }}
         fieldTypes={fieldTypes}
         initialDraft={editingBlockDraft}
         onSave={handleSaveCustomBlock}
@@ -666,18 +512,12 @@ export default function TemplateBuilderEditor({
   );
 
   if (mode === 'embedded') {
-    return (
-      <div className="h-[80vh] min-h-[34rem] rounded-md border border-border bg-card overflow-hidden flex flex-col">
-        {content}
-      </div>
-    );
+    return <div className="h-[80vh] min-h-[34rem] rounded-md border border-border bg-card overflow-hidden flex flex-col">{content}</div>;
   }
 
   return (
     <Dialog open={open} onOpenChange={(next) => !next && onClose?.()}>
-      <DialogContent className="max-w-[95vw] w-[95vw] max-h-[92vh] h-[92vh] p-0 overflow-hidden">
-        {content}
-      </DialogContent>
+      <DialogContent className="max-w-[95vw] w-[95vw] max-h-[92vh] h-[92vh] p-0 overflow-hidden">{content}</DialogContent>
     </Dialog>
   );
 }

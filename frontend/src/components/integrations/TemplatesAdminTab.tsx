@@ -1,11 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useMutation } from '@tanstack/react-query';
-import { Save, WandSparkles } from 'lucide-react';
+import { useMutation, useQuery } from '@tanstack/react-query';
+import { WandSparkles } from 'lucide-react';
 import { toast } from 'sonner';
 import type { ConsultationFieldType, Provider, ProviderConsultation } from '@/types/integrations';
 import { patchProductApi } from '@/api/admin-integrations';
 import TemplateBuilderEditor from '@/components/consultation/TemplateBuilderEditor';
-import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { type ConsultationBlock } from '@/stores/consultationStore';
 import type { TemplateLayoutDocument } from '@/types/template-layout';
@@ -32,127 +31,65 @@ type ClassicTemplateState = {
   logo: string | null;
 };
 
-function findFirstColumnId(document: TemplateLayoutDocument): string | null {
-  for (const rootId of document.rootIds) {
-    const section = document.nodes[rootId];
+function findFirstColumnId(doc: TemplateLayoutDocument): string | null {
+  for (const rootId of doc.rootIds) {
+    const section = doc.nodes[rootId];
     if (!section || section.kind !== 'section') continue;
     for (const rowId of section.children) {
-      const row = document.nodes[rowId];
+      const row = doc.nodes[rowId];
       if (!row || row.kind !== 'row') continue;
-      const firstColumnId = row.children.find((childId) => document.nodes[childId]?.kind === 'column');
-      if (firstColumnId) return firstColumnId;
+      const colId = row.children.find((c) => doc.nodes[c]?.kind === 'column');
+      if (colId) return colId;
     }
   }
   return null;
 }
 
-function mapClassicPayloadToLayoutDocument(
-  payload: ClassicTemplateState,
-  fallbackName: string,
-): TemplateLayoutDocument {
-  const nextName = payload.name.trim() || fallbackName;
-  let next = createDefaultTemplateLayoutDocument(nextName);
-
-  const rootSectionId = next.rootIds[0];
-  if (rootSectionId) {
-    const section = next.nodes[rootSectionId];
-    if (section && section.kind === 'section') {
-      next = {
-        ...next,
-        nodes: {
-          ...next.nodes,
-          [rootSectionId]: { ...section, name: 'Resumo da consulta' },
-        },
-      };
-    }
+function mapClassicToLayout(payload: ClassicTemplateState, fallbackName: string): TemplateLayoutDocument {
+  const name = payload.name.trim() || fallbackName;
+  let doc = createDefaultTemplateLayoutDocument(name);
+  const rootId = doc.rootIds[0];
+  if (rootId) {
+    const s = doc.nodes[rootId];
+    if (s?.kind === 'section') doc = { ...doc, nodes: { ...doc.nodes, [rootId]: { ...s, name: 'Resumo' } } };
   }
-
-  const firstColumnId = findFirstColumnId(next);
-  if (!firstColumnId) return next;
-
-  const firstWidgetId = next.nodes[firstColumnId]?.children[0];
-  if (firstWidgetId && next.nodes[firstWidgetId]?.kind === 'widget') {
-    next = updateWidgetContent(next, firstWidgetId, nextName);
-  }
-
-  for (const block of payload.blocks) {
-    next = appendWidgetNode(next, firstColumnId, 'text', `${block.name} · R$ ${block.price.toFixed(2)}`);
-  }
-
-  if (payload.logo) {
-    next = appendWidgetNode(next, firstColumnId, 'text', 'Logo customizada aplicada no template');
-  }
-
-  return next;
+  const colId = findFirstColumnId(doc);
+  if (!colId) return doc;
+  const widgetId = doc.nodes[colId]?.children[0];
+  if (widgetId && doc.nodes[widgetId]?.kind === 'widget') doc = updateWidgetContent(doc, widgetId, name);
+  for (const b of payload.blocks) doc = appendWidgetNode(doc, colId, 'text', `${b.name} · R$ ${b.price.toFixed(2)}`);
+  return doc;
 }
 
-const MOCK_TEMPLATES = [
-  { id: '__base__', name: 'Template Base' },
-  { id: '__score_restricoes__', name: 'Template Score + Restrições' },
-  { id: '__premium__', name: 'Template Premium + Bacen' },
-];
-
-export default function TemplatesAdminTab({
-  accessToken,
-  providers,
-  consultations,
-  fieldTypes,
-}: TemplatesAdminTabProps) {
-  const [selectedTemplateId, setSelectedTemplateId] = useState<string>('__base__');
+export default function TemplatesAdminTab({ accessToken, providers, consultations, fieldTypes }: TemplatesAdminTabProps) {
   const [selectedConsultationId, setSelectedConsultationId] = useState<string>('');
   const [builderMode, setBuilderMode] = useState<'admin' | 'user'>('admin');
-  const [layoutDocument, setLayoutDocument] = useState<TemplateLayoutDocument>(
-    createDefaultTemplateLayoutDocument('Template Base'),
-  );
-  const [classicTemplate, setClassicTemplate] = useState<ClassicTemplateState>({
-    name: 'Template Base',
-    blocks: [],
-    logo: null,
-  });
+  const [layoutDocument, setLayoutDocument] = useState<TemplateLayoutDocument>(createDefaultTemplateLayoutDocument('Template Base'));
+  const [classicTemplate, setClassicTemplate] = useState<ClassicTemplateState>({ name: 'Template Base', blocks: [], logo: null });
 
-  const selectedConsultation = useMemo(
-    () => consultations.find((c) => c.id === selectedConsultationId) ?? null,
-    [consultations, selectedConsultationId],
-  );
+  const selectedConsultation = useMemo(() => consultations.find((c) => c.id === selectedConsultationId) ?? null, [consultations, selectedConsultationId]);
 
   useEffect(() => {
-    if (!selectedConsultationId && consultations.length > 0) {
-      setSelectedConsultationId(consultations[0]!.id);
-    }
+    if (!selectedConsultationId && consultations.length > 0) setSelectedConsultationId(consultations[0]!.id);
   }, [consultations, selectedConsultationId]);
 
   useEffect(() => {
     if (!selectedConsultationId) return;
-    const sessionKey = 'default';
-
-    const draft = loadTemplateLayoutDraft(selectedConsultationId, sessionKey);
-    if (draft) {
-      setLayoutDocument(draft);
-      return;
-    }
-
-    const persisted = selectedConsultation?.templateLayout
-      ? parseTemplateLayoutFromApi(selectedConsultation.templateLayout)
-      : null;
-    if (persisted) {
-      setLayoutDocument(persisted);
-      return;
-    }
-
-    const tplName = MOCK_TEMPLATES.find((t) => t.id === selectedTemplateId)?.name ?? 'Template Base';
-    setLayoutDocument(createDefaultTemplateLayoutDocument(tplName));
-    setClassicTemplate({ name: tplName, blocks: [], logo: null });
-  }, [consultations, selectedConsultation, selectedConsultationId, selectedTemplateId]);
+    const draft = loadTemplateLayoutDraft(selectedConsultationId, 'default');
+    if (draft) { setLayoutDocument(draft); return; }
+    const persisted = selectedConsultation?.templateLayout ? parseTemplateLayoutFromApi(selectedConsultation.templateLayout) : null;
+    if (persisted) { setLayoutDocument(persisted); return; }
+    setLayoutDocument(createDefaultTemplateLayoutDocument('Template Base'));
+    setClassicTemplate({ name: 'Template Base', blocks: [], logo: null });
+  }, [consultations, selectedConsultation, selectedConsultationId]);
 
   const saveLayoutMutation = useMutation({
-    mutationFn: async (nextDocument: TemplateLayoutDocument) => {
+    mutationFn: async (next: TemplateLayoutDocument) => {
       if (!selectedConsultationId) return;
-      return patchProductApi(accessToken, selectedConsultationId, {
-        templateLayout: stringifyTemplateLayoutForApi(nextDocument),
-      });
+      return patchProductApi(accessToken, selectedConsultationId, { templateLayout: stringifyTemplateLayoutForApi(next) });
     },
-    onSuccess: () => toast.success('Layout do template salvo'),
-    onError: (error: Error) => toast.error(error.message || 'Falha ao salvar layout'),
+    onSuccess: () => toast.success('Layout salvo'),
+    onError: (e: Error) => toast.error(e.message || 'Falha ao salvar'),
   });
 
   return (
@@ -163,28 +100,11 @@ export default function TemplatesAdminTab({
             <WandSparkles className="w-4 h-4 text-primary" />
             <h3 className="text-sm font-semibold text-foreground">Editor de template</h3>
           </div>
-
           <div className="flex items-center gap-3 flex-wrap">
-            <div className="flex items-center gap-1.5">
-              <span className="text-[10px] text-muted-foreground uppercase tracking-wide">Template</span>
-              <Select value={selectedTemplateId} onValueChange={setSelectedTemplateId}>
-                <SelectTrigger className="h-8 w-48 text-xs">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {MOCK_TEMPLATES.map((t) => (
-                    <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
             <div className="flex items-center gap-1.5">
               <span className="text-[10px] text-muted-foreground uppercase tracking-wide">Consulta</span>
               <Select value={selectedConsultationId || '__none__'} onValueChange={(v) => setSelectedConsultationId(v === '__none__' ? '' : v)}>
-                <SelectTrigger className="h-8 w-56 text-xs">
-                  <SelectValue placeholder="Selecione" />
-                </SelectTrigger>
+                <SelectTrigger className="h-8 w-56 text-xs"><SelectValue placeholder="Selecione" /></SelectTrigger>
                 <SelectContent>
                   {consultations.map((c) => {
                     const prov = providers.find((p) => p.id === c.providerId)?.name ?? 'Provedor';
@@ -193,13 +113,10 @@ export default function TemplatesAdminTab({
                 </SelectContent>
               </Select>
             </div>
-
             <div className="flex items-center gap-1.5">
               <span className="text-[10px] text-muted-foreground uppercase tracking-wide">Experiência</span>
               <Select value={builderMode} onValueChange={(v) => setBuilderMode(v as 'admin' | 'user')}>
-                <SelectTrigger className="h-8 w-52 text-xs">
-                  <SelectValue />
-                </SelectTrigger>
+                <SelectTrigger className="h-8 w-52 text-xs"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="admin">Admin (alta customização)</SelectItem>
                   <SelectItem value="user">Usuário (customização simples)</SelectItem>
@@ -210,7 +127,7 @@ export default function TemplatesAdminTab({
         </div>
 
         <TemplateBuilderEditor
-          key={`${selectedConsultationId}:${selectedTemplateId}:classic`}
+          key={`${selectedConsultationId}:classic`}
           mode="embedded"
           templateName={classicTemplate.name}
           initialBlocks={classicTemplate.blocks}
@@ -220,19 +137,12 @@ export default function TemplatesAdminTab({
           accessToken={accessToken}
           availableConsultationBlocks={consultations}
           onSave={(payload) => {
-            const nextClassic: ClassicTemplateState = {
-              name: payload.name,
-              blocks: payload.blocks,
-              logo: payload.logo,
-            };
-            setClassicTemplate(nextClassic);
-            const tplName = MOCK_TEMPLATES.find((t) => t.id === selectedTemplateId)?.name ?? 'Template Base';
-            const nextDocument = mapClassicPayloadToLayoutDocument(nextClassic, tplName);
-            setLayoutDocument(nextDocument);
-            if (selectedConsultationId) {
-              saveTemplateLayoutDraft(selectedConsultationId, 'default', nextDocument);
-            }
-            void saveLayoutMutation.mutateAsync(nextDocument);
+            const next: ClassicTemplateState = { name: payload.name, blocks: payload.blocks, logo: payload.logo };
+            setClassicTemplate(next);
+            const doc = mapClassicToLayout(next, 'Template Base');
+            setLayoutDocument(doc);
+            if (selectedConsultationId) saveTemplateLayoutDraft(selectedConsultationId, 'default', doc);
+            void saveLayoutMutation.mutateAsync(doc);
           }}
         />
       </div>

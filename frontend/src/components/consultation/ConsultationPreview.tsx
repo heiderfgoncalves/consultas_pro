@@ -40,6 +40,7 @@ interface ConsultationPreviewProps {
   onLogoChange?: (logo: string | null) => void;
   clientName?: string;
   mode?: PreviewMode;
+  realData?: Record<string, unknown>;
 }
 
 function SortableBlock({ block, children }: { block: ConsultationBlock; children: React.ReactNode }) {
@@ -100,7 +101,7 @@ const mockBacenOperacoes = [
   ]},
 ];
 
-export default function ConsultationPreview({ blocks, document: docInput, onReorder, logo, onLogoChange, clientName, mode = 'preview' }: ConsultationPreviewProps) {
+export default function ConsultationPreview({ blocks, document: docInput, onReorder, logo, onLogoChange, clientName, mode = 'preview', realData }: ConsultationPreviewProps) {
   const [sectionTitles, setSectionTitles] = useState<Record<string, string>>({});
   const [additionalInfo, setAdditionalInfo] = useState<Record<string, string>>({});
   const isEdit = mode === 'edit';
