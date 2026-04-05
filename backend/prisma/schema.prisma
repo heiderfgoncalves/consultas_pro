@@ -313,6 +313,7 @@ model CanonicalFieldCatalog {
   updatedAt     DateTime             @updatedAt
 
   mappings      ProviderFieldMapping[]
+  sessionAssignments ProductSessionFieldAssignment[]
 }
 
 model Provider {
@@ -374,6 +375,8 @@ model ProviderProduct {
   isActive           Boolean                @default(true)
   sampleRequest      Json?
   sampleResponse     Json?
+  /// Documento de layout visual (builder de template avançado).
+  templateLayout     Json?
   /// Critérios de filtro por chave do tipo canônico (pathKey), por produto — não confundir com uiItemFilters do catálogo.
   typeItemFilters    Json?
   createdAt          DateTime               @default(now())
@@ -382,6 +385,7 @@ model ProviderProduct {
   provider           Provider               @relation(fields: [providerId], references: [id])
   consultationType   ConsultationType?      @relation(fields: [consultationTypeId], references: [id])
   mappings           ProviderFieldMapping[]
+  sessionAssignments ProductSessionFieldAssignment[]
   templateItems      TemplateItem[]
   consultationItems  ConsultationItem[]
   testLogs           ProviderTestLog[]
@@ -389,6 +393,25 @@ model ProviderProduct {
 
   @@unique([providerId, code])
   @@index([providerId])
+}
+
+model ProductSessionFieldAssignment {
+  id               String                @id @default(cuid())
+  productId        String
+  canonicalFieldId String
+  sessionKey       String
+  sourcePath       String?
+  sortOrder        Int                   @default(0)
+  isActive         Boolean               @default(true)
+  createdAt        DateTime              @default(now())
+  updatedAt        DateTime              @updatedAt
+
+  product          ProviderProduct       @relation(fields: [productId], references: [id])
+  canonicalField   CanonicalFieldCatalog @relation(fields: [canonicalFieldId], references: [id])
+
+  @@unique([productId, sessionKey, canonicalFieldId])
+  @@index([productId, sessionKey])
+  @@index([canonicalFieldId])
 }
 
 model ProviderFieldMapping {

@@ -1,0 +1,2 @@
+-- RenameIndex
+ALTER INDEX "ProductSessionFieldAssignment_productId_sessionKey_canonicalFie" RENAME TO "ProductSessionFieldAssignment_productId_sessionKey_canonica_key";
