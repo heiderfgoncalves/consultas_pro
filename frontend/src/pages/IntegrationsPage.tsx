@@ -17,11 +17,13 @@ import { Navigate, useSearchParams } from 'react-router-dom';
 import {
   Server, Plus, Pencil, Trash2, Database,
   Play, Tag, ChevronDown, ChevronRight, Search, RefreshCcw,
-  Code2, Link2, Save, Hash, Filter, Undo2, Loader2,
+  Code2, Link2, Save, Hash, Filter, Undo2, Loader2, Layers3,
 } from 'lucide-react';
 import { useAuthStore } from '@/stores/authStore';
 import { PageHeader } from '@/components/shared/StatCard';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Label } from '@/components/ui/label';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -37,6 +39,7 @@ import type {
 } from '@/types/integrations';
 import JsonFieldMapper from '@/components/integrations/JsonFieldMapper';
 import TypeReportFieldsConfig from '@/components/integrations/TypeReportFieldsConfig';
+import TemplatesAdminTab from '@/components/integrations/TemplatesAdminTab';
 import { buildTypeLinkedConsultationMappedPreview } from '@/lib/consultationMappedPreview';
 import {
   buildSingleGroupTypeItemFilterConfig,
@@ -254,6 +257,22 @@ function ProviderModal({ open, onClose, provider, onSave, saving }: {
               </SelectContent>
             </Select>
           </div>
+          {provider && (
+            <div
+              className="flex items-center gap-2.5 rounded-md border border-border bg-muted/20 px-3 py-2.5"
+              onClick={(e) => e.stopPropagation()}
+              onKeyDown={(e) => e.stopPropagation()}
+            >
+              <Checkbox
+                id="provider-modal-ativo"
+                checked={form.status !== 'inactive'}
+                onCheckedChange={(v) => setForm((f) => ({ ...f, status: v === true ? 'active' : 'inactive' }))}
+              />
+              <Label htmlFor="provider-modal-ativo" className="cursor-pointer text-sm font-normal text-foreground">
+                Provedor ativo
+              </Label>
+            </div>
+          )}
           <div className="space-y-1.5">
             <label className={labelCls}>Credenciais</label>
             {(form.credentials || []).map((cred, i) => (
@@ -1088,7 +1107,8 @@ export default function IntegrationsPage() {
 
   const [providerModal, setProviderModal] = useState<{ open: boolean; provider?: Provider }>({ open: false });
   const [fieldTypeModal, setFieldTypeModal] = useState<{ open: boolean; ft?: ConsultationFieldType }>({ open: false });
-  const [expandedProvider, setExpandedProvider] = useState<string | null>(null);
+  const [collapsedProviderIds, setCollapsedProviderIds] = useState<Set<string>>(() => new Set());
+  const [togglingProviderStatusId, setTogglingProviderStatusId] = useState<string | null>(null);
   const [consultationPicker, setConsultationPicker] = useState<string | null>(null);
   const [newConsultationProviderId, setNewConsultationProviderId] = useState<string | undefined>(undefined);
   const [consultationEditorNonce, setConsultationEditorNonce] = useState(0);
@@ -1097,14 +1117,14 @@ export default function IntegrationsPage() {
   const [savingProvider, setSavingProvider] = useState(false);
   const [savingFieldType, setSavingFieldType] = useState(false);
   const [importingDefaultFieldTypes, setImportingDefaultFieldTypes] = useState(false);
-  const [integrationsTab, setIntegrationsTab] = useState<'providers' | 'consultations' | 'types'>(() =>
+  const [integrationsTab, setIntegrationsTab] = useState<'providers' | 'consultations' | 'types' | 'templates'>(() =>
     parseIntegrationsTabFromSearch(
       new URLSearchParams(typeof window !== 'undefined' ? window.location.search : ''),
     ) ?? 'providers',
   );
 
   const setIntegrationsTabWithUrl = useCallback(
-    (tab: 'providers' | 'consultations' | 'types') => {
+    (tab: 'providers' | 'consultations' | 'types' | 'templates') => {
       setIntegrationsTab(tab);
       setSearchParams(
         (prev) => {
@@ -1342,6 +1362,18 @@ export default function IntegrationsPage() {
   const invalidateAll = () => {
     void queryClient.invalidateQueries({ queryKey: ['admin-providers'] });
     void queryClient.invalidateQueries({ queryKey: ['admin-test-logs'] });
+  };
+
+  const persistProviderIsActive = async (providerId: string, isActive: boolean) => {
+    setTogglingProviderStatusId(providerId);
+    try {
+      await patchProviderApi(accessToken, providerId, { isActive });
+      invalidateAll();
+    } catch {
+      toast.error('Não foi possível atualizar o status do provedor');
+    } finally {
+      setTogglingProviderStatusId(null);
+    }
   };
 
   const testMutation = useMutation({
@@ -1614,7 +1646,7 @@ export default function IntegrationsPage() {
 
       <Tabs
         value={integrationsTab}
-        onValueChange={(v) => setIntegrationsTabWithUrl(v as 'providers' | 'consultations' | 'types')}
+        onValueChange={(v) => setIntegrationsTabWithUrl(v as 'providers' | 'consultations' | 'types' | 'templates')}
         className="space-y-4"
       >
         <div className="flex flex-wrap items-center justify-between gap-2">
@@ -1627,6 +1659,9 @@ export default function IntegrationsPage() {
             </TabsTrigger>
             <TabsTrigger value="types" className="text-sm h-8 gap-2 px-4 rounded-md shrink-0">
               <Tag className="w-4 h-4" /> Tipos
+            </TabsTrigger>
+            <TabsTrigger value="templates" className="text-sm h-8 gap-2 px-4 rounded-md shrink-0">
+              <Layers3 className="w-4 h-4" /> Templates
             </TabsTrigger>
           </TabsList>
           {integrationsTab === 'providers' && (
@@ -1667,123 +1702,174 @@ export default function IntegrationsPage() {
         </div>
 
         <TabsContent value="providers" className="space-y-2">
-          <div className="space-y-1.5">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-2">
             {filteredProviders.map((prov, i) => {
               const provConsults = consultations.filter((c) => c.providerId === prov.id);
-              const isExpanded = expandedProvider === prov.id;
+              const isExpanded = !collapsedProviderIds.has(prov.id);
+              const toggleExpanded = () => {
+                setCollapsedProviderIds((prev) => {
+                  const next = new Set(prev);
+                  if (next.has(prov.id)) next.delete(prov.id);
+                  else next.add(prov.id);
+                  return next;
+                });
+              };
 
               return (
-                <motion.div key={prov.id} initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.02 }}>
-                  <div className="bg-card rounded-md border border-border overflow-hidden">
-                    <div
-                      className="flex items-center gap-2.5 px-3 py-2 cursor-pointer hover:bg-accent/30 transition-colors"
-                      onClick={() => setExpandedProvider(isExpanded ? null : prov.id)}
-                      onKeyDown={(e) => e.key === 'Enter' && setExpandedProvider(isExpanded ? null : prov.id)}
-                      role="button"
-                      tabIndex={0}
-                    >
-                      <div className={`w-9 h-9 rounded-md flex items-center justify-center ${prov.status === 'active' ? 'bg-emerald-500/10' : 'bg-muted'}`}>
-                        <Server className={`w-4 h-4 ${prov.status === 'active' ? 'text-emerald-500' : 'text-muted-foreground'}`} />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className={cardTitleCls}>{prov.name}</span>
-                          <span className={`${subtleBadgeCls} ${prov.status === 'active' ? 'bg-emerald-500/10 text-emerald-600' : 'bg-muted text-muted-foreground'}`}>
-                            {prov.status === 'active' ? 'Ativo' : 'Inativo'}
-                          </span>
+                <motion.div key={prov.id} initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.02 }} className="min-w-0">
+                  <div className="bg-card rounded-lg border border-border overflow-hidden h-full flex flex-col shadow-sm">
+                    <div className="border-b border-border/70">
+                      <div
+                        className="flex items-start gap-2.5 px-3 py-2.5 cursor-pointer hover:bg-accent/25 transition-colors duration-200"
+                        onClick={toggleExpanded}
+                        onKeyDown={(e) => e.key === 'Enter' && toggleExpanded()}
+                        role="button"
+                        tabIndex={0}
+                      >
+                        <div
+                          className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-md ${prov.status === 'active' ? 'bg-emerald-500/10' : 'bg-muted'}`}
+                        >
+                          <Server className={`h-3.5 w-3.5 ${prov.status === 'active' ? 'text-emerald-500' : 'text-muted-foreground'}`} />
                         </div>
-                        <p className={`${metaMonoCls} truncate mt-0.5`}>{prov.baseUrl}</p>
+                        <div className="min-w-0 flex-1 space-y-0.5">
+                          <span className={`${cardTitleCls} line-clamp-2 block leading-snug`}>{prov.name}</span>
+                          <p className={`${metaMonoCls} truncate text-[11px] leading-tight text-muted-foreground`}>{prov.baseUrl}</p>
+                        </div>
+                        <div className="flex shrink-0 items-start pt-1 text-muted-foreground">
+                          {isExpanded ? <ChevronDown className="h-4 w-4" aria-hidden /> : <ChevronRight className="h-4 w-4" aria-hidden />}
+                        </div>
                       </div>
-                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                        <span className="flex items-center gap-1"><Hash className="w-3.5 h-3.5" />{provConsults.length}</span>
-                        {isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                      <div
+                        className="flex flex-wrap items-center gap-x-2 gap-y-1 border-t border-border/40 px-3 py-2"
+                        onClick={(e) => e.stopPropagation()}
+                        onKeyDown={(e) => e.stopPropagation()}
+                      >
+                        <button
+                          type="button"
+                          className={`${linkActionCls} text-primary hover:text-primary/80`}
+                          onClick={() => {
+                            setIntegrationsTabWithUrl('consultations');
+                            setConsultationPicker(CONSULTATION_PICKER_NEW);
+                            setNewConsultationProviderId(prov.id);
+                          }}
+                        >
+                          <Plus className="w-3.5 h-3.5" /> Consulta
+                        </button>
+                        <span className="text-border hidden sm:inline select-none" aria-hidden>
+                          ·
+                        </span>
+                        <button type="button" className={`${linkActionCls} text-muted-foreground hover:text-foreground`} onClick={() => setProviderModal({ open: true, provider: prov })}>
+                          <Pencil className="w-3.5 h-3.5" /> Editar
+                        </button>
+                        <span className="text-border hidden sm:inline select-none" aria-hidden>
+                          ·
+                        </span>
+                        <button
+                          type="button"
+                          className={`${linkActionCls} text-muted-foreground hover:text-destructive`}
+                          onClick={async () => {
+                            try {
+                              await deleteProviderApi(accessToken, prov.id);
+                              toast.success('Removido');
+                              invalidateAll();
+                            } catch {
+                              toast.error('Não foi possível remover o provedor');
+                            }
+                          }}
+                        >
+                          <Trash2 className="w-3.5 h-3.5" /> Remover
+                        </button>
+                        <span className="text-border hidden sm:inline select-none" aria-hidden>
+                          ·
+                        </span>
+                        <div className="inline-flex items-center gap-2">
+                          <Checkbox
+                            id={`provider-ativo-${prov.id}`}
+                            checked={prov.status === 'active'}
+                            disabled={togglingProviderStatusId === prov.id}
+                            onCheckedChange={(v) => {
+                              void persistProviderIsActive(prov.id, v === true);
+                            }}
+                          />
+                          <Label
+                            htmlFor={`provider-ativo-${prov.id}`}
+                            className="cursor-pointer text-xs font-normal text-muted-foreground"
+                          >
+                            Provedor ativo
+                          </Label>
+                        </div>
                       </div>
                     </div>
 
                     <AnimatePresence>
                       {isExpanded && (
-                        <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden">
-                          <div className="px-3 pb-3 border-t border-border pt-2.5 space-y-2">
-                            <div className="grid grid-cols-3 gap-2">
-                              <div className="rounded-md bg-muted/30 border border-border p-2.5">
-                                <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide mb-1">Saldo</p>
-                                <code className="text-sm font-mono text-foreground break-all">{prov.balanceEndpoint || '—'}</code>
+                        <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden flex-1 flex flex-col min-h-0">
+                          <div className="flex flex-1 flex-col gap-2.5 px-3 pb-3 pt-2.5">
+                            <div className="grid grid-cols-1 gap-2">
+                              <div className="rounded-md border border-border/80 bg-muted/20 p-2">
+                                <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Saldo</p>
+                                <code className="break-all text-xs font-mono leading-relaxed text-foreground">{prov.balanceEndpoint || '—'}</code>
                               </div>
-                              <div className="rounded-md bg-muted/30 border border-border p-2.5">
-                                <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide mb-1">Recarga</p>
-                                <code className="text-sm font-mono text-foreground break-all">{prov.rechargeEndpoint || '—'}</code>
+                              <div className="rounded-md border border-border/80 bg-muted/20 p-2">
+                                <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Recarga</p>
+                                <code className="break-all text-xs font-mono leading-relaxed text-foreground">{prov.rechargeEndpoint || '—'}</code>
                               </div>
-                              <div className="rounded-md bg-muted/30 border border-border p-2.5">
-                                <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide mb-1">Auth</p>
-                                <div className="flex items-center gap-1.5 flex-wrap">
-                                  <span className="text-sm text-foreground capitalize">{prov.authType}</span>
-                                  <span className="text-xs text-muted-foreground">({prov.credentials.length})</span>
+                              <div className="rounded-md border border-border/80 bg-muted/20 p-2">
+                                <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Auth</p>
+                                <div className="flex flex-wrap items-center gap-1.5">
+                                  <span className="text-xs capitalize text-foreground">{prov.authType}</span>
+                                  <span className="text-[11px] text-muted-foreground">({prov.credentials.length})</span>
                                 </div>
                               </div>
                             </div>
 
-                            {provConsults.length > 0 && (
-                              <div className="space-y-1">
-                                <p className={labelCls}>Consultas</p>
-                                {provConsults.map((pc) => (
-                                  <div key={pc.id} className="flex items-center justify-between px-2.5 py-2 rounded-md bg-background border border-border hover:border-primary/20 transition-colors group">
-                                    <div className="flex items-center gap-2 min-w-0 flex-1">
-                                      <Database className="w-4 h-4 text-primary flex-shrink-0" />
-                                      <span className="text-sm font-medium text-foreground truncate">{pc.name}</span>
-                                      <code className="text-xs font-mono text-muted-foreground">{pc.externalId}</code>
-                                    </div>
-                                    <button
-                                      type="button"
-                                      className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive p-1"
-                                      onClick={async () => {
-                                        try {
-                                          await deleteProductApi(accessToken, pc.id);
-                                          toast.success('Removida');
-                                          invalidateAll();
-                                        } catch {
-                                          toast.error('Não foi possível remover');
-                                        }
-                                      }}
-                                    >
-                                      <Trash2 className="w-4 h-4" />
-                                    </button>
-                                  </div>
-                                ))}
+                            <div className="space-y-2">
+                              <div
+                                className="flex items-center justify-between gap-2 rounded-md border border-border/80 bg-muted/15 px-2.5 py-2"
+                                role="status"
+                                aria-label={`${provConsults.length} consultas cadastradas neste provedor`}
+                              >
+                                <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                                  Consultas cadastradas
+                                </span>
+                                <span className="flex items-center gap-1 tabular-nums text-sm font-medium text-foreground">
+                                  <Hash className="h-3 w-3 text-muted-foreground" aria-hidden />
+                                  {provConsults.length}
+                                </span>
                               </div>
-                            )}
-
-                            <div className="flex flex-wrap gap-x-3 gap-y-1 pt-1">
-                              <button
-                                type="button"
-                                className={`${linkActionCls} text-primary hover:text-primary/80`}
-                                onClick={() => {
-                                  setIntegrationsTabWithUrl('consultations');
-                                  setConsultationPicker(CONSULTATION_PICKER_NEW);
-                                  setNewConsultationProviderId(prov.id);
-                                }}
-                              >
-                                <Plus className="w-3.5 h-3.5" /> Consulta
-                              </button>
-                              <span className="text-border hidden sm:inline">·</span>
-                              <button type="button" className={`${linkActionCls} text-muted-foreground hover:text-foreground`} onClick={() => setProviderModal({ open: true, provider: prov })}>
-                                <Pencil className="w-3.5 h-3.5" /> Editar
-                              </button>
-                              <span className="text-border hidden sm:inline">·</span>
-                              <button
-                                type="button"
-                                className={`${linkActionCls} text-muted-foreground hover:text-destructive`}
-                                onClick={async () => {
-                                  try {
-                                    await deleteProviderApi(accessToken, prov.id);
-                                    toast.success('Removido');
-                                    invalidateAll();
-                                  } catch {
-                                    toast.error('Não foi possível remover o provedor');
-                                  }
-                                }}
-                              >
-                                <Trash2 className="w-3.5 h-3.5" /> Remover
-                              </button>
+                              {provConsults.length > 0 && (
+                                <div className="space-y-1" role="list">
+                                  {provConsults.map((pc) => (
+                                    <div
+                                      key={pc.id}
+                                      role="listitem"
+                                      className="flex items-center justify-between gap-1 rounded-md border border-border/80 bg-background px-2 py-1.5 transition-colors hover:border-primary/25 group"
+                                    >
+                                      <div className="flex min-w-0 flex-1 items-center gap-1.5">
+                                        <Database className="h-3.5 w-3.5 shrink-0 text-primary" aria-hidden />
+                                        <span className="truncate text-xs font-medium text-foreground">{pc.name}</span>
+                                        <code className="shrink-0 text-[10px] font-mono text-muted-foreground">{pc.externalId}</code>
+                                      </div>
+                                      <button
+                                        type="button"
+                                        className="shrink-0 rounded p-1 text-muted-foreground opacity-0 transition-opacity hover:text-destructive group-hover:opacity-100"
+                                        onClick={async () => {
+                                          try {
+                                            await deleteProductApi(accessToken, pc.id);
+                                            toast.success('Removida');
+                                            invalidateAll();
+                                          } catch {
+                                            toast.error('Não foi possível remover');
+                                          }
+                                        }}
+                                        aria-label={`Remover ${pc.name}`}
+                                      >
+                                        <Trash2 className="h-3.5 w-3.5" />
+                                      </button>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
                             </div>
                           </div>
                         </motion.div>
@@ -1795,7 +1881,7 @@ export default function IntegrationsPage() {
             })}
 
             {!providersQuery.isLoading && filteredProviders.length === 0 && (
-              <div className="text-center py-12">
+              <div className="col-span-full text-center py-12">
                 <Server className="w-10 h-10 text-muted-foreground/30 mx-auto mb-3" />
                 <p className="text-sm text-muted-foreground">Nenhum provedor encontrado</p>
               </div>
@@ -2167,6 +2253,15 @@ export default function IntegrationsPage() {
               </div>
             </div>
           </div>
+        </TabsContent>
+
+        <TabsContent value="templates" className="space-y-2">
+          <TemplatesAdminTab
+            accessToken={accessToken}
+            providers={providers}
+            consultations={consultations}
+            fieldTypes={fieldTypes}
+          />
         </TabsContent>
       </Tabs>
 
