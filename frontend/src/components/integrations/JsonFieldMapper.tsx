@@ -12,7 +12,13 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from '@/components/ui/resizable';
 import type { ConsultationFieldType, FieldMapping, TypeItemFilterConfig } from '@/types/integrations';
-import { formatDeepFilteredValueAtPath, getRecordPropertyCI, getValueAtJsonPath } from '@/lib/providerResponseMapping';
+import {
+  buildByTypeWithGlobalDedupRemoved,
+  computeGlobalDuplicateRowIndicesByType,
+  formatDeepFilteredValueAtPath,
+  getRecordPropertyCI,
+  getValueAtJsonPath,
+} from '@/lib/providerResponseMapping';
 import {
   cloneTypeItemFilterConfig,
   countActiveTypeItemRules,
@@ -21,13 +27,11 @@ import {
   normalizeTypeItemFilterConfig,
 } from '@/lib/typeItemFilters';
 import TypeCriteriaDialog from '@/components/integrations/TypeCriteriaDialog';
-import {
-  MappedJsonPreviewCanvas,
-  computeJsonLineGutterMeta,
-  type LineGutterMeta,
-} from '@/components/integrations/MappedJsonPreviewCanvas';
+import { MappedJsonPreviewCanvas } from '@/components/integrations/MappedJsonPreviewCanvas';
+import { computeJsonLineGutterMeta, type LineGutterMeta } from '@/lib/jsonLineGutterMeta';
 import { cn } from '@/lib/utils';
 import { dedupeReportFieldKeys, slugifyReportFieldKey } from '@/lib/reportFieldKeys';
+import { formatMappedPreviewValue } from '@/lib/reportFieldPreviewFormat';
 import { toast } from 'sonner';
 import { findTextMatches, toAbsoluteMatchRanges, type TextMatch } from '@/lib/jsonSearchHighlight';
 
@@ -163,27 +167,38 @@ function resolveRegionBounds(
 }
 
 const colorMap: Record<string, {
-  bg: string; border: string; text: string; highlightLayer: string; solid: string;
+  bg: string;
+  border: string;
+  text: string;
+  highlightLayer: string;
+  solid: string;
+  /** Tonalidade leve em toda a sessão do tipo no preview (como o retorno, mais suave). */
+  sessionWash: string;
 }> = {
   primary: {
     bg: 'bg-primary/8', border: 'border-primary/30', text: 'text-primary',
     highlightLayer: 'bg-primary/[0.11]', solid: 'bg-primary',
+    sessionWash: 'bg-primary/[0.05]',
   },
   destructive: {
     bg: 'bg-destructive/8', border: 'border-destructive/30', text: 'text-destructive',
     highlightLayer: 'bg-destructive/[0.11]', solid: 'bg-destructive',
+    sessionWash: 'bg-destructive/[0.045]',
   },
   warning: {
     bg: 'bg-amber-500/8', border: 'border-amber-500/30', text: 'text-amber-500',
     highlightLayer: 'bg-amber-500/[0.11]', solid: 'bg-amber-500',
+    sessionWash: 'bg-amber-500/[0.05]',
   },
   success: {
     bg: 'bg-emerald-500/8', border: 'border-emerald-500/30', text: 'text-emerald-500',
     highlightLayer: 'bg-emerald-500/[0.11]', solid: 'bg-emerald-500',
+    sessionWash: 'bg-emerald-500/[0.05]',
   },
   info: {
     bg: 'bg-sky-500/8', border: 'border-sky-500/30', text: 'text-sky-500',
     highlightLayer: 'bg-sky-500/[0.11]', solid: 'bg-sky-500',
+    sessionWash: 'bg-sky-500/[0.05]',
   },
 };
 
@@ -384,6 +399,9 @@ function tryParseJsonValueFromSlice(slice: string): unknown | null {
   }
 }
 
+/** Separador interno trecho↔path relativo no valor do Select (RS, não ocorre em jsonPath). */
+const JSON_FIELD_TRECHO_REL_SEP = '\x1e';
+
 /** Coleta chaves e valores dos trechos mapeados: valor no `jsonPath` + JSON literal das linhas selecionadas. */
 function collectFilterSuggestionsForMappedRegions(
   jsonStr: string,
@@ -394,48 +412,58 @@ function collectFilterSuggestionsForMappedRegions(
   valuesByField: Record<string, string[]>;
   allValues: string[];
   allPaths: string[];
+  /** Grupos do select: cabeçalho = path do trecho (como no card); linhas = só path relativo. */
+  jsonFieldSelectGroups: { header: string; items: { value: string; label: string }[] }[];
 } {
   const fieldSet = new Set<string>();
   const valueMap = new Map<string, Set<string>>();
   const pathSet = new Set<string>();
-
-  const scanObject = (obj: Record<string, unknown>, prefix = '') => {
-    for (const [k, val] of Object.entries(obj)) {
-      fieldSet.add(k);
-      const nextPath = prefix ? `${prefix}.${k}` : k;
-      pathSet.add(nextPath);
-      if (!valueMap.has(k)) valueMap.set(k, new Set());
-      const s = cellToSuggestionString(val);
-      if (s) valueMap.get(k)!.add(s);
-      deepCollect(val, nextPath);
-    }
-  };
-
-  const scanArrayOfObjects = (arr: unknown[], prefix = '') => {
-    for (const el of arr) {
-      if (!el || typeof el !== 'object' || Array.isArray(el)) continue;
-      scanObject(el as Record<string, unknown>, prefix);
-    }
-  };
-
-  const deepCollect = (value: unknown, prefix = '') => {
-    if (value == null) return;
-    if (Array.isArray(value)) {
-      scanArrayOfObjects(value, prefix);
-      for (const el of value) deepCollect(el, prefix);
-    } else if (typeof value === 'object') {
-      scanObject(value as Record<string, unknown>, prefix);
-    }
-  };
+  const pathsByTrecho = new Map<string, Set<string>>();
 
   let root: unknown;
   try {
     root = JSON.parse(jsonStr) as unknown;
   } catch {
-    return { fields: [], valuesByField: {}, allValues: [], allPaths: [] };
+    return { fields: [], valuesByField: {}, allValues: [], allPaths: [], jsonFieldSelectGroups: [] };
   }
 
   for (const r of regions) {
+    const trechoPath = r.path;
+    if (!pathsByTrecho.has(trechoPath)) pathsByTrecho.set(trechoPath, new Set());
+    const registerRelativePath = (relPath: string) => {
+      pathSet.add(relPath);
+      pathsByTrecho.get(trechoPath)!.add(relPath);
+    };
+
+    const scanObject = (obj: Record<string, unknown>, prefix = '') => {
+      for (const [k, val] of Object.entries(obj)) {
+        fieldSet.add(k);
+        const nextPath = prefix ? `${prefix}.${k}` : k;
+        registerRelativePath(nextPath);
+        if (!valueMap.has(k)) valueMap.set(k, new Set());
+        const s = cellToSuggestionString(val);
+        if (s) valueMap.get(k)!.add(s);
+        deepCollect(val, nextPath);
+      }
+    };
+
+    const scanArrayOfObjects = (arr: unknown[], prefix = '') => {
+      for (const el of arr) {
+        if (!el || typeof el !== 'object' || Array.isArray(el)) continue;
+        scanObject(el as Record<string, unknown>, prefix);
+      }
+    };
+
+    const deepCollect = (value: unknown, prefix = '') => {
+      if (value == null) return;
+      if (Array.isArray(value)) {
+        scanArrayOfObjects(value, prefix);
+        for (const el of value) deepCollect(el, prefix);
+      } else if (typeof value === 'object') {
+        scanObject(value as Record<string, unknown>, prefix);
+      }
+    };
+
     const slice = lines.slice(r.startLine, r.endLine + 1).join('\n');
     const fromSlice = tryParseJsonValueFromSlice(slice);
     if (fromSlice !== null) deepCollect(fromSlice);
@@ -458,11 +486,25 @@ function collectFilterSuggestionsForMappedRegions(
   for (const arr of Object.values(valuesByField)) for (const v of arr) all.add(v);
   const allValues = [...all].sort((a, b) => a.localeCompare(b, 'pt-BR'));
 
+  const relPathsSorted = [...pathSet].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  const jsonFieldSelectGroups = [...pathsByTrecho.entries()]
+    .sort(([a], [b]) => a.localeCompare(b, 'pt-BR'))
+    .map(([header, set]) => ({
+      header,
+      items: [...set]
+        .sort((x, y) => x.localeCompare(y, 'pt-BR'))
+        .map((rel) => ({
+          value: `${header}${JSON_FIELD_TRECHO_REL_SEP}${rel}`,
+          label: rel,
+        })),
+    }));
+
   return {
     fields: [...fieldSet].sort((a, b) => a.localeCompare(b, 'pt-BR')),
     valuesByField,
     allValues,
-    allPaths: [...pathSet].sort((a, b) => a.localeCompare(b, 'pt-BR')),
+    allPaths: relPathsSorted,
+    jsonFieldSelectGroups,
   };
 }
 
@@ -1045,7 +1087,7 @@ export default function JsonFieldMapper({
   const mappedPreviewPayload = useMemo(() => {
     const byType: Record<string, unknown> = {};
     const keyToMeta = new Map<string, LineGutterMeta>();
-    const duplicateFieldKeys = new Set<string>();
+    const rowInfo = new Map<string, { rows: Record<string, unknown>[]; dedupKeys: string[] }>();
 
     for (const row of previewByType) {
       const filters =
@@ -1064,7 +1106,10 @@ export default function JsonFieldMapper({
           const values = parsedParts.flatMap((partValue) => collectValuesAtPath(partValue, mapping.jsonPath));
           return {
             baseKey,
-            value: normalizeMappedFieldValue(values),
+            value: formatMappedPreviewValue(
+              normalizeMappedFieldValue(values),
+              fieldDef?.dataType,
+            ),
             reportFieldId: mapping.reportFieldId,
           };
         });
@@ -1072,43 +1117,50 @@ export default function JsonFieldMapper({
       keyToMeta.set(row.fieldTypeKey, {
         barClass: colors.solid,
         title: `${row.ft.label} · tipo ${row.ft.key}`,
+        sectionBadgeLabel: row.ft.label,
+        sectionBadgeIcon: row.ft.icon,
+        sessionWashClass: colors.sessionWash,
       });
       const displayFieldKeys = dedupeReportFieldKeys(mappedFieldRows.map((item) => item.baseKey));
       const dedupFieldIdSet = new Set(filterCfg.dedupFieldIds);
       const block: Record<string, unknown> = {};
+      const dedupDisplayKeys: string[] = [];
       mappedFieldRows.forEach((fieldRow, index) => {
         const displayKey = displayFieldKeys[index]!;
         block[displayKey] = fieldRow.value;
         if (dedupFieldIdSet.has(fieldRow.reportFieldId)) {
-          duplicateFieldKeys.add(`${row.fieldTypeKey}.${displayKey}`);
+          dedupDisplayKeys.push(displayKey);
         }
       });
-      byType[row.fieldTypeKey] = zipAlignedMappedPreviewRows(block);
+      const zipped = zipAlignedMappedPreviewRows(block);
+      if (
+        dedupDisplayKeys.length > 0
+        && Array.isArray(zipped)
+        && zipped.length > 0
+        && zipped.every((el) => el != null && typeof el === 'object' && !Array.isArray(el))
+      ) {
+        rowInfo.set(row.fieldTypeKey, {
+          rows: zipped as Record<string, unknown>[],
+          dedupKeys: dedupDisplayKeys,
+        });
+      }
+      byType[row.fieldTypeKey] = zipped;
     }
 
+    const duplicateRowsByType = computeGlobalDuplicateRowIndicesByType(typeKeysInOrder, rowInfo);
+    const byTypeExport = buildByTypeWithGlobalDedupRemoved(byType, typeKeysInOrder, rowInfo);
+
     const jsonText = JSON.stringify(byType, null, 2);
-    const lineMeta = computeJsonLineGutterMeta(jsonText, keyToMeta, duplicateFieldKeys);
-    return { jsonText, lineMeta };
+    const jsonTextForExport = JSON.stringify(byTypeExport, null, 2);
+    const lineMeta = computeJsonLineGutterMeta(jsonText, keyToMeta, duplicateRowsByType);
+    return { jsonText, jsonTextForExport, lineMeta };
   }, [
     previewByType,
+    typeKeysInOrder,
     openFilterTypeKey,
     draftTypeFilters,
     typeFilters,
   ]);
-
-  const dedupMarkedByType = useMemo(() => {
-    return previewByType
-      .map(({ fieldTypeKey, ft, filters }) => {
-        if (!filters.dedupFieldIds.length) return null;
-        const fieldsById = new Map((ft.reportFieldConfig?.fields ?? []).map((field) => [field.id, field]));
-        const labels = filters.dedupFieldIds
-          .map((fieldId) => fieldsById.get(fieldId))
-          .filter((field): field is NonNullable<typeof field> => !!field)
-          .map((field) => field.label || field.key || field.id);
-        return labels.length > 0 ? { fieldTypeKey, labels } : null;
-      })
-      .filter((item): item is { fieldTypeKey: string; labels: string[] } => !!item);
-  }, [previewByType]);
 
   const retornoMatches = useMemo(
     () => findTextMatches(activeJson, retornoSearch),
@@ -1257,14 +1309,14 @@ export default function JsonFieldMapper({
   }, [activeJson]);
 
   const copyPreviewJson = useCallback(async () => {
-    const text = mappedPreviewPayload.jsonText.trim() || '{}';
+    const text = mappedPreviewPayload.jsonTextForExport.trim() || '{}';
     try {
       await navigator.clipboard.writeText(text);
-      toast.success('Preview copiado');
+      toast.success('JSON do relatório copiado (duplicatas globais removidas)');
     } catch {
       toast.error('Não foi possível copiar');
     }
-  }, [mappedPreviewPayload.jsonText]);
+  }, [mappedPreviewPayload.jsonTextForExport]);
 
   return (
     <div className="h-[460px] border border-border rounded-md overflow-hidden bg-card"
@@ -1578,7 +1630,13 @@ export default function JsonFieldMapper({
                   const colors = getColors(ft.color);
                   const regionsForType = displayRegions.filter(r => r.fieldTypeKey === ft.key);
                   const isMapped = regionsForType.length > 0;
-                  const suggest = suggestionsByType[ft.key] ?? { fields: [], valuesByField: {}, allValues: [], allPaths: [] };
+                  const suggest = suggestionsByType[ft.key] ?? {
+                    fields: [],
+                    valuesByField: {},
+                    allValues: [],
+                    allPaths: [],
+                    jsonFieldSelectGroups: [],
+                  };
                   const filterConfig = openFilterTypeKey === ft.key
                     ? (draftTypeFilters[ft.key] ?? typeFilters[ft.key] ?? emptyTypeItemFilterConfig())
                     : (typeFilters[ft.key] ?? emptyTypeItemFilterConfig());
@@ -1643,6 +1701,11 @@ export default function JsonFieldMapper({
                               draftConfig={draftTypeFilters[ft.key] ?? filterConfig}
                               suggestions={suggest}
                               jsonFieldOptions={suggest.allPaths.length > 0 ? suggest.allPaths : allJsonKeys}
+                              jsonFieldSelectGroups={
+                                suggest.allPaths.length > 0
+                                  ? suggest.jsonFieldSelectGroups
+                                  : [{ header: 'Retorno', items: allJsonKeys.map((k) => ({ value: k, label: k })) }]
+                              }
                               mappedRegionCount={regionsForType.length}
                               onOpenChange={(open) => {
                                 if (open) openFilterDialog(ft.key);
@@ -1751,7 +1814,7 @@ export default function JsonFieldMapper({
 
         <ResizableHandle withHandle />
 
-        {/* RIGHT: Preview — all data summary + dedup */}
+        {/* RIGHT: Preview — dados unificados; duplicatas marcadas nas linhas */}
         <ResizablePanel defaultSize={28} minSize={18} className="min-h-0 min-w-[12rem]">
           <div className="flex min-h-0 min-w-0 flex-col h-full">
             <div className="flex shrink-0 items-center justify-between gap-2 px-3 h-9 border-b border-border bg-muted/40">
@@ -1770,8 +1833,8 @@ export default function JsonFieldMapper({
                   variant="ghost"
                   size="icon"
                   className="h-8 w-8 text-muted-foreground hover:text-foreground"
-                  aria-label="Copiar JSON do preview"
-                  title="Copiar JSON do preview"
+                  aria-label="Copiar JSON do relatório sem duplicatas globais"
+                  title="Copia o JSON de saída com deduplicação global (mesmos campos deduplicar entre tipos)"
                   onClick={() => void copyPreviewJson()}
                 >
                   <Copy className="h-4 w-4" />
@@ -1791,56 +1854,6 @@ export default function JsonFieldMapper({
                         : undefined
                     }
                     scrollBodyRef={previewScrollRef}
-                    footer={
-                      <div className="flex flex-col gap-1.5">
-                        {dedupMarkedByType.length > 0 && (
-                          <div className="flex flex-wrap items-center gap-1">
-                            <span className="text-[9px] uppercase tracking-wide text-muted-foreground">Duplicidade</span>
-                            {dedupMarkedByType.map((item) => (
-                              <span
-                                key={item.fieldTypeKey}
-                                className="inline-flex items-center rounded border border-amber-500/30 bg-amber-500/8 px-1.5 py-0.5 text-[9px] text-amber-600 dark:text-amber-400"
-                                title={`Campos deduplicados de ${item.fieldTypeKey}: ${item.labels.join(', ')}`}
-                              >
-                                {item.fieldTypeKey}: {item.labels.join(' + ')}
-                              </span>
-                            ))}
-                          </div>
-                        )}
-                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                          <span className="text-[9px] font-medium uppercase tracking-wide text-muted-foreground">
-                            Tipo
-                          </span>
-                        {previewByType.map(({ fieldTypeKey, ft, filters, parts, emptyPreviewReason }) => {
-                          const colors = getColors(ft.color);
-                          const isSelected = selectedRegion === ft.key;
-                          const rules = countActiveTypeItemRules(filters);
-                          return (
-                            <button
-                              key={fieldTypeKey}
-                              type="button"
-                              onClick={() => setSelectedRegion(ft.key === selectedRegion ? null : ft.key)}
-                              className={cn(
-                                'inline-flex cursor-pointer items-center gap-1 rounded-md text-[9px] text-muted-foreground transition-colors hover:text-foreground',
-                                isSelected && 'text-foreground',
-                              )}
-                              title={`${ft.label}${
-                                rules > 0 ? ` · ${rules} critério(s)` : ''
-                              }${emptyPreviewReason === 'filtered' ? ' · nada passou no filtro' : ''}${
-                                parts.length === 0 ? ' · sem trecho' : ''
-                              }`}
-                            >
-                              <span
-                                className={cn('h-2 w-2 shrink-0 rounded-sm', colors.solid)}
-                                aria-hidden
-                              />
-                              <span className="font-mono">{ft.key}</span>
-                            </button>
-                          );
-                        })}
-                        </div>
-                      </div>
-                    }
                   />
                 </div>
               ) : (

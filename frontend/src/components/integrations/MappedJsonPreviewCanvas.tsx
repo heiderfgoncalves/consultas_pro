@@ -1,69 +1,21 @@
 import { type ReactNode, type RefObject } from 'react';
+import {
+  User, AlertTriangle, Gauge, FileWarning, Building2, FileX, Users,
+  DollarSign, TrendingUp, Award, Tag, Hash,
+} from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import type { TextMatch } from '@/lib/jsonSearchHighlight';
+import type { LineGutterMeta } from '@/lib/jsonLineGutterMeta';
 
-/** Saldo aproximado de `{` `[` vs `}` `]` na linha, ignorando strings JSON. */
-export function lineDeltaDepth(line: string): number {
-  let delta = 0;
-  let inStr = false;
-  let esc = false;
-  for (let i = 0; i < line.length; i += 1) {
-    const c = line[i];
-    if (inStr) {
-      if (esc) esc = false;
-      else if (c === '\\') esc = true;
-      else if (c === '"') inStr = false;
-      continue;
-    }
-    if (c === '"') {
-      inStr = true;
-      continue;
-    }
-    if (c === '{' || c === '[') delta += 1;
-    else if (c === '}' || c === ']') delta -= 1;
-  }
-  return delta;
-}
+const previewTypeIconMap: Record<string, React.ComponentType<{ className?: string }>> = {
+  User, AlertTriangle, Gauge, FileWarning, Building2, FileX, Users,
+  DollarSign, TrendingUp, Award, Tag, Hash,
+};
 
-export type LineGutterMeta = { barClass: string; title?: string; isDuplicateLine?: boolean };
-
-/** Por linha do JSON formatado: faixa (tipo) + tooltip com o tipo de consulta. */
-export function computeJsonLineGutterMeta(
-  json: string,
-  keyToMeta: Map<string, LineGutterMeta>,
-  duplicateFieldKeys?: Set<string>,
-): LineGutterMeta[] {
-  const lines = json.split('\n');
-  let depth = 0;
-  let active: LineGutterMeta = { barClass: 'bg-border/20' };
-  let activeTypeKey = '';
-  const out: LineGutterMeta[] = [];
-
-  for (const line of lines) {
-    if (depth === 1) {
-      const m = line.match(/^\s*"((?:[^"\\]|\\.)*)"\s*:/);
-      if (m) {
-        const rawKey = m[1]!.replace(/\\"/g, '"').replace(/\\\\/g, '\\');
-        const meta = keyToMeta.get(rawKey);
-        if (meta) {
-          active = meta;
-          activeTypeKey = rawKey;
-        }
-      }
-    }
-    let isDuplicateLine = false;
-    if (duplicateFieldKeys && depth === 2 && activeTypeKey) {
-      const m = line.match(/^\s*"((?:[^"\\]|\\.)*)"\s*:/);
-      if (m) {
-        const rawField = m[1]!.replace(/\\"/g, '"').replace(/\\\\/g, '\\');
-        isDuplicateLine = duplicateFieldKeys.has(`${activeTypeKey}.${rawField}`);
-      }
-    }
-    out.push({ ...active, isDuplicateLine });
-    depth += lineDeltaDepth(line);
-  }
-
-  return out;
+function PreviewTypeIcon({ icon, className }: { icon: string; className?: string }) {
+  const Icon = previewTypeIconMap[icon] || Tag;
+  return <Icon className={className} />;
 }
 
 type SegKind = 'def' | 'key' | 'str' | 'num' | 'kw' | 'punct';
@@ -225,15 +177,18 @@ export function MappedJsonPreviewCanvas({
     <div
       className={cn(
         'flex min-h-[11rem] flex-1 flex-col overflow-hidden rounded-lg border border-border/80',
-        'bg-card bg-[radial-gradient(ellipse_120%_80%_at_50%_-20%,hsl(var(--muted)/0.35),transparent)]',
-        'shadow-[inset_0_1px_0_0_hsl(var(--border)/0.45)]',
+        'bg-gradient-to-b from-muted/35 via-card to-card',
+        'dark:from-muted/20 dark:via-card dark:to-card',
+        /* Elevação + borda interna superior: hsl com opacidade só funciona com ` / ` (formato shadcn). */
+        'shadow-[0_1px_2px_rgb(0_0_0/_0.05),0_1px_3px_rgb(0_0_0/_0.04),inset_0_1px_0_0_hsl(var(--border)_/_0.55)]',
+        'dark:shadow-[0_1px_3px_rgb(0_0_0/_0.5),inset_0_1px_0_0_hsl(var(--border)_/_0.42)]',
       )}
       role="region"
       aria-label="Preview JSON com dados tratados e filtros"
     >
       <div
         ref={scrollBodyRef}
-        className="min-h-0 flex-1 overflow-auto [scrollbar-width:thin]"
+        className="scrollbar-thin min-h-0 flex-1 overflow-auto"
       >
         <div className="min-w-max py-1.5 pr-2">
           {lines.map((line, i) => {
@@ -246,18 +201,37 @@ export function MappedJsonPreviewCanvas({
               <div
                 key={i}
                 className={cn(
-                  'group flex min-h-[1.5rem] items-stretch',
-                  meta.isDuplicateLine && 'bg-destructive/8',
+                  'group relative isolate flex min-h-[1.5rem] items-stretch',
+                  meta.isSectionHeaderLine &&
+                    'after:pointer-events-none after:absolute after:inset-x-0 after:bottom-0 after:z-[5] after:h-px after:bg-border/60',
+                  meta.isDuplicateLine &&
+                    'border-l-[3px] border-destructive bg-destructive/[0.07] dark:bg-destructive/[0.11]',
                 )}
               >
+                {meta.sessionWashClass ? (
+                  <div
+                    className={cn(
+                      'pointer-events-none absolute inset-0 z-0',
+                      meta.sessionWashClass,
+                      meta.isSectionHeaderLine &&
+                        '[box-shadow:inset_0_-1px_0_0_hsl(var(--border)_/_0.35)]',
+                    )}
+                    aria-hidden
+                  />
+                ) : null}
                 <span
                   className={cn(
-                    'w-[2px] shrink-0 rounded-[1px] transition-opacity group-hover:opacity-100',
+                    'relative z-10 w-[2px] shrink-0 rounded-[1px] transition-opacity group-hover:opacity-100',
                     meta.isDuplicateLine ? 'bg-destructive' : meta.barClass,
                   )}
                   title={meta.title}
                 />
-                <code className="block flex-1 whitespace-pre pl-2 font-mono text-[11px] leading-[1.55] text-foreground/90">
+                <code
+                  className={cn(
+                    'relative z-10 block min-w-0 flex-1 whitespace-pre pl-2 pr-2 font-mono text-[11px] leading-[1.55] text-foreground/90',
+                    meta.isSectionHeaderLine && meta.sectionBadgeLabel ? 'pr-[8.25rem]' : '',
+                  )}
+                >
                   {line.length > 0 ? (
                     useNav ? (
                       renderPreviewLineWithMatches(
@@ -272,6 +246,18 @@ export function MappedJsonPreviewCanvas({
                   ) : (
                     '\u00a0'
                   )}
+                  {meta.isSectionHeaderLine && meta.sectionBadgeLabel ? (
+                    <Badge
+                      variant="outline"
+                      className="pointer-events-none absolute right-2 top-1/2 z-20 flex h-5 max-w-[8rem] -translate-y-1/2 items-center gap-1 truncate border-border bg-card/95 pl-1 pr-1.5 text-[9px] font-normal text-muted-foreground shadow-sm transition-colors dark:border-border dark:bg-card/90"
+                      title={meta.sectionBadgeLabel}
+                    >
+                      {meta.sectionBadgeIcon ? (
+                        <PreviewTypeIcon icon={meta.sectionBadgeIcon} className="h-3 w-3 shrink-0 opacity-85" />
+                      ) : null}
+                      <span className="truncate">{meta.sectionBadgeLabel}</span>
+                    </Badge>
+                  ) : null}
                 </code>
               </div>
             );

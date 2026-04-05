@@ -33,6 +33,90 @@ function normalizeCell(v: unknown): string {
   return String(v).trim();
 }
 
+/** Normaliza valor para comparar duplicatas (preview, relatório e dedup por path). */
+export function normalizeDedupFingerprintPart(value: unknown): string {
+  if (value == null) return '';
+  const raw = String(value).trim();
+  if (/^\d{1,2}\/\d{1,2}\/\d{2,4}$/.test(raw)) {
+    return raw.toLowerCase();
+  }
+  return raw
+    .toLowerCase()
+    .replace(/r\$\s*/gi, '')
+    .replace(/\u00a0/g, ' ')
+    .replace(/\s+/g, '')
+    .replace(/\./g, '')
+    .replace(/[/-]/g, '')
+    .replace('%', '')
+    .replace(',', '.');
+}
+
+/** Fingerprint estável para dedup global no preview/relatório (chaves do relatório + valores normalizados). */
+export function reportRowDedupFingerprint(row: Record<string, unknown>, dedupKeys: string[]): string {
+  if (dedupKeys.length === 0) return '';
+  const sorted = [...dedupKeys].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  return sorted.map((k) => `${k}\0${normalizeDedupFingerprintPart(row[k])}`).join('\x1e');
+}
+
+function rowHasDedupSubstance(row: Record<string, unknown>, dedupKeys: string[]): boolean {
+  return dedupKeys.some((k) => normalizeDedupFingerprintPart(row[k]) !== '');
+}
+
+/**
+ * Marca índices de linha duplicados **entre tipos**: mesmo conjunto de campos deduplicar com os mesmos valores
+ * (chaves do relatório + normalização), independentemente do tipo.
+ */
+export function computeGlobalDuplicateRowIndicesByType(
+  typeKeysInOrder: string[],
+  rowInfo: Map<string, { rows: Record<string, unknown>[]; dedupKeys: string[] }>,
+): Map<string, Set<number>> {
+  const byFp = new Map<string, { typeKey: string; rowIndex: number }[]>();
+  for (const typeKey of typeKeysInOrder) {
+    const pack = rowInfo.get(typeKey);
+    if (!pack?.dedupKeys.length) continue;
+    pack.rows.forEach((row, rowIndex) => {
+      if (!rowHasDedupSubstance(row, pack.dedupKeys)) return;
+      const fp = reportRowDedupFingerprint(row, pack.dedupKeys);
+      const list = byFp.get(fp) ?? [];
+      list.push({ typeKey, rowIndex });
+      byFp.set(fp, list);
+    });
+  }
+  const duplicateRowsByType = new Map<string, Set<number>>();
+  for (const refs of byFp.values()) {
+    if (refs.length < 2) continue;
+    for (const r of refs) {
+      if (!duplicateRowsByType.has(r.typeKey)) duplicateRowsByType.set(r.typeKey, new Set());
+      duplicateRowsByType.get(r.typeKey)!.add(r.rowIndex);
+    }
+  }
+  return duplicateRowsByType;
+}
+
+/** Mantém a primeira ocorrência global (ordem dos tipos em `typeKeysInOrder`, depois índice na lista). */
+export function buildByTypeWithGlobalDedupRemoved(
+  byType: Record<string, unknown>,
+  typeKeysInOrder: string[],
+  rowInfo: Map<string, { rows: Record<string, unknown>[]; dedupKeys: string[] }>,
+): Record<string, unknown> {
+  const seen = new Set<string>();
+  const out: Record<string, unknown> = { ...byType };
+  for (const typeKey of typeKeysInOrder) {
+    const pack = rowInfo.get(typeKey);
+    const val = out[typeKey];
+    if (!pack?.dedupKeys.length || !Array.isArray(val)) continue;
+    const rows = val as Record<string, unknown>[];
+    out[typeKey] = rows.filter((row) => {
+      if (!rowHasDedupSubstance(row, pack.dedupKeys)) return true;
+      const fp = reportRowDedupFingerprint(row, pack.dedupKeys);
+      if (seen.has(fp)) return false;
+      seen.add(fp);
+      return true;
+    });
+  }
+  return out;
+}
+
 function matchesFilter(item: Record<string, unknown>, f: MappingItemFilter): boolean {
   const cell = normalizeCell(getRecordPropertyCI(item, f.field));
   const target = f.value.trim();
@@ -86,7 +170,7 @@ function dedupeObjectArrayByFieldPaths(
   const out: Record<string, unknown>[] = [];
   for (const item of arr) {
     const signature = fieldPaths
-      .map((path) => JSON.stringify(getValueAtJsonPath(item, path) ?? null))
+      .map((path) => normalizeDedupFingerprintPart(getValueAtJsonPath(item, path)))
       .join('\x1e');
     if (seen.has(signature)) continue;
     seen.add(signature);

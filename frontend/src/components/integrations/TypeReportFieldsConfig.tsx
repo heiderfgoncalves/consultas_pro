@@ -22,6 +22,7 @@ import {
   DollarSign,
   GripVertical,
   Hash,
+  IdCard,
   Palette,
   Percent,
   Plus,
@@ -55,6 +56,7 @@ const FIELD_TYPE_OPTIONS: Array<{ value: ReportFieldDataType; label: string }> =
   { value: 'datetime', label: 'DateTime' },
   { value: 'currency', label: 'Currency' },
   { value: 'percent', label: 'Percent' },
+  { value: 'document', label: 'Document' },
 ];
 
 const REPORT_FIELD_TYPE_ICONS: Record<ReportFieldDataType, LucideIcon> = {
@@ -65,6 +67,7 @@ const REPORT_FIELD_TYPE_ICONS: Record<ReportFieldDataType, LucideIcon> = {
   datetime: CalendarClock,
   currency: DollarSign,
   percent: Percent,
+  document: IdCard,
 };
 
 function ReportFieldDataTypeIcon({

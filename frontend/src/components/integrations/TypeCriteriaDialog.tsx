@@ -23,6 +23,7 @@ import {
   Filter,
   GripVertical,
   Hash,
+  IdCard,
   List,
   Percent,
   Plus,
@@ -59,7 +60,15 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectLabel,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 
 const FILTER_OPS: { value: MappingItemFilterOp; label: string }[] = [
@@ -73,6 +82,27 @@ const FILTER_OPS: { value: MappingItemFilterOp; label: string }[] = [
 const SENTINEL_EMPTY = '__empty__';
 const SENTINEL_FREE_FIELD = '__add_campo_livre__';
 const SENTINEL_FREE_VALUE = '__add_valor_livre__';
+
+/** Alinhado ao JsonFieldMapper: RS entre trecho e path relativo no `value` do Select. */
+const JSON_FIELD_TRECHO_REL_SEP = '\x1e';
+
+function persistedJsonPathFromSelectValue(raw: string): string {
+  const i = raw.indexOf(JSON_FIELD_TRECHO_REL_SEP);
+  if (i === -1) return raw;
+  return raw.slice(i + JSON_FIELD_TRECHO_REL_SEP.length);
+}
+
+function findSelectValueForPersisted(
+  persisted: string,
+  groups: { header: string; items: { value: string; label: string }[] }[],
+): string | null {
+  for (const g of groups) {
+    for (const it of g.items) {
+      if (it.label === persisted || persistedJsonPathFromSelectValue(it.value) === persisted) return it.value;
+    }
+  }
+  return null;
+}
 
 /** Operador (condição) com largura fixa; campo e valor usam flex no JSX. */
 const CRITERION_OP_TRIGGER =
@@ -95,6 +125,7 @@ const REPORT_FIELD_TYPE_ICONS: Record<ReportFieldDataType, LucideIcon> = {
   datetime: CalendarClock,
   currency: DollarSign,
   percent: Percent,
+  document: IdCard,
 };
 
 function ReportFieldDataTypeIcon({
@@ -148,6 +179,7 @@ export default function TypeCriteriaDialog({
   draftConfig,
   suggestions,
   jsonFieldOptions,
+  jsonFieldSelectGroups,
   mappedRegionCount,
   onOpenChange,
   onDraftChange,
@@ -158,6 +190,8 @@ export default function TypeCriteriaDialog({
   draftConfig: TypeItemFilterConfig;
   suggestions: SuggestionPayload;
   jsonFieldOptions: string[];
+  /** Cabeçalho = jsonPath do trecho (como no card); itens mostram só path relativo; `value` do item inclui trecho para unicidade. */
+  jsonFieldSelectGroups: { header: string; items: { value: string; label: string }[] }[];
   mappedRegionCount: number;
   onOpenChange: (open: boolean) => void;
   onDraftChange: (next: TypeItemFilterConfig) => void;
@@ -386,8 +420,13 @@ export default function TypeCriteriaDialog({
                   </div>
                   <div className="space-y-1 p-2">
                     {reportFields.map((field) => {
-                      const selected = draftConfig.fieldMappings.find((mapping) => mapping.reportFieldId === field.id)?.jsonPath ?? SENTINEL_EMPTY;
-                      const isMapped = selected !== SENTINEL_EMPTY;
+                      const persistedPath =
+                        draftConfig.fieldMappings.find((mapping) => mapping.reportFieldId === field.id)?.jsonPath ?? '';
+                      const selected =
+                        !persistedPath
+                          ? SENTINEL_EMPTY
+                          : (findSelectValueForPersisted(persistedPath, jsonFieldSelectGroups) ?? persistedPath);
+                      const isMapped = Boolean(persistedPath);
                       const dedupChecked = isMapped && draftConfig.dedupFieldIds.includes(field.id);
                       return (
                         <div key={field.id} className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)_auto] items-center gap-2 rounded-md border border-border/50 bg-background/90 px-2 py-1.5">
@@ -428,18 +467,39 @@ export default function TypeCriteriaDialog({
                               </div>
                             </div>
                           </div>
-                          <Select value={selected} onValueChange={(value) => upsertFieldMapping(field.id, field.label, value)}>
-                            <SelectTrigger className="h-8 border-border/50 bg-background text-[11px]">
+                          <Select
+                            value={selected}
+                            onValueChange={(value) =>
+                              upsertFieldMapping(
+                                field.id,
+                                field.label,
+                                value === SENTINEL_EMPTY ? SENTINEL_EMPTY : persistedJsonPathFromSelectValue(value),
+                              )
+                            }
+                          >
+                            <SelectTrigger className="h-8 border-border/50 bg-background text-[11px] [&_span]:font-mono [&_span]:text-[10px] [&_span]:text-muted-foreground">
                               <SelectValue placeholder="JSON…" />
                             </SelectTrigger>
                             <SelectContent className="max-h-72">
                               <SelectItem value={SENTINEL_EMPTY} className="text-xs text-muted-foreground">
                                 Não mapear agora
                               </SelectItem>
-                              {jsonFieldOptions.map((option) => (
-                                <SelectItem key={option} value={option} className="font-mono text-xs">
-                                  {option}
-                                </SelectItem>
+                              {jsonFieldSelectGroups.map((group, gi) => (
+                                <SelectGroup key={`jf_g_${gi}`}>
+                                  <SelectLabel className="px-2 py-1.5 font-mono text-[10px] font-normal normal-case tracking-normal text-muted-foreground">
+                                    {group.header}
+                                  </SelectLabel>
+                                  {group.items.map((it) => (
+                                    <SelectItem
+                                      key={it.value}
+                                      value={it.value}
+                                      textValue={`${group.header} ${it.label}`}
+                                      className="items-start py-1.5 pl-8 pr-2 text-[10px] font-mono text-muted-foreground"
+                                    >
+                                      <span className="block break-all leading-snug">{it.label}</span>
+                                    </SelectItem>
+                                  ))}
+                                </SelectGroup>
                               ))}
                             </SelectContent>
                           </Select>

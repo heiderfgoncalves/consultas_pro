@@ -7,7 +7,8 @@ export type ReportFieldDataType =
   | 'date'
   | 'datetime'
   | 'currency'
-  | 'percent';
+  | 'percent'
+  | 'document';
 
 export type ReportFieldColorTarget = 'value' | 'row';
 
