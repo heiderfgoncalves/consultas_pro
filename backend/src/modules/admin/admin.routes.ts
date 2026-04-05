@@ -24,13 +24,16 @@ import {
   createTokenSchema,
   adminCompanyCreditSchema,
   linkUserToCompanySchema,
+  listProductSessionAssignmentsQuerySchema,
   listAdminAuditQuerySchema,
   listAdminInvitesQuerySchema,
   listCompanyLedgerQuerySchema,
   patchAdminTokenSchema,
   previewMergeSchema,
+  putProductSessionAssignmentsSchema,
   testProductDraftSchema,
   testProductSchema,
+  templateVariableExpressionSchema,
   updateCanonicalFieldSchema,
   updateMappingSchema,
   updateProviderOperationSchema,
@@ -57,6 +60,31 @@ import {
 function stripPassword<T extends { passwordHash: string }>(user: T): Omit<T, 'passwordHash'> {
   const { passwordHash: _p, ...rest } = user;
   return rest;
+}
+
+function collectTemplateVariableExpressions(input: unknown): string[] {
+  const expressions: string[] = [];
+
+  if (typeof input === 'string') {
+    const matches = input.match(/\$\{[^}]+\}/g);
+    if (matches) expressions.push(...matches);
+    return expressions;
+  }
+
+  if (Array.isArray(input)) {
+    for (const item of input) {
+      expressions.push(...collectTemplateVariableExpressions(item));
+    }
+    return expressions;
+  }
+
+  if (input && typeof input === 'object') {
+    for (const value of Object.values(input as Record<string, unknown>)) {
+      expressions.push(...collectTemplateVariableExpressions(value));
+    }
+  }
+
+  return expressions;
 }
 
 export async function registerAdminRoutes(app: FastifyInstance) {
@@ -539,7 +567,10 @@ export async function registerAdminRoutes(app: FastifyInstance) {
     const mappingCount = await app.prisma.providerFieldMapping.count({
       where: { canonicalFieldId: params.fieldId },
     });
-    if (mappingCount > 0) {
+    const sessionAssignmentCount = await app.prisma.productSessionFieldAssignment.count({
+      where: { canonicalFieldId: params.fieldId },
+    });
+    if (mappingCount > 0 || sessionAssignmentCount > 0) {
       throw new ConflictError('Não é possível remover: existem mapeamentos de produto usando este campo');
     }
 
@@ -555,6 +586,10 @@ export async function registerAdminRoutes(app: FastifyInstance) {
           include: {
             consultationType: true,
             mappings: {
+              include: { canonicalField: true },
+              orderBy: { sortOrder: 'asc' },
+            },
+            sessionAssignments: {
               include: { canonicalField: true },
               orderBy: { sortOrder: 'asc' },
             },
@@ -592,6 +627,10 @@ export async function registerAdminRoutes(app: FastifyInstance) {
           include: {
             consultationType: true,
             mappings: { include: { canonicalField: true }, orderBy: { sortOrder: 'asc' } },
+            sessionAssignments: {
+              include: { canonicalField: true },
+              orderBy: { sortOrder: 'asc' },
+            },
           },
           orderBy: { updatedAt: 'desc' },
         },
@@ -638,6 +677,7 @@ export async function registerAdminRoutes(app: FastifyInstance) {
           await tx.templateItem.deleteMany({ where: { providerProductId: { in: productIds } } });
           await tx.consultationItem.deleteMany({ where: { providerProductId: { in: productIds } } });
           await tx.providerFieldMapping.deleteMany({ where: { productId: { in: productIds } } });
+          await tx.productSessionFieldAssignment.deleteMany({ where: { productId: { in: productIds } } });
           await tx.providerProduct.deleteMany({ where: { id: { in: productIds } } });
         }
         await tx.providerOperation.deleteMany({ where: { providerId: params.providerId } });
@@ -692,6 +732,12 @@ export async function registerAdminRoutes(app: FastifyInstance) {
 
   app.post('/admin/providers/products', adminOnly, async (request, reply) => {
     const payload = createProviderProductSchema.parse(request.body);
+    if (payload.templateLayout !== undefined) {
+      const expressions = collectTemplateVariableExpressions(payload.templateLayout);
+      for (const expression of expressions) {
+        templateVariableExpressionSchema.parse(expression);
+      }
+    }
     const { consultationPrice, ...rest } = payload;
     return ok(reply, await app.prisma.providerProduct.create({
       data: {
@@ -705,6 +751,13 @@ export async function registerAdminRoutes(app: FastifyInstance) {
   app.patch('/admin/providers/products/:productId', adminOnly, async (request, reply) => {
     const params = request.params as { productId: string };
     const payload = updateProviderProductSchema.parse(request.body);
+
+    if (payload.templateLayout !== undefined && payload.templateLayout !== null) {
+      const expressions = collectTemplateVariableExpressions(payload.templateLayout);
+      for (const expression of expressions) {
+        templateVariableExpressionSchema.parse(expression);
+      }
+    }
 
     const product = await app.prisma.providerProduct.findUnique({ where: { id: params.productId } });
     if (!product) throw new NotFoundError('Produto não encontrado');
@@ -746,6 +799,10 @@ export async function registerAdminRoutes(app: FastifyInstance) {
     if (payload.sampleResponse !== undefined) {
       data.sampleResponse = payload.sampleResponse === null ? Prisma.JsonNull : (payload.sampleResponse as Prisma.InputJsonValue);
     }
+    if (payload.templateLayout !== undefined) {
+      (data as Record<string, Prisma.InputJsonValue | Prisma.NullTypes.JsonNull>).templateLayout =
+        payload.templateLayout === null ? Prisma.JsonNull : (payload.templateLayout as Prisma.InputJsonValue);
+    }
     if (payload.typeItemFilters !== undefined) {
       data.typeItemFilters =
         payload.typeItemFilters === null ? Prisma.JsonNull : (payload.typeItemFilters as Prisma.InputJsonValue);
@@ -757,6 +814,10 @@ export async function registerAdminRoutes(app: FastifyInstance) {
       include: {
         consultationType: true,
         mappings: { include: { canonicalField: true }, orderBy: { sortOrder: 'asc' } },
+        sessionAssignments: {
+          include: { canonicalField: true },
+          orderBy: { sortOrder: 'asc' },
+        },
       },
     });
 
@@ -792,6 +853,7 @@ export async function registerAdminRoutes(app: FastifyInstance) {
         await tx.consultationItem.deleteMany({ where: { providerProductId: params.productId } });
         await tx.providerTestLog.deleteMany({ where: { productId: params.productId } });
         await tx.providerFieldMapping.deleteMany({ where: { productId: params.productId } });
+        await tx.productSessionFieldAssignment.deleteMany({ where: { productId: params.productId } });
         await tx.providerProduct.delete({ where: { id: params.productId } });
       });
     } catch (error) {
@@ -837,6 +899,68 @@ export async function registerAdminRoutes(app: FastifyInstance) {
     return ok(reply, { deleted: true });
   });
 
+  app.get('/admin/providers/products/:productId/session-assignments', adminOnly, async (request, reply) => {
+    const params = request.params as { productId: string };
+    const query = listProductSessionAssignmentsQuerySchema.parse(request.query);
+
+    const product = await app.prisma.providerProduct.findUnique({ where: { id: params.productId } });
+    if (!product) throw new NotFoundError('Produto não encontrado');
+
+    const where: Prisma.ProductSessionFieldAssignmentWhereInput = { productId: params.productId };
+    if (query.sessionKey) where.sessionKey = query.sessionKey;
+
+    const assignments = await app.prisma.productSessionFieldAssignment.findMany({
+      where,
+      include: { canonicalField: true },
+      orderBy: [{ sessionKey: 'asc' }, { sortOrder: 'asc' }],
+    });
+
+    return ok(reply, assignments);
+  });
+
+  app.put('/admin/providers/products/:productId/session-assignments', adminOnly, async (request, reply) => {
+    const params = request.params as { productId: string };
+    const payload = putProductSessionAssignmentsSchema.parse(request.body);
+
+    const product = await app.prisma.providerProduct.findUnique({ where: { id: params.productId } });
+    if (!product) throw new NotFoundError('Produto não encontrado');
+
+    const canonicalIds = payload.assignments.map((a) => a.canonicalFieldId);
+    if (canonicalIds.length > 0) {
+      const canonicalCount = await app.prisma.canonicalFieldCatalog.count({
+        where: { id: { in: canonicalIds } },
+      });
+      if (canonicalCount !== canonicalIds.length) {
+        throw new ConflictError('Um ou mais campos canônicos não foram encontrados');
+      }
+    }
+
+    await app.prisma.$transaction(async (tx) => {
+      await tx.productSessionFieldAssignment.deleteMany({
+        where: { productId: params.productId, sessionKey: payload.sessionKey },
+      });
+      if (payload.assignments.length > 0) {
+        await tx.productSessionFieldAssignment.createMany({
+          data: payload.assignments.map((assignment, index) => ({
+            productId: params.productId,
+            sessionKey: payload.sessionKey,
+            canonicalFieldId: assignment.canonicalFieldId,
+            sourcePath: assignment.sourcePath ?? null,
+            sortOrder: assignment.sortOrder ?? index,
+            isActive: assignment.isActive ?? true,
+          })),
+        });
+      }
+    });
+
+    const updated = await app.prisma.productSessionFieldAssignment.findMany({
+      where: { productId: params.productId, sessionKey: payload.sessionKey },
+      include: { canonicalField: true },
+      orderBy: { sortOrder: 'asc' },
+    });
+    return ok(reply, updated);
+  });
+
   app.get('/admin/providers/:providerId/config', adminOnly, async (request, reply) => {
     const params = request.params as { providerId: string };
     return ok(reply, await app.prisma.provider.findUnique({
@@ -847,6 +971,10 @@ export async function registerAdminRoutes(app: FastifyInstance) {
           include: {
             consultationType: true,
             mappings: {
+              include: { canonicalField: true },
+              orderBy: { sortOrder: 'asc' },
+            },
+            sessionAssignments: {
               include: { canonicalField: true },
               orderBy: { sortOrder: 'asc' },
             },

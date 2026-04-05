@@ -1,5 +1,33 @@
 import { z } from 'zod';
 
+export const templateVariableExpressionSchema = z
+  .string()
+  .refine((value) => {
+    const trimmed = value.trim();
+    if (!trimmed.startsWith('${') || !trimmed.endsWith('}')) return false;
+    const core = trimmed.slice(2, -1).trim();
+    if (/^[a-zA-Z0-9_]+$/.test(core)) return true;
+    return /^"[^"]+"\."[^"]+"$/.test(core);
+  }, 'Variável inválida');
+
+const templateLayoutSchema = z.object({
+  layoutSchemaVersion: z.literal(1),
+  rootIds: z.array(z.string().min(1)),
+  nodes: z.record(z.any()),
+  themeTokens: z.object({
+    surface: z.string().min(1),
+    surfaceAlt: z.string().min(1),
+    text: z.string().min(1),
+    border: z.string().min(1),
+    accent: z.string().min(1),
+  }),
+  meta: z.object({
+    name: z.string().min(1),
+    description: z.string().optional(),
+    updatedAt: z.string().min(1),
+  }),
+});
+
 export const createProviderSchema = z.object({
   name: z.string().min(2),
   slug: z.string().min(2),
@@ -37,6 +65,7 @@ export const createProviderProductSchema = z.object({
   consultationPrice: z.coerce.number().nonnegative().optional(),
   sampleRequest: z.any().optional(),
   sampleResponse: z.any().optional(),
+  templateLayout: templateLayoutSchema.optional(),
   typeItemFilters: z.any().optional(),
 });
 
@@ -90,7 +119,24 @@ export const updateProviderProductSchema = z.object({
   isActive: z.boolean().optional(),
   sampleRequest: z.any().nullable().optional(),
   sampleResponse: z.any().nullable().optional(),
+  templateLayout: templateLayoutSchema.nullable().optional(),
   typeItemFilters: z.any().nullable().optional(),
+});
+
+export const listProductSessionAssignmentsQuerySchema = z.object({
+  sessionKey: z.string().min(1).optional(),
+});
+
+const sessionAssignmentItemSchema = z.object({
+  canonicalFieldId: z.string().min(1),
+  sourcePath: z.string().min(1).optional(),
+  sortOrder: z.number().int().nonnegative().optional(),
+  isActive: z.boolean().optional(),
+});
+
+export const putProductSessionAssignmentsSchema = z.object({
+  sessionKey: z.string().min(1),
+  assignments: z.array(sessionAssignmentItemSchema),
 });
 
 export const updateMappingSchema = z.object({
