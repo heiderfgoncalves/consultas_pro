@@ -9,7 +9,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
-import { HeroTypewriterHeading, getHeroTypewriterCursorStartMs } from '@/components/branding/HeroTypewriterHeading';
+import { HeroTypewriterHeading } from '@/components/branding/HeroTypewriterHeading';
+import { getHeroTypewriterCursorStartMs } from '@/lib/hero-typewriter';
 import { BackgroundRippleEffect } from '@/components/ui/background-ripple-effect';
 import { PointerHighlight } from '@/components/ui/pointer-highlight';
 

@@ -78,6 +78,15 @@ Referencias oficiais / canonicas para a regra mental:
 - Rodar `npm run lint` no `frontend/` e tratar avisos `react-refresh/only-export-components`.
 - Se após salvar um `.tsx` a aba recarregar por completo, inspecionar `export` mistos nesse arquivo ou nos imports diretos do mesmo “chunk” de UI.
 
+### Onde vivem utilitarios e hooks extraidos (fast-refresh-friendly)
+
+- **Tema**: `ThemeContext` em `frontend/src/components/theme-context.tsx`; `ThemeProvider` em `ThemeProvider.tsx`; consumir com `useTheme` de `frontend/src/hooks/use-theme.ts` (nao reexportar o hook no provider).
+- **Sidebar**: `SidebarContext` em `frontend/src/components/ui/sidebar-context.tsx`; `useSidebar` em `frontend/src/hooks/use-sidebar.ts`; componentes exportados continuam em `ui/sidebar.tsx`.
+- **CVA compartilhado**: `buttonVariants` em `frontend/src/lib/button-variants.ts`; `toggleVariants` em `lib/toggle-variants.ts`; `navigationMenuTriggerStyle` em `lib/navigation-menu-trigger-style.ts` (componentes `ui/` importam dali e exportam só componentes).
+- **Form (shadcn)**: contexto + `useFormField` em `frontend/src/components/ui/form-field-context.tsx`; `form.tsx` exporta apenas componentes de formulario — para primitivas customizadas, importar `useFormField` de `form-field-context`, nao misturar reexport no `form.tsx`.
+- **Toaster**: `frontend/src/components/ui/sonner.tsx` exporta só `Toaster`; `toast` continua vindo de `sonner` onde precisar.
+- **Hero login**: timing do typewriter em `frontend/src/lib/hero-typewriter.ts`; heading só exporta o componente.
+
 ## Checklist antes de finalizar
 
 - [ ] Tokens e utilitarios visuais seguem `index.css`
