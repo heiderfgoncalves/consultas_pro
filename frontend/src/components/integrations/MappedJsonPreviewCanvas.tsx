@@ -1,4 +1,10 @@
-import { type ReactNode, type RefObject } from 'react';
+import {
+  type ReactNode,
+  type RefObject,
+  useCallback,
+  useRef,
+  useState,
+} from 'react';
 import {
   User, AlertTriangle, Gauge, FileWarning, Building2, FileX, Users,
   DollarSign, TrendingUp, Award, Tag, Hash,
@@ -153,7 +159,16 @@ function HighlightedJsonLine({ line, searchQuery }: { line: string; searchQuery?
   );
 }
 
-const PREVIEW_TYPE_REORDER_MIME = 'application/x-consultas-pro-mapped-type';
+const PREVIEW_BADGE_DRAG_LOCK = 14;
+const PREVIEW_BADGE_STACK_SLIDE = 36;
+
+type BadgeDragState = {
+  key: string;
+  x0: number;
+  y0: number;
+  mode: null | 'stack' | 'doc';
+  pointerId: number;
+};
 
 export function MappedJsonPreviewCanvas({
   jsonText,
@@ -162,7 +177,8 @@ export function MappedJsonPreviewCanvas({
   highlightQuery,
   highlightNavigation,
   scrollBodyRef,
-  onReorderMappedTypes,
+  onPreviewSectionDocReorder,
+  onPreviewSectionStackSwap,
 }: {
   jsonText: string;
   lineMeta: LineGutterMeta[];
@@ -173,11 +189,79 @@ export function MappedJsonPreviewCanvas({
   /** Com índice ativo: realça a ocorrência atual (âmbar) e permite scroll externo */
   highlightNavigation?: { matches: TextMatch[]; activeIndex: number };
   scrollBodyRef?: RefObject<HTMLDivElement | null>;
-  /** Arrastar badge de tipo sobre outro cabeçalho para trocar a ordem no JSON e na coluna Tipos */
-  onReorderMappedTypes?: (fromTypeKey: string, toTypeKey: string) => void;
+  /** Soltar após arraste vertical: move o bloco do tipo no JSON e na coluna Tipos */
+  onPreviewSectionDocReorder?: (fromTypeKey: string, toTypeKey: string) => void;
+  /** Arraste horizontal dominante: troca só a sobreposição visual (z-order) */
+  onPreviewSectionStackSwap?: (typeKey: string, direction: -1 | 1) => void;
 }) {
   const lines = jsonText.length ? jsonText.split('\n') : ['{}'];
-  const reorderEnabled = Boolean(onReorderMappedTypes);
+  const canBadgeDrag = Boolean(onPreviewSectionDocReorder || onPreviewSectionStackSwap);
+  const badgeDragRef = useRef<BadgeDragState | null>(null);
+  const [badgeDraggingKey, setBadgeDraggingKey] = useState<string | null>(null);
+
+  const finishBadgeDrag = useCallback(
+    (e: React.PointerEvent | PointerEvent) => {
+      const d = badgeDragRef.current;
+      badgeDragRef.current = null;
+      setBadgeDraggingKey(null);
+      if (!d) return;
+      const dx = e.clientX - d.x0;
+      const dy = e.clientY - d.y0;
+      if (d.mode === 'stack' && onPreviewSectionStackSwap) {
+        if (dx > PREVIEW_BADGE_STACK_SLIDE) onPreviewSectionStackSwap(d.key, 1);
+        else if (dx < -PREVIEW_BADGE_STACK_SLIDE) onPreviewSectionStackSwap(d.key, -1);
+      } else if (d.mode === 'doc' && onPreviewSectionDocReorder) {
+        const el = document.elementFromPoint(e.clientX, e.clientY);
+        const node = el?.closest?.('[data-preview-section-type]');
+        const raw = node?.getAttribute('data-preview-section-type');
+        const tgt = raw?.trim();
+        if (tgt && tgt !== d.key) onPreviewSectionDocReorder(d.key, tgt);
+      }
+    },
+    [onPreviewSectionDocReorder, onPreviewSectionStackSwap],
+  );
+
+  const onBadgePointerDown = useCallback(
+    (e: React.PointerEvent, typeKey: string) => {
+      if (!canBadgeDrag) return;
+      e.preventDefault();
+      e.stopPropagation();
+      (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+      badgeDragRef.current = {
+        key: typeKey,
+        x0: e.clientX,
+        y0: e.clientY,
+        mode: null,
+        pointerId: e.pointerId,
+      };
+      setBadgeDraggingKey(typeKey);
+    },
+    [canBadgeDrag],
+  );
+
+  const onBadgePointerMove = useCallback((e: React.PointerEvent) => {
+    const d = badgeDragRef.current;
+    if (!d || d.pointerId !== e.pointerId) return;
+    const dx = e.clientX - d.x0;
+    const dy = e.clientY - d.y0;
+    if (!d.mode && (Math.abs(dx) > PREVIEW_BADGE_DRAG_LOCK || Math.abs(dy) > PREVIEW_BADGE_DRAG_LOCK)) {
+      d.mode = Math.abs(dx) >= Math.abs(dy) ? 'stack' : 'doc';
+    }
+  }, []);
+
+  const onBadgePointerUp = useCallback(
+    (e: React.PointerEvent) => {
+      const d = badgeDragRef.current;
+      if (!d || d.pointerId !== e.pointerId) return;
+      try {
+        (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+      } catch {
+        /* ignore */
+      }
+      finishBadgeDrag(e);
+    },
+    [finishBadgeDrag],
+  );
 
   return (
     <div
@@ -204,6 +288,7 @@ export function MappedJsonPreviewCanvas({
               highlightNavigation &&
               highlightQuery?.trim() &&
               highlightNavigation.matches.length > 0;
+            const hitType = meta.sectionHitTypeKey ?? meta.sectionTypeKey;
             return (
               <div
                 key={i}
@@ -214,15 +299,17 @@ export function MappedJsonPreviewCanvas({
                   meta.isDuplicateLine &&
                     'border-l-[3px] border-destructive bg-destructive/[0.07] dark:bg-destructive/[0.11]',
                 )}
+                {...(hitType ? { 'data-preview-section-type': hitType } : {})}
               >
                 {meta.sessionWashClass ? (
                   <div
                     className={cn(
-                      'pointer-events-none absolute inset-0 z-0',
+                      'pointer-events-none absolute inset-0',
                       meta.sessionWashClass,
                       meta.isSectionHeaderLine &&
                         '[box-shadow:inset_0_-1px_0_0_hsl(var(--border)_/_0.35)]',
                     )}
+                    style={{ zIndex: meta.sessionWashStackZ ?? 0 }}
                     aria-hidden
                   />
                 ) : null}
@@ -233,32 +320,7 @@ export function MappedJsonPreviewCanvas({
                   )}
                   title={meta.title}
                 />
-                <div
-                  className="relative z-10 flex min-h-0 min-w-0 flex-1 items-center"
-                  onDragOver={
-                    reorderEnabled && meta.isSectionHeaderLine && meta.sectionTypeKey
-                      ? (e) => {
-                          e.preventDefault();
-                          e.dataTransfer.dropEffect = 'move';
-                        }
-                      : undefined
-                  }
-                  onDrop={
-                    reorderEnabled && meta.isSectionHeaderLine && meta.sectionTypeKey
-                      ? (e) => {
-                          e.preventDefault();
-                          const raw =
-                            e.dataTransfer.getData(PREVIEW_TYPE_REORDER_MIME)
-                            || e.dataTransfer.getData('text/plain');
-                          const fromKey = raw?.trim();
-                          const toKey = meta.sectionTypeKey;
-                          if (fromKey && toKey && fromKey !== toKey) {
-                            onReorderMappedTypes?.(fromKey, toKey);
-                          }
-                        }
-                      : undefined
-                  }
-                >
+                <div className="relative z-10 flex min-h-0 min-w-0 flex-1 items-center">
                   <code className="block min-w-0 flex-1 whitespace-pre pl-2 pr-2 font-mono text-[11px] leading-[1.55] text-foreground/90">
                     {line.length > 0 ? (
                       useNav ? (
@@ -279,32 +341,33 @@ export function MappedJsonPreviewCanvas({
                     <div
                       className={cn(
                         'sticky right-1 ml-auto flex max-w-[9.5rem] shrink-0 flex-row flex-nowrap items-center justify-end gap-1 rounded-l-full bg-gradient-to-l from-card via-card/95 to-transparent pl-3 pr-1 shadow-sm dark:from-card dark:via-card/95',
-                        reorderEnabled ? 'pointer-events-auto cursor-grab active:cursor-grabbing' : 'pointer-events-none',
+                        canBadgeDrag && meta.sectionTypeKey
+                          ? 'pointer-events-auto touch-none cursor-grab active:cursor-grabbing'
+                          : 'pointer-events-none',
+                        badgeDraggingKey === meta.sectionTypeKey && 'cursor-grabbing',
                       )}
                       style={{
                         zIndex: meta.sectionBadgeStackZ ?? 24,
                       }}
                       title={
-                        reorderEnabled && meta.sectionTypeKey
-                          ? `${meta.sectionBadgeLabel} — arraste para reordenar tipos`
+                        canBadgeDrag && meta.sectionTypeKey
+                          ? `${meta.sectionBadgeLabel} — horizontal: sobreposição · vertical: mover bloco`
                           : meta.sectionBadgeLabel
                       }
+                      onPointerDown={
+                        canBadgeDrag && meta.sectionTypeKey
+                          ? (e) => onBadgePointerDown(e, meta.sectionTypeKey!)
+                          : undefined
+                      }
+                      onPointerMove={canBadgeDrag ? onBadgePointerMove : undefined}
+                      onPointerUp={canBadgeDrag ? onBadgePointerUp : undefined}
+                      onPointerCancel={canBadgeDrag ? onBadgePointerUp : undefined}
                     >
                       <Badge
                         variant="outline"
-                        draggable={reorderEnabled && Boolean(meta.sectionTypeKey)}
-                        onDragStart={
-                          reorderEnabled && meta.sectionTypeKey
-                            ? (e) => {
-                                e.dataTransfer.setData(PREVIEW_TYPE_REORDER_MIME, meta.sectionTypeKey!);
-                                e.dataTransfer.setData('text/plain', meta.sectionTypeKey!);
-                                e.dataTransfer.effectAllowed = 'move';
-                              }
-                            : undefined
-                        }
                         className={cn(
                           'flex h-5 max-w-[8.75rem] items-center gap-1 truncate border-border bg-card/95 pl-1 pr-1.5 text-[9px] font-normal text-muted-foreground shadow-sm dark:border-border dark:bg-card/90',
-                          reorderEnabled && meta.sectionTypeKey && 'select-none',
+                          canBadgeDrag && meta.sectionTypeKey && 'pointer-events-none select-none',
                         )}
                       >
                         {typeof meta.sectionBadgeOrdinal === 'number' ? (

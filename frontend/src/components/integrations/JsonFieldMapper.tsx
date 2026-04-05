@@ -62,6 +62,7 @@ import {
   parsePreviewPartText,
   zipAlignedMappedPreviewRows,
 } from '@/lib/consultationMappedPreview';
+import { isMappedPreviewZipWrapper, wrapMappedPreviewZippedRows } from '@/lib/mappedPreviewZipWrapper';
 import { toast } from 'sonner';
 import { findTextMatches, toAbsoluteMatchRanges, type TextMatch } from '@/lib/jsonSearchHighlight';
 
@@ -123,6 +124,14 @@ function mergeFieldTypeDisplayOrder(
 }
 
 /** Reordena `mappings` para que tipos apareçam na ordem de `typeOrder` (preview / coluna Tipos). */
+/** Preserva posições dos tipos não mapeados; só permuta os slots dos tipos presentes em `orderFromMappings`. */
+function applyMappingDocOrderToPanelOrder(merged: string[], orderFromMappings: string[]): string[] {
+  if (orderFromMappings.length === 0) return merged;
+  const mappedSet = new Set(orderFromMappings);
+  let fill = 0;
+  return merged.map((k) => (mappedSet.has(k) ? orderFromMappings[fill++]! : k));
+}
+
 function reorderMappingsByTypeOrder(mappings: FieldMapping[], typeOrder: string[]): FieldMapping[] {
   const byType = new Map<string, FieldMapping[]>();
   for (const m of mappings) {
@@ -724,6 +733,8 @@ export default function JsonFieldMapper({
   const [fieldTypeDisplayOrder, setFieldTypeDisplayOrder] = useState<string[]>(() =>
     fieldTypes.map((ft) => ft.key),
   );
+  /** Ordem de sobreposição no preview (horizontal no badge); independente da ordem no JSON/coluna. */
+  const [previewTypeStackOrder, setPreviewTypeStackOrder] = useState<string[] | null>(null);
 
   const typeReorderSensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
 
@@ -744,8 +755,7 @@ export default function JsonFieldMapper({
         }
       }
       if (orderFromMappings.length === 0) return merged;
-      const rest = merged.filter((k) => !seen.has(k));
-      return [...orderFromMappings, ...rest];
+      return applyMappingDocOrderToPanelOrder(merged, orderFromMappings);
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps -- `mappings` alinhado a `mappingTypeKeysSig` (evita loop por referência)
   }, [fieldTypes, mappingTypeKeysSig]);
@@ -1174,6 +1184,29 @@ export default function JsonFieldMapper({
     [fieldTypeDisplayOrder, mappedTypeKeySet],
   );
 
+  useEffect(() => {
+    setPreviewTypeStackOrder((prev) => {
+      if (typeKeysInOrder.length === 0) return null;
+      const set = new Set(typeKeysInOrder);
+      if (!prev || prev.length === 0) return [...typeKeysInOrder];
+      const kept = prev.filter((k) => set.has(k));
+      const missing = typeKeysInOrder.filter((k) => !kept.includes(k));
+      return [...kept, ...missing];
+    });
+  }, [typeKeysInOrder]);
+
+  const previewStackOrderEffective = useMemo(() => {
+    if (
+      previewTypeStackOrder
+      && previewTypeStackOrder.length === typeKeysInOrder.length
+      && typeKeysInOrder.every((k) => previewTypeStackOrder.includes(k))
+      && previewTypeStackOrder.every((k) => typeKeysInOrder.includes(k))
+    ) {
+      return previewTypeStackOrder;
+    }
+    return typeKeysInOrder;
+  }, [previewTypeStackOrder, typeKeysInOrder]);
+
   const sortedFieldTypesForPanel = useMemo(() => {
     const byKey = new Map(fieldTypes.map((ft) => [ft.key, ft]));
     return fieldTypeDisplayOrder
@@ -1215,6 +1248,24 @@ export default function JsonFieldMapper({
     [fieldTypeDisplayOrder, displayRegions, mappings, onMappingsChange],
   );
 
+  const handlePreviewStackSwap = useCallback(
+    (typeKey: string, dir: -1 | 1) => {
+      setPreviewTypeStackOrder((prev) => {
+        const valid =
+          prev
+          && prev.length === typeKeysInOrder.length
+          && typeKeysInOrder.every((k) => prev.includes(k));
+        const base = valid ? [...prev!] : [...typeKeysInOrder];
+        const i = base.indexOf(typeKey);
+        if (i < 0) return prev;
+        const j = i + dir;
+        if (j < 0 || j >= base.length) return prev;
+        return arrayMove(base, i, j);
+      });
+    },
+    [typeKeysInOrder],
+  );
+
   const suggestionsByType = useMemo(() => {
     const keys = [...new Set(displayRegions.map(r => r.fieldTypeKey))];
     const out: Record<string, ReturnType<typeof collectFilterSuggestionsForMappedRegions>> = {};
@@ -1250,7 +1301,11 @@ export default function JsonFieldMapper({
   const mappedPreviewPayload = useMemo(() => {
     const byType: Record<string, unknown> = {};
     const keyToMeta = new Map<string, LineGutterMeta>();
-    const rowInfo = new Map<string, { rows: Record<string, unknown>[]; dedupKeys: string[] }>();
+    const rowInfo = new Map<
+      string,
+      { rows: Record<string, unknown>[]; dedupKeys: string[]; dedupSummary?: Record<string, unknown> }
+    >();
+    const stackRank = new Map(previewStackOrderEffective.map((k, i) => [k, i]));
 
     for (let pi = 0; pi < previewByType.length; pi++) {
       const row = previewByType[pi]!;
@@ -1289,8 +1344,8 @@ export default function JsonFieldMapper({
         parsedParts,
         partPaths: row.parts.map((p) => p.path),
       });
-      const allFieldRows = [...mappedFieldRows, ...computedFieldRows];
       const colors = getColors(row.ft.color);
+      const sr = stackRank.get(row.fieldTypeKey) ?? pi;
       keyToMeta.set(row.fieldTypeKey, {
         barClass: colors.solid,
         title: `${row.ft.label} · tipo ${row.ft.key}`,
@@ -1298,30 +1353,56 @@ export default function JsonFieldMapper({
         sectionBadgeIcon: row.ft.icon,
         sectionTypeKey: row.fieldTypeKey,
         sectionBadgeOrdinal: pi + 1,
-        sectionBadgeStackZ: 28 + pi,
+        sectionBadgeStackZ: 26 + sr * 4,
+        sessionWashStackZ: 2 + sr,
         sessionWashClass: colors.sessionWash,
       });
-      const displayFieldKeys = dedupeReportFieldKeys(allFieldRows.map((item) => item.baseKey));
+      const mappedDisplayKeys = dedupeReportFieldKeys(mappedFieldRows.map((item) => item.baseKey));
+      const computedDisplayKeys = dedupeReportFieldKeys(computedFieldRows.map((item) => item.baseKey));
       const dedupFieldIdSet = new Set(filterCfg.dedupFieldIds);
-      const block: Record<string, unknown> = {};
+      const mappedBlock: Record<string, unknown> = {};
+      const computedBlock: Record<string, unknown> = {};
       const dedupDisplayKeys: string[] = [];
-      allFieldRows.forEach((fieldRow, index) => {
-        const displayKey = displayFieldKeys[index]!;
-        block[displayKey] = fieldRow.value;
+      const dedupSummary: Record<string, unknown> = {};
+      mappedFieldRows.forEach((fieldRow, index) => {
+        const displayKey = mappedDisplayKeys[index]!;
+        mappedBlock[displayKey] = fieldRow.value;
         if (dedupFieldIdSet.has(fieldRow.reportFieldId)) {
           dedupDisplayKeys.push(displayKey);
         }
       });
-      const zipped = zipAlignedMappedPreviewRows(block);
+      computedFieldRows.forEach((fieldRow, index) => {
+        const displayKey = computedDisplayKeys[index]!;
+        computedBlock[displayKey] = fieldRow.value;
+        if (dedupFieldIdSet.has(fieldRow.reportFieldId)) {
+          dedupDisplayKeys.push(displayKey);
+          dedupSummary[displayKey] = fieldRow.value;
+        }
+      });
+      const zippedMapped = zipAlignedMappedPreviewRows(mappedBlock);
+      let zipped: unknown;
+      if (Array.isArray(zippedMapped) && Object.keys(computedBlock).length > 0) {
+        zipped = wrapMappedPreviewZippedRows(zippedMapped as Record<string, unknown>[], computedBlock);
+      } else if (!Array.isArray(zippedMapped) && Object.keys(computedBlock).length > 0) {
+        zipped = { ...(zippedMapped as Record<string, unknown>), ...computedBlock };
+      } else {
+        zipped = zippedMapped;
+      }
+      const rowsForDedup = isMappedPreviewZipWrapper(zipped)
+        ? zipped.linhas
+        : Array.isArray(zippedMapped)
+          ? (zippedMapped as Record<string, unknown>[])
+          : null;
       if (
         dedupDisplayKeys.length > 0
-        && Array.isArray(zipped)
-        && zipped.length > 0
-        && zipped.every((el) => el != null && typeof el === 'object' && !Array.isArray(el))
+        && rowsForDedup != null
+        && rowsForDedup.length > 0
+        && rowsForDedup.every((el) => el != null && typeof el === 'object' && !Array.isArray(el))
       ) {
         rowInfo.set(row.fieldTypeKey, {
-          rows: zipped as Record<string, unknown>[],
+          rows: rowsForDedup,
           dedupKeys: dedupDisplayKeys,
+          ...(Object.keys(dedupSummary).length > 0 ? { dedupSummary } : {}),
         });
       }
       byType[row.fieldTypeKey] = zipped;
@@ -1348,6 +1429,7 @@ export default function JsonFieldMapper({
   }, [
     previewByType,
     typeKeysInOrder,
+    previewStackOrderEffective,
     openFilterTypeKey,
     draftTypeFilters,
     typeFilters,
@@ -2127,7 +2209,8 @@ export default function JsonFieldMapper({
                         : undefined
                     }
                     scrollBodyRef={previewScrollRef}
-                    onReorderMappedTypes={handlePreviewMappedTypeReorder}
+                    onPreviewSectionDocReorder={handlePreviewMappedTypeReorder}
+                    onPreviewSectionStackSwap={handlePreviewStackSwap}
                   />
                 </div>
               ) : (

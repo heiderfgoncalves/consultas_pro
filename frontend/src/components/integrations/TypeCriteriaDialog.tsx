@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   DndContext,
   PointerSensor,
@@ -183,6 +183,128 @@ function ReportFieldDataTypeIcon({
   return <Icon className={cn('h-4 w-4 shrink-0', className)} aria-hidden />;
 }
 
+type ComputedFieldRowProps = {
+  comp: TypeComputedFieldDefinition;
+  dedupChecked: boolean;
+  sourceItems: { id: string; label: string; key: string }[];
+  onPatch: (computedId: string, patch: Partial<TypeComputedFieldDefinition>) => void;
+  onRemove: (computedId: string) => void;
+  onToggleDedup: (reportFieldId: string, checked: boolean) => void;
+};
+
+/** Estado local no nome evita re-renderizar o diálogo inteiro a cada tecla. Select usa portal padrão (body) para não ser recortado pelo `overflow-hidden` do modal. */
+const ComputedFieldRow = memo(function ComputedFieldRow({
+  comp,
+  dedupChecked,
+  sourceItems,
+  onPatch,
+  onRemove,
+  onToggleDedup,
+}: ComputedFieldRowProps) {
+  const [labelDraft, setLabelDraft] = useState(comp.label);
+
+  useEffect(() => {
+    setLabelDraft(comp.label);
+  }, [comp.label, comp.id]);
+
+  const commitLabel = () => {
+    const nextKey = slugifyReportFieldKey(labelDraft || 'campo');
+    if (labelDraft === comp.label && nextKey === comp.key) return;
+    onPatch(comp.id, { label: labelDraft, key: nextKey });
+  };
+
+  return (
+    <div
+      className="grid grid-cols-1 gap-2 rounded-md border border-primary/25 bg-primary/[0.04] px-2 py-1.5 sm:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)_auto]"
+    >
+      <div className="flex min-w-0 flex-col gap-1">
+        <Input
+          value={labelDraft}
+          onChange={(e) => setLabelDraft(e.target.value)}
+          onBlur={commitLabel}
+          placeholder="Nome (ex: total)"
+          className="h-8 border-border/50 bg-background px-2 text-xs"
+        />
+        <Select
+          value={comp.dataType}
+          onValueChange={(v) => onPatch(comp.id, { dataType: v as ReportFieldDataType })}
+        >
+          <SelectTrigger className="h-8 border-border/50 bg-background text-[11px]">
+            <SelectValue placeholder="Tipo de saída" />
+          </SelectTrigger>
+          <SelectContent className="z-[200]">
+            {REPORT_DATA_TYPE_OPTIONS.map((opt) => (
+              <SelectItem key={opt.value} value={opt.value} className="text-xs">
+                {opt.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+      <div className="flex min-w-0 flex-col gap-1 sm:flex-row sm:items-stretch">
+        <Select
+          value={comp.operator}
+          onValueChange={(v) => onPatch(comp.id, { operator: v as TypeComputedFieldOperator })}
+        >
+          <SelectTrigger className="h-8 shrink-0 border-border/50 bg-background text-[11px] sm:w-[6.5rem]">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent className="z-[200]">
+            {COMPUTED_OPS.map((op) => (
+              <SelectItem key={op.value} value={op.value} className="text-xs">
+                {op.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Select
+          value={comp.sourceReportFieldId || SENTINEL_EMPTY}
+          onValueChange={(v) => {
+            if (v === SENTINEL_EMPTY) {
+              onPatch(comp.id, { sourceReportFieldId: '' });
+              return;
+            }
+            onPatch(comp.id, { sourceReportFieldId: v });
+          }}
+        >
+          <SelectTrigger className="h-8 min-w-0 flex-1 border-border/50 bg-background text-[11px]">
+            <SelectValue placeholder="Campo fonte" />
+          </SelectTrigger>
+          <SelectContent className="max-h-60 z-[200]">
+            <SelectItem value={SENTINEL_EMPTY} className="text-xs text-muted-foreground">
+              Campo fonte…
+            </SelectItem>
+            {sourceItems.map((f) => (
+              <SelectItem key={f.id} value={f.id} className="text-xs">
+                <span className="font-medium">{f.label || f.key}</span>
+                <span className="text-muted-foreground"> · {f.key}</span>
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+      <div className="flex items-center justify-end gap-0.5 sm:flex-col sm:justify-center">
+        <Checkbox
+          checked={dedupChecked}
+          onCheckedChange={(value) => onToggleDedup(comp.id, value === true)}
+          aria-label={`Deduplicar por ${comp.label || 'campo calculado'}`}
+          className="h-4 w-4"
+        />
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="h-8 w-8 shrink-0 text-muted-foreground hover:text-destructive"
+          onClick={() => onRemove(comp.id)}
+          aria-label="Remover campo calculado"
+        >
+          <Trash2 className="h-3.5 w-3.5" />
+        </Button>
+      </div>
+    </div>
+  );
+});
+
 function SortableRuleRow({
   rule,
   children,
@@ -245,6 +367,8 @@ export default function TypeCriteriaDialog({
   /** true = escolher path na lista (Select); false = path livre (Input), como critérios + Livre. */
   const [pathListModeByReportFieldId, setPathListModeByReportFieldId] = useState<Record<string, boolean>>({});
   const [criteriaModalEl, setCriteriaModalEl] = useState<HTMLDivElement | null>(null);
+  const draftRef = useRef(draftConfig);
+  draftRef.current = draftConfig;
   const dialogWasOpenRef = useRef(false);
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
@@ -485,27 +609,35 @@ export default function TypeCriteriaDialog({
     });
   };
 
-  const toggleDedupField = (reportFieldId: string, checked: boolean) => {
+  const toggleDedupField = useCallback((reportFieldId: string, checked: boolean) => {
+    const prev = draftRef.current;
     const nextDedupFieldIds = checked
-      ? draftConfig.dedupFieldIds.includes(reportFieldId)
-        ? draftConfig.dedupFieldIds
-        : [...draftConfig.dedupFieldIds, reportFieldId]
-      : draftConfig.dedupFieldIds.filter((fieldId) => fieldId !== reportFieldId);
+      ? prev.dedupFieldIds.includes(reportFieldId)
+        ? prev.dedupFieldIds
+        : [...prev.dedupFieldIds, reportFieldId]
+      : prev.dedupFieldIds.filter((fieldId) => fieldId !== reportFieldId);
     onDraftChange({
-      ...draftConfig,
+      ...prev,
       dedupFieldIds: nextDedupFieldIds,
     });
-  };
+  }, [onDraftChange]);
 
   const computedFields = draftConfig.computedFields ?? [];
 
+  const computedSourceFieldItems = useMemo(
+    () => reportFields.map((f) => ({ id: f.id, label: f.label, key: f.key })),
+    [reportFields],
+  );
+
   const addComputedField = () => {
+    const prev = draftRef.current;
+    const prevComputed = prev.computedFields ?? [];
     const id = `computed_${Math.random().toString(36).slice(2, 11)}`;
     const defaultLabel = 'Campo calculado';
     onDraftChange({
-      ...draftConfig,
+      ...prev,
       computedFields: [
-        ...computedFields,
+        ...prevComputed,
         {
           id,
           label: defaultLabel,
@@ -518,20 +650,22 @@ export default function TypeCriteriaDialog({
     });
   };
 
-  const patchComputedField = (computedId: string, patch: Partial<TypeComputedFieldDefinition>) => {
+  const patchComputedField = useCallback((computedId: string, patch: Partial<TypeComputedFieldDefinition>) => {
+    const prev = draftRef.current;
     onDraftChange({
-      ...draftConfig,
-      computedFields: computedFields.map((c) => (c.id === computedId ? { ...c, ...patch } : c)),
+      ...prev,
+      computedFields: (prev.computedFields ?? []).map((c) => (c.id === computedId ? { ...c, ...patch } : c)),
     });
-  };
+  }, [onDraftChange]);
 
-  const removeComputedField = (computedId: string) => {
+  const removeComputedField = useCallback((computedId: string) => {
+    const prev = draftRef.current;
     onDraftChange({
-      ...draftConfig,
-      computedFields: computedFields.filter((c) => c.id !== computedId),
-      dedupFieldIds: draftConfig.dedupFieldIds.filter((fieldId) => fieldId !== computedId),
+      ...prev,
+      computedFields: (prev.computedFields ?? []).filter((c) => c.id !== computedId),
+      dedupFieldIds: prev.dedupFieldIds.filter((fieldId) => fieldId !== computedId),
     });
-  };
+  }, [onDraftChange]);
 
   const criteriaSubtitle =
     activeRuleCount > 0
@@ -546,7 +680,6 @@ export default function TypeCriteriaDialog({
         ref={setCriteriaModalEl}
         showClose={false}
         className="flex max-h-[92vh] w-[min(72rem,calc(100vw-1.5rem))] max-w-[min(72rem,95vw)] flex-col gap-0 overflow-hidden border border-border/60 bg-background p-5 shadow-sm sm:rounded-lg"
-        onOpenAutoFocus={(e) => e.preventDefault()}
       >
         <DialogHeader className="sr-only">
           <DialogTitle>Mapeamento e critérios — {fieldType.label}</DialogTitle>
@@ -773,109 +906,17 @@ export default function TypeCriteriaDialog({
                       <p className="text-[10px] italic text-muted-foreground">Nenhum campo calculado.</p>
                     ) : (
                       <div className="space-y-1">
-                        {computedFields.map((comp) => {
-                          const dedupChecked = draftConfig.dedupFieldIds.includes(comp.id);
-                          return (
-                            <div
-                              key={comp.id}
-                              className="grid grid-cols-1 gap-2 rounded-md border border-primary/25 bg-primary/[0.04] px-2 py-1.5 sm:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)_auto]"
-                            >
-                              <div className="flex min-w-0 flex-col gap-1">
-                                <Input
-                                  value={comp.label}
-                                  onChange={(e) => {
-                                    const label = e.target.value;
-                                    patchComputedField(comp.id, {
-                                      label,
-                                      key: slugifyReportFieldKey(label || 'campo'),
-                                    });
-                                  }}
-                                  placeholder="Nome (ex: total)"
-                                  className="h-8 border-border/50 bg-background px-2 text-xs"
-                                />
-                                <Select
-                                  value={comp.dataType}
-                                  onValueChange={(v) =>
-                                    patchComputedField(comp.id, { dataType: v as ReportFieldDataType })
-                                  }
-                                >
-                                  <SelectTrigger className="h-8 border-border/50 bg-background text-[11px]">
-                                    <SelectValue placeholder="Tipo de saída" />
-                                  </SelectTrigger>
-                                  <SelectContent className="z-[200]">
-                                    {REPORT_DATA_TYPE_OPTIONS.map((opt) => (
-                                      <SelectItem key={opt.value} value={opt.value} className="text-xs">
-                                        {opt.label}
-                                      </SelectItem>
-                                    ))}
-                                  </SelectContent>
-                                </Select>
-                              </div>
-                              <div className="flex min-w-0 flex-col gap-1 sm:flex-row sm:items-stretch">
-                                <Select
-                                  value={comp.operator}
-                                  onValueChange={(v) =>
-                                    patchComputedField(comp.id, { operator: v as TypeComputedFieldOperator })
-                                  }
-                                >
-                                  <SelectTrigger className="h-8 shrink-0 border-border/50 bg-background text-[11px] sm:w-[6.5rem]">
-                                    <SelectValue />
-                                  </SelectTrigger>
-                                  <SelectContent className="z-[200]">
-                                    {COMPUTED_OPS.map((op) => (
-                                      <SelectItem key={op.value} value={op.value} className="text-xs">
-                                        {op.label}
-                                      </SelectItem>
-                                    ))}
-                                  </SelectContent>
-                                </Select>
-                                <Select
-                                  value={comp.sourceReportFieldId || SENTINEL_EMPTY}
-                                  onValueChange={(v) => {
-                                    if (v === SENTINEL_EMPTY) {
-                                      patchComputedField(comp.id, { sourceReportFieldId: '' });
-                                      return;
-                                    }
-                                    patchComputedField(comp.id, { sourceReportFieldId: v });
-                                  }}
-                                >
-                                  <SelectTrigger className="h-8 min-w-0 flex-1 border-border/50 bg-background text-[11px]">
-                                    <SelectValue placeholder="Campo fonte" />
-                                  </SelectTrigger>
-                                  <SelectContent className="max-h-60 z-[200]">
-                                    <SelectItem value={SENTINEL_EMPTY} className="text-xs text-muted-foreground">
-                                      Campo fonte…
-                                    </SelectItem>
-                                    {reportFields.map((f) => (
-                                      <SelectItem key={f.id} value={f.id} className="text-xs">
-                                        <span className="font-medium">{f.label || f.key}</span>
-                                        <span className="text-muted-foreground"> · {f.key}</span>
-                                      </SelectItem>
-                                    ))}
-                                  </SelectContent>
-                                </Select>
-                              </div>
-                              <div className="flex items-center justify-end gap-0.5 sm:flex-col sm:justify-center">
-                                <Checkbox
-                                  checked={dedupChecked}
-                                  onCheckedChange={(value) => toggleDedupField(comp.id, value === true)}
-                                  aria-label={`Deduplicar por ${comp.label || 'campo calculado'}`}
-                                  className="h-4 w-4"
-                                />
-                                <Button
-                                  type="button"
-                                  variant="ghost"
-                                  size="icon"
-                                  className="h-8 w-8 shrink-0 text-muted-foreground hover:text-destructive"
-                                  onClick={() => removeComputedField(comp.id)}
-                                  aria-label="Remover campo calculado"
-                                >
-                                  <Trash2 className="h-3.5 w-3.5" />
-                                </Button>
-                              </div>
-                            </div>
-                          );
-                        })}
+                        {computedFields.map((comp) => (
+                          <ComputedFieldRow
+                            key={comp.id}
+                            comp={comp}
+                            dedupChecked={draftConfig.dedupFieldIds.includes(comp.id)}
+                            sourceItems={computedSourceFieldItems}
+                            onPatch={patchComputedField}
+                            onRemove={removeComputedField}
+                            onToggleDedup={toggleDedupField}
+                          />
+                        ))}
                       </div>
                     )}
                   </div>
