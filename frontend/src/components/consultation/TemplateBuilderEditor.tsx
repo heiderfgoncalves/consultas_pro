@@ -546,23 +546,33 @@ export default function TemplateBuilderEditor({
                     />
                   </div>
                 ) : (
-                  <div className={`flex-1 overflow-y-auto scrollbar-thin transition-all duration-200 ${activeDragItem ? 'shadow-[inset_0_0_0_2px_hsl(var(--primary)/0.25)] bg-primary/5' : ''}`}>
-                    <BaseReportSkeleton
-                      blocks={blocks}
-                      logo={reportLogo}
-                      onLogoChange={setReportLogo}
-                      onEditSection={(sectionId) => {
-                        const block = filteredBlocks.find((b) => b.id === sectionId);
-                        setEditingBlockDraft({
-                          name: block?.name ?? sectionId,
-                          description: block?.description ?? `Seção ${sectionId}`,
-                          category: block?.category ?? 'section',
-                          template: '',
-                        });
-                        setCustomBlockEditorOpen(true);
-                      }}
-                    />
-                  </div>
+                  <PreviewDropZone hasBlocks={blocks.length > 0} activeDragItem={activeDragItem}>
+                    <div className={`transition-all duration-200 ${activeDragItem ? 'shadow-[inset_0_0_0_2px_hsl(var(--primary)/0.25)] bg-primary/5' : ''}`}>
+                      <DropIndicator id="gap-0" isOver={overDropId === 'gap-0'} />
+                      <BaseReportSkeleton
+                        blocks={blocks}
+                        logo={reportLogo}
+                        onLogoChange={setReportLogo}
+                        onEditSection={(sectionId) => {
+                          const block = filteredBlocks.find((b) => b.id === sectionId);
+                          setEditingBlockDraft({
+                            name: block?.name ?? sectionId,
+                            description: block?.description ?? `Seção ${sectionId}`,
+                            category: block?.category ?? 'section',
+                            template: block ? `<section name="${block.name}">\n  <text>${block.description}</text>\n</section>` : '',
+                          });
+                          setCustomBlockEditorOpen(true);
+                        }}
+                      />
+                      {blocks.map((block, index) => (
+                        <DropIndicator
+                          key={`gap-${index + 1}`}
+                          id={`gap-${index + 1}`}
+                          isOver={overDropId === `gap-${index + 1}`}
+                        />
+                      ))}
+                    </div>
+                  </PreviewDropZone>
                 )}
               </div>
             </ResizablePanel>

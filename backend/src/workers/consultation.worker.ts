@@ -8,6 +8,7 @@ import { callProviderProduct } from '../modules/providers/provider-client.servic
 import { normalizeProviderPayload } from '../modules/providers/normalization.service';
 import { mergeNormalizedPayloads } from '../modules/providers/merge.service';
 import {
+  applyProductOverrides,
   computeRetryDelayMs,
   resolveIntegrationSettingsForConsultationId,
   sleep,
@@ -50,7 +51,7 @@ async function processConsultation(consultationId: string) {
   }
 
   const settings = await resolveIntegrationSettingsForConsultationId(prisma, consultationId);
-  const timeoutOverride = settings.providerTimeoutOverrideMs ?? null;
+  const tenantTimeoutOverride = settings.providerTimeoutOverrideMs ?? null;
 
   await prisma.consultation.update({
     where: { id: consultationId },
@@ -59,9 +60,11 @@ async function processConsultation(consultationId: string) {
 
   const normalizedPayloads: Array<Record<string, unknown>> = [];
   let failedCount = 0;
+  let anyFailedWantsManualReview = false;
 
   for (const item of consultation.items) {
     const product = item.providerProduct;
+    const itemSettings = applyProductOverrides(settings, product.integrationOverrides);
 
     const existingSuccess = await prisma.consultationExecution.findFirst({
       where: { consultationItemId: item.id, status: 'SUCCESS' },
@@ -83,7 +86,7 @@ async function processConsultation(consultationId: string) {
       companyId: consultation.companyId,
     };
 
-    const retry = settings.executionRetry;
+    const retry = itemSettings.executionRetry;
     const windowStart = Date.now();
     let lastError: unknown = null;
     let succeeded = false;
@@ -95,7 +98,7 @@ async function processConsultation(consultationId: string) {
 
       try {
         const execution = await callProviderProduct(appLike, product.provider, product, context, {
-          timeoutMsOverride: timeoutOverride,
+          timeoutMsOverride: itemSettings.providerTimeoutOverrideMs ?? tenantTimeoutOverride,
         });
         const normalized = normalizeProviderPayload(execution.response.payload, product.mappings);
 
@@ -136,6 +139,9 @@ async function processConsultation(consultationId: string) {
     if (succeeded) continue;
 
     failedCount += 1;
+    if (itemSettings.onExhausted === 'require_manual_review') {
+      anyFailedWantsManualReview = true;
+    }
     await prisma.consultationExecution.create({
       data: {
         consultationId: consultation.id,
@@ -160,8 +166,9 @@ async function processConsultation(consultationId: string) {
 
   let finalError: string | null = null;
   if (status === 'FAILED') {
+    const tenantWantsManual = settings.onExhausted === 'require_manual_review';
     finalError =
-      settings.onExhausted === 'require_manual_review'
+      anyFailedWantsManualReview || tenantWantsManual
         ? 'Consulta requer revisão manual (política de integrações).'
         : 'Todas as execuções falharam';
   }

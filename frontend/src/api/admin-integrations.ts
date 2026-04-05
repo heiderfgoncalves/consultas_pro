@@ -3,6 +3,7 @@ import type {
   ConsultationFieldType,
   FieldMapping,
   MappingItemFilter,
+  ProductIntegrationOverrides,
   ProductSessionFieldAssignment,
   Provider,
   ProviderConsultation,
@@ -24,6 +25,11 @@ function tok(t: string | null) {
 
 export function parseProductTypeItemFilters(raw: unknown): ProviderConsultation['typeItemFilters'] {
   return parseTypeItemFiltersRecord(raw);
+}
+
+export function parseProductIntegrationOverrides(raw: unknown): ProductIntegrationOverrides | null {
+  if (raw == null || typeof raw !== 'object') return null;
+  return raw as ProductIntegrationOverrides;
 }
 
 export interface ApiCanonicalField {
@@ -87,6 +93,7 @@ export interface ApiProduct {
   queryTemplate?: unknown;
   headersTemplate?: unknown;
   typeItemFilters?: unknown;
+  integrationOverrides?: unknown;
   sessionAssignments?: ApiSessionFieldAssignment[];
   mappings: ApiFieldMapping[];
 }
@@ -314,6 +321,7 @@ export function mapApiProduct(p: ApiProduct, providerId: string): ProviderConsul
     templateLayout: p.templateLayout,
     updatedAt,
     status: p.isActive ? 'active' : 'inactive',
+    integrationOverrides: parseProductIntegrationOverrides(p.integrationOverrides),
   };
 }
 

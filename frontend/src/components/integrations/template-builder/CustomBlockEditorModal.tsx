@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { Code2, Eye, Braces, ChevronDown, ChevronRight, Search, Layers, LayoutGrid, Type as TypeIcon } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -12,6 +12,13 @@ import { evaluateExpression, type ExpressionContext } from '@/lib/expressionEngi
 import { MOCK_EXPRESSION_CONTEXT } from '@/lib/expressionMockContext';
 import { ExpressionConsole } from './ExpressionConsole';
 import { IconPicker, getIconByName } from '@/components/consultation/report-blocks';
+import {
+  DndContext, PointerSensor, useSensor, useSensors, closestCenter, type DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  SortableContext, arrayMove, useSortable, verticalListSortingStrategy,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 
 export type CustomBlockDraft = {
   name: string;
@@ -56,6 +63,37 @@ export function CustomBlockEditorModal({
   const [variableSearch, setVariableSearch] = useState('');
   const [expandedTypes, setExpandedTypes] = useState<Record<string, boolean>>({});
   const [iconName, setIconName] = useState('FileText');
+  const [layoutItems, setLayoutItems] = useState<string[]>([]);
+
+  useEffect(() => {
+    setName(initialDraft?.name ?? '');
+    setDescription(initialDraft?.description ?? '');
+    setCategory(initialDraft?.category ?? 'custom');
+    setTemplate(initialDraft?.template ?? '');
+    setLayoutItems([]);
+  }, [initialDraft, open]);
+
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
+
+  function SortableItem({ id }: { id: string }) {
+    const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
+    const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1 };
+    return (
+      <div ref={setNodeRef} style={style} {...attributes} {...listeners} className="rounded border border-dashed border-primary/30 bg-primary/5 p-2 text-[10px] font-mono cursor-grab active:cursor-grabbing">
+        {id}
+      </div>
+    );
+  }
+
+  const handleLayoutDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const oldIndex = layoutItems.indexOf(String(active.id));
+    const newIndex = layoutItems.indexOf(String(over.id));
+    if (oldIndex >= 0 && newIndex >= 0) {
+      setLayoutItems((prev) => arrayMove(prev, oldIndex, newIndex));
+    }
+  };
 
   const typeFieldVars = useMemo(() => buildTypeFieldVariables(fieldTypes), [fieldTypes]);
   const ctx: ExpressionContext = MOCK_EXPRESSION_CONTEXT;
@@ -90,6 +128,7 @@ export function CustomBlockEditorModal({
 
   const insertAtCursor = (text: string) => {
     setTemplate((prev) => prev + text);
+    setLayoutItems((prev) => [...prev, text.trim().split('\n')[0] || text.trim()]);
   };
 
   const handleSave = () => {
@@ -220,9 +259,18 @@ export function CustomBlockEditorModal({
                       <p className="text-[9px] text-muted-foreground/40">Insira blocos da coluna esquerda ou escreva XML na coluna direita</p>
                     </div>
                   ) : (
-                    <div className="rounded-lg border-2 border-dashed border-border/40 p-3 min-h-[100px]">
-                      <div className="text-xs" dangerouslySetInnerHTML={{ __html: renderedHtml }} />
-                    </div>
+                    <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleLayoutDragEnd}>
+                      <div className="rounded-lg border-2 border-dashed border-border/40 p-3 min-h-[100px] space-y-2">
+                        <SortableContext items={layoutItems} strategy={verticalListSortingStrategy}>
+                          {layoutItems.map((item) => (
+                            <SortableItem key={item} id={item} />
+                          ))}
+                        </SortableContext>
+                        <div className="rounded border border-dashed border-border/30 p-2 mt-3">
+                          <div className="text-xs" dangerouslySetInnerHTML={{ __html: renderedHtml }} />
+                        </div>
+                      </div>
+                    </DndContext>
                   )}
                 </div>
               </div>

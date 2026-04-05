@@ -827,6 +827,12 @@ export async function registerAdminRoutes(app: FastifyInstance) {
       data.typeItemFilters =
         payload.typeItemFilters === null ? Prisma.JsonNull : (payload.typeItemFilters as Prisma.InputJsonValue);
     }
+    if (payload.integrationOverrides !== undefined) {
+      data.integrationOverrides =
+        payload.integrationOverrides === null
+          ? Prisma.JsonNull
+          : (payload.integrationOverrides as Prisma.InputJsonValue);
+    }
 
     const updated = await app.prisma.providerProduct.update({
       where: { id: params.productId },

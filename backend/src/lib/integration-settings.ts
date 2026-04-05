@@ -55,6 +55,48 @@ export const patchIntegrationSettingsSchema = z
 
 export type IntegrationSettingsPatch = z.infer<typeof patchIntegrationSettingsSchema>;
 
+/** Sobrescritas opcionais por produto (consulta cadastrada). Campos ausentes herdam do tenant. */
+export const productIntegrationOverridesSchema = z
+  .object({
+    queueJobPriority: z.number().int().min(-20).max(20).optional(),
+    executionRetry: integrationExecutionRetrySchema.partial().optional(),
+    onExhausted: integrationSettingsSchema.shape.onExhausted.optional(),
+    providerTimeoutOverrideMs: z.number().int().positive().max(300_000).nullable().optional(),
+  })
+  .strict();
+
+export type ProductIntegrationOverrides = z.infer<typeof productIntegrationOverridesSchema>;
+
+export function applyProductOverrides(base: IntegrationSettings, raw: unknown): IntegrationSettings {
+  const r = productIntegrationOverridesSchema.safeParse(raw ?? {});
+  if (!r.success) return base;
+  const o = r.data;
+  if (Object.keys(o).length === 0) return base;
+  return integrationSettingsSchema.parse({
+    ...base,
+    ...(o.queueJobPriority !== undefined ? { queueJobPriority: o.queueJobPriority } : {}),
+    ...(o.executionRetry
+      ? { executionRetry: { ...base.executionRetry, ...o.executionRetry } }
+      : {}),
+    ...(o.onExhausted !== undefined ? { onExhausted: o.onExhausted } : {}),
+    ...(o.providerTimeoutOverrideMs !== undefined
+      ? { providerTimeoutOverrideMs: o.providerTimeoutOverrideMs }
+      : {}),
+  });
+}
+
+export function computeConsultationJobPriority(
+  tenantBase: IntegrationSettings,
+  products: Array<{ integrationOverrides: unknown }>,
+): number {
+  let priority = tenantBase.queueJobPriority;
+  for (const product of products) {
+    const eff = applyProductOverrides(tenantBase, product.integrationOverrides);
+    if (eff.queueJobPriority > priority) priority = eff.queueJobPriority;
+  }
+  return priority;
+}
+
 export function mergeWithDefaults(stored: unknown): IntegrationSettings {
   const p = patchIntegrationSettingsSchema.safeParse(stored);
   const patch = p.success ? p.data : {};

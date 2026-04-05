@@ -22,7 +22,14 @@ interface BaseReportSkeletonProps {
 }
 
 function Expr({ children }: { children: string }) {
-  return <code className="text-[10px] font-mono text-primary/70 bg-primary/5 px-1 py-0.5 rounded border border-dashed border-primary/20">{children}</code>;
+  return (
+    <EditableText
+      value={children}
+      onChange={() => {}}
+      tag="span"
+      className="inline-block text-[10px] font-mono text-primary/70 bg-primary/5 px-1 py-0.5 rounded border border-dashed border-primary/20"
+    />
+  );
 }
 
 function SectionWrap({ id, title, children, onEdit }: {

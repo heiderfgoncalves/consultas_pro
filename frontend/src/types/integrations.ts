@@ -131,6 +131,21 @@ export interface Provider {
   rechargeOperationId?: string;
 }
 
+/** Overrides de execução por produto (campos ausentes = herdam do tenant). */
+export type ProductIntegrationOverrides = {
+  queueJobPriority?: number;
+  executionRetry?: Partial<{
+    maxAttempts: number;
+    backoffType: 'fixed' | 'exponential';
+    initialDelayMs: number;
+    maxDelayMs: number;
+    maxRetryWindowMs: number;
+    jitterRatio: number;
+  }>;
+  onExhausted?: 'fail' | 'partial_ok' | 'require_manual_review';
+  providerTimeoutOverrideMs?: number | null;
+};
+
 export interface ProviderConsultation {
   id: string;
   providerId: string;
@@ -158,6 +173,8 @@ export interface ProviderConsultation {
   status: 'active' | 'inactive';
   /** IDs de mapeamento persistidos (API) */
   mappingIds?: Record<string, string>;
+  /** Política de execução específica desta consulta (em relação ao tenant). */
+  integrationOverrides?: ProductIntegrationOverrides | null;
 }
 
 export interface ProductSessionFieldAssignment {

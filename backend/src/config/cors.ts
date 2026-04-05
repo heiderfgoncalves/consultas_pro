@@ -43,6 +43,17 @@ const allowedSet = new Set<string>([
 export function buildCorsOptions(): FastifyCorsOptions {
   return {
     credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: [
+      'Authorization',
+      'Content-Type',
+      'Accept',
+      'Origin',
+      'X-Requested-With',
+    ],
+    exposedHeaders: ['Content-Type', 'Content-Length'],
+    maxAge: 86400,
+    strictPreflight: false,
     origin: (origin, cb) => {
       if (!origin) {
         cb(null, true);

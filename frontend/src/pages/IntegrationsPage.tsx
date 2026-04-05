@@ -2233,7 +2233,12 @@ export default function IntegrationsPage() {
 
         <TabsContent value="settings" className="space-y-2">
           {integrationsTab === 'settings' && (
-            <IntegrationsSettingsTab accessToken={accessToken} enabled={enabled} />
+            <IntegrationsSettingsTab
+              accessToken={accessToken}
+              enabled={enabled}
+              providers={providers}
+              consultations={sortedConsultations}
+            />
           )}
         </TabsContent>
 

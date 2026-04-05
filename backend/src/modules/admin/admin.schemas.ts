@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { productIntegrationOverridesSchema } from '../../lib/integration-settings';
 
 export const templateVariableExpressionSchema = z
   .string()
@@ -67,6 +68,7 @@ export const createProviderProductSchema = z.object({
   sampleResponse: z.any().optional(),
   templateLayout: templateLayoutSchema.optional(),
   typeItemFilters: z.any().optional(),
+  integrationOverrides: productIntegrationOverridesSchema.nullable().optional(),
 });
 
 export const createMappingSchema = z.object({
@@ -121,6 +123,7 @@ export const updateProviderProductSchema = z.object({
   sampleResponse: z.any().nullable().optional(),
   templateLayout: templateLayoutSchema.nullable().optional(),
   typeItemFilters: z.any().nullable().optional(),
+  integrationOverrides: productIntegrationOverridesSchema.nullable().optional(),
 });
 
 export const listProductSessionAssignmentsQuerySchema = z.object({

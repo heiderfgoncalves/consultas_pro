@@ -3,7 +3,10 @@ import { Prisma } from '@prisma/client';
 import { ConflictError, NotFoundError, ValidationError } from '../../core/errors';
 import { consultationExecutionQueue } from '../../queues';
 import { normalizeDocument } from '../../lib/documents';
-import { getEffectiveIntegrationSettingsForCompany } from '../../lib/integration-settings';
+import {
+  computeConsultationJobPriority,
+  getEffectiveIntegrationSettingsForCompany,
+} from '../../lib/integration-settings';
 
 export async function createConsultation(app: FastifyInstance, input: {
   requestedByUserId: string;
@@ -97,12 +100,13 @@ export async function createConsultation(app: FastifyInstance, input: {
     return created;
   });
 
-  const queueSettings = await getEffectiveIntegrationSettingsForCompany(app.prisma, input.companyId);
+  const tenantBase = await getEffectiveIntegrationSettingsForCompany(app.prisma, input.companyId);
+  const priority = computeConsultationJobPriority(tenantBase, products);
 
   await consultationExecutionQueue.add(
     'consultation.execute',
     { consultationId: consultation.id },
-    { priority: queueSettings.queueJobPriority },
+    { priority },
   );
 
   return consultation;
