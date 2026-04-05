@@ -1,30 +1,22 @@
-import { useEffect, useState, type ReactNode } from 'react';
-import type { Theme } from '@/components/theme-context';
-import { ThemeContext } from '@/components/theme-context';
+import { ThemeProvider as NextThemesProvider } from 'next-themes';
+import type { ReactNode } from 'react';
 
+/**
+ * Tema via next-themes (padrão shadcn + Vite): classe `light` | `dark` no `html`,
+ * `disableTransitionOnChange` evita animar todas as cores do app na troca.
+ * @see https://v3.shadcn.com/docs/dark-mode/vite
+ */
 export function ThemeProvider({ children }: { children: ReactNode }) {
-  const [theme, setTheme] = useState<Theme>(() => {
-    const saved = localStorage.getItem('theme') as Theme;
-    return saved || 'dark';
-  });
-
-  const resolvedTheme =
-    theme === 'system'
-      ? window.matchMedia('(prefers-color-scheme: dark)').matches
-        ? 'dark'
-        : 'light'
-      : theme;
-
-  useEffect(() => {
-    const root = document.documentElement;
-    root.classList.remove('light', 'dark');
-    root.classList.add(resolvedTheme);
-    localStorage.setItem('theme', theme);
-  }, [theme, resolvedTheme]);
-
   return (
-    <ThemeContext.Provider value={{ theme, setTheme, resolvedTheme }}>
+    <NextThemesProvider
+      attribute="class"
+      defaultTheme="dark"
+      enableSystem
+      storageKey="theme"
+      disableTransitionOnChange
+      enableColorScheme
+    >
       {children}
-    </ThemeContext.Provider>
+    </NextThemesProvider>
   );
 }

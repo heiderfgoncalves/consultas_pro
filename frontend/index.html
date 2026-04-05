@@ -10,6 +10,25 @@
     <meta property="og:title" content="Consultas PRO" />
     <meta property="og:description" content="Consultas de crédito inteligentes e modulares" />
     <meta property="og:type" content="website" />
+    <script>
+      (function () {
+        try {
+          var k = localStorage.getItem("theme");
+          var d = document.documentElement;
+          d.classList.remove("light", "dark");
+          if (k === "light" || k === "dark") {
+            d.classList.add(k);
+          } else if (k === "system") {
+            d.classList.add(
+              window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"
+            );
+          } else {
+            d.classList.add("dark");
+          }
+          d.style.colorScheme = d.classList.contains("dark") ? "dark" : "light";
+        } catch (_) {}
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>
