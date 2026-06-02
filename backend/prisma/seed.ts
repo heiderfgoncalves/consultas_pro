@@ -8,6 +8,7 @@ import {
   ProviderOperationType,
   HttpMethod,
 } from '@prisma/client';
+// @ts-ignore
 import bcrypt from 'bcryptjs';
 import { DEFAULT_CANONICAL_SECTION_FIELDS } from '../src/modules/admin/canonical-field-defaults';
 
@@ -424,7 +425,78 @@ async function main() {
 </section>`,
   };
 
-  for (const block of [templateBaseBlock, scoreBlock]) {
+  const headerBlock = {
+    name: 'Header',
+    description: 'Cabeçalho do relatório com logo, empresa, título, data e protocolo',
+    category: 'system',
+    template: `<section name="Header" kind="header">
+  <field label="Empresa" tag="label" font-size="10" color="#2563eb">{$template.company}</field>
+  <field label="Título do relatório" tag="text" font-size="14">Relatório Analítico de Crédito</field>
+  <field label="Data" tag="value">{$template.date}</field>
+  <field label="Protocolo" tag="value">{$template.protocol}</field>
+</section>`,
+  };
+
+  const personalDataBlock = {
+    name: 'Dados Pessoais',
+    description: 'Cards com nome, documento e tipo de relatório',
+    category: 'system',
+    template: `<section name="Dados Pessoais" kind="data">
+  <field label="Cliente Analisado" icon="User" tag="value">{$cliente.nome}</field>
+  <field label="Documento" icon="Hash" tag="value">{$cliente.documento}</field>
+  <field label="Tipo de Relatório" icon="Tag" tag="value">Padrão</field>
+</section>`,
+  };
+
+  const financialSummaryBlock = {
+    name: 'Resumo Financeiro',
+    description: 'Linha adaptativa de cards KPI financeiros',
+    category: 'system',
+    template: `<section name="Resumo Financeiro" kind="kpi-row">
+  <field label="Total Apontado" tag="value" color="#dc2626">{$RESUMO_FINANCEIRO.totalApontado}</field>
+  <field label="Total Deduzido" tag="value" color="#16a34a">{$RESUMO_FINANCEIRO.totalDeduzido}</field>
+  <field label="Risco Bacen (Vencido)" tag="value" color="#ca8a04">{$RESUMO_FINANCEIRO.riscoBacenVencido}</field>
+</section>`,
+  };
+
+  const debtTableBlock = {
+    name: 'Tabela de Dívidas',
+    description: 'Seção dinâmica onde os tipos de consulta encaixam seus registros',
+    category: 'system',
+    template: `<section name="Tabela de Dívidas" kind="debt-table">
+  <field label="Tipo" tag="label">{$consulta.tipo}</field>
+  <field label="Credor" tag="value">{$divida.credor}</field>
+  <field label="Contrato" tag="value">{$divida.contrato}</field>
+  <field label="Valor" tag="value" color="#dc2626">{$divida.valor}</field>
+</section>`,
+  };
+
+  const cardKpiBlock = {
+    name: 'Card KPI',
+    description: 'Card com ícone, label e valor para linhas adaptativas',
+    category: 'layout',
+    template: `<card variant="kpi">
+  <field label="Label" icon="Gauge" tag="label">Label</field>
+  <field label="Valor" tag="value" font-size="16">{$}</field>
+</card>`,
+  };
+
+  const containerBlock = {
+    name: 'Container',
+    description: 'Agrupador genérico para compor blocos customizados',
+    category: 'layout',
+    template: `<container cols="3">
+</container>`,
+  };
+
+  const freeTextBlock = {
+    name: 'Texto Livre',
+    description: 'Texto livre com suporte a expressões dinâmicas',
+    category: 'layout',
+    template: `<text>Texto editável aqui</text>`,
+  };
+
+  for (const block of [headerBlock, personalDataBlock, financialSummaryBlock, scoreBlock, debtTableBlock, cardKpiBlock, containerBlock, freeTextBlock, templateBaseBlock]) {
     const existing = await prisma.customBlock.findFirst({
       where: { tenantId: tenant.id, name: block.name },
     });

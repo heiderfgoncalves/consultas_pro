@@ -1,0 +1,2 @@
+ALTER TABLE "Template" ADD COLUMN "layout" JSONB;
+ALTER TABLE "Template" ADD COLUMN "logo" TEXT;

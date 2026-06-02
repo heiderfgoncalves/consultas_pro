@@ -7,6 +7,561 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+model Tenant {
+  id                  String        @id @default(cuid())
+  name                String
+  slug                String        @unique
+  domain              String?
+  branding            Json?
+  isActive            Boolean       @default(true)
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
+  /// * Políticas avançadas de execução (retries, fila, pausa) — merge com defaults na aplicação
+  integrationSettings Json?
+  apiTokens           ApiToken[]
+  companies           Company[]
+  customBlocks        CustomBlock[]
+}
+
+model ApiToken {
+  id             String         @id @default(cuid())
+  ownerType      TokenOwnerType
+  tenantId       String?
+  label          String
+  tokenHash      String         @unique
+  last4          String
+  scopes         Json?
+  isActive       Boolean        @default(true)
+  expiresAt      DateTime?
+  lastUsedAt     DateTime?
+  createdById    String?
+  createdAt      DateTime       @default(now())
+  companyId      String?
+  allowedOrigins Json?
+  company        Company?       @relation(fields: [companyId], references: [id])
+  createdBy      User?          @relation("api_tokens_created_by_user", fields: [createdById], references: [id])
+  tenant         Tenant?        @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId])
+  @@index([companyId])
+}
+
+model Company {
+  id            String         @id @default(cuid())
+  tenantId      String?
+  name          String
+  slug          String         @unique
+  document      String         @unique
+  email         String?
+  phone         String?
+  metadata      Json?
+  isActive      Boolean        @default(true)
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  apiTokens     ApiToken[]
+  tenant        Tenant?        @relation(fields: [tenantId], references: [id])
+  consultations Consultation[]
+  invites       Invite[]
+  ledgerEntries LedgerEntry[]
+  templates     Template[]
+  users         User[]
+  wallet        Wallet?
+
+  @@index([tenantId])
+}
+
+model User {
+  id               String            @id @default(cuid())
+  companyId        String?
+  fullName         String
+  email            String            @unique
+  document         String?           @unique
+  phone            String?
+  passwordHash     String
+  role             Role              @default(USER)
+  isActive         Boolean           @default(true)
+  lastLoginAt      DateTime?
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  accountStatus    UserAccountStatus @default(ACTIVE)
+  metadata         Json?
+  adminAuditLogs   AdminAuditLog[]   @relation("admin_audit_actor")
+  apiTokensCreated ApiToken[]        @relation("api_tokens_created_by_user")
+  consultations    Consultation[]
+  invitesCreated   Invite[]          @relation("invites_created_by_user")
+  ledgerEntries    LedgerEntry[]
+  mergeLogs        MergeLog[]
+  providerTestLogs ProviderTestLog[]
+  templates        Template[]
+  company          Company?          @relation(fields: [companyId], references: [id])
+
+  @@index([companyId])
+}
+
+model AdminAuditLog {
+  id          String   @id @default(cuid())
+  actorUserId String?
+  action      String
+  entityType  String
+  entityId    String?
+  metadata    Json?
+  createdAt   DateTime @default(now())
+  actor       User?    @relation("admin_audit_actor", fields: [actorUserId], references: [id])
+
+  @@index([actorUserId])
+  @@index([entityType, entityId])
+  @@index([createdAt])
+}
+
+/// Política global: qual papel pode chamar cada endpoint externo catalogado (`routeKey`).
+model RoleEndpointPolicy {
+  id        String   @id @default(cuid())
+  role      Role
+  routeKey  String
+  isEnabled Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([role, routeKey])
+  @@index([role])
+}
+
+model Invite {
+  id              String       @id @default(cuid())
+  type            InviteType
+  status          InviteStatus @default(PENDING)
+  companyId       String?
+  invitedByUserId String?
+  email           String
+  document        String?
+  roleToAssign    Role?
+  tokenHash       String       @unique
+  expiresAt       DateTime
+  metadata        Json?
+  acceptedAt      DateTime?
+  createdAt       DateTime     @default(now())
+  company         Company?     @relation(fields: [companyId], references: [id])
+  invitedBy       User?        @relation("invites_created_by_user", fields: [invitedByUserId], references: [id])
+
+  @@index([companyId])
+}
+
+model Wallet {
+  id        String        @id @default(cuid())
+  companyId String        @unique
+  balance   Decimal       @default(0) @db.Decimal(14, 2)
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+  entries   LedgerEntry[]
+  company   Company       @relation(fields: [companyId], references: [id])
+}
+
+model LedgerEntry {
+  id             String          @id @default(cuid())
+  walletId       String
+  companyId      String?
+  userId         String?
+  consultationId String?
+  type           LedgerEntryType
+  amount         Decimal         @db.Decimal(14, 2)
+  balanceBefore  Decimal         @db.Decimal(14, 2)
+  balanceAfter   Decimal         @db.Decimal(14, 2)
+  description    String
+  metadata       Json?
+  createdAt      DateTime        @default(now())
+  company        Company?        @relation(fields: [companyId], references: [id])
+  consultation   Consultation?   @relation(fields: [consultationId], references: [id])
+  user           User?           @relation(fields: [userId], references: [id])
+  wallet         Wallet          @relation(fields: [walletId], references: [id])
+
+  @@index([walletId])
+  @@index([companyId])
+  @@index([userId])
+  @@index([consultationId])
+}
+
+model ConsultationType {
+  id                String                        @id @default(cuid())
+  key               String                        @unique
+  name              String
+  description       String?
+  targetSectionKeys Json?
+  isActive          Boolean                       @default(true)
+  createdAt         DateTime                      @default(now())
+  updatedAt         DateTime                      @updatedAt
+  reportFields      ConsultationTypeReportField[]
+  products          ProviderProduct[]
+}
+
+model ConsultationTypeReportField {
+  id                 String           @id @default(cuid())
+  consultationTypeId String
+  fieldKey           String
+  label              String
+  fieldType          String
+  displayOrder       Int              @default(0)
+  colorRules         Json?
+  isActive           Boolean          @default(true)
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+  consultationType   ConsultationType @relation(fields: [consultationTypeId], references: [id], onDelete: Cascade)
+
+  @@unique([consultationTypeId, fieldKey])
+  @@index([consultationTypeId])
+}
+
+model CanonicalFieldCatalog {
+  id                 String                          @id @default(cuid())
+  pathKey            String                          @unique
+  label              String
+  dataType           String
+  description        String?
+  isActive           Boolean                         @default(true)
+  createdAt          DateTime                        @default(now())
+  updatedAt          DateTime                        @updatedAt
+  uiItemFilters      Json?
+  reportFieldConfig  Json?
+  sessionAssignments ProductSessionFieldAssignment[]
+  mappings           ProviderFieldMapping[]
+}
+
+model Provider {
+  id             String                  @id @default(cuid())
+  name           String
+  slug           String                  @unique
+  baseUrl        String
+  authType       ProviderAuthType        @default(NONE)
+  credentials    Json?
+  defaultHeaders Json?
+  isActive       Boolean                 @default(true)
+  createdAt      DateTime                @default(now())
+  updatedAt      DateTime                @updatedAt
+  executions     ConsultationExecution[]
+  operations     ProviderOperation[]
+  products       ProviderProduct[]
+  testLogs       ProviderTestLog[]
+}
+
+model ProviderOperation {
+  id              String                @id @default(cuid())
+  providerId      String
+  operationType   ProviderOperationType
+  name            String
+  path            String
+  method          HttpMethod            @default(POST)
+  headersTemplate Json?
+  queryTemplate   Json?
+  bodyTemplate    Json?
+  timeoutMs       Int?
+  isActive        Boolean               @default(true)
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
+  provider        Provider              @relation(fields: [providerId], references: [id])
+  testLogs        ProviderTestLog[]
+
+  @@index([providerId])
+}
+
+model ProviderProduct {
+  id                   String                          @id @default(cuid())
+  providerId           String
+  consultationTypeId   String?
+  name                 String
+  code                 String
+  externalId           String?
+  endpointPath         String
+  method               HttpMethod                      @default(POST)
+  queryTemplate        Json?
+  bodyTemplate         Json?
+  headersTemplate      Json?
+  timeoutMs            Int?
+  /// Tarifa admin → provedor (custo na integração)
+  cost                 Decimal                         @db.Decimal(14, 2)
+  isActive             Boolean                         @default(true)
+  sampleRequest        Json?
+  sampleResponse       Json?
+  createdAt            DateTime                        @default(now())
+  updatedAt            DateTime                        @updatedAt
+  /// Critérios de filtro por chave do tipo canônico (pathKey), por produto — não confundir com uiItemFilters do catálogo.
+  typeItemFilters      Json?
+  /// Valor debitado do cliente (carteira) por consulta deste produto
+  consultationPrice    Decimal                         @db.Decimal(14, 2)
+  /// Documento de layout visual (builder de template avançado).
+  templateLayout       Json?
+  /// Overrides de política de execução (fila, retries, timeout, onExhausted) em relação ao tenant.
+  integrationOverrides Json?
+  executions           ConsultationExecution[]
+  consultationItems    ConsultationItem[]
+  sessionAssignments   ProductSessionFieldAssignment[]
+  mappings             ProviderFieldMapping[]
+  consultationType     ConsultationType?               @relation(fields: [consultationTypeId], references: [id])
+  provider             Provider                        @relation(fields: [providerId], references: [id])
+  testLogs             ProviderTestLog[]
+  templateItems        TemplateItem[]
+  mvpRuleStages        TemplateMvpRuleStage[]
+  mvpPoolItems         TemplateMvpTestPool[]
+
+  @@unique([providerId, code])
+  @@index([providerId])
+}
+
+model TemplateMvpConfig {
+  id           String                 @id @default(cuid())
+  templateKey  MvpTemplateKey
+  documentType DocumentKind
+  displayName  String
+  isActive     Boolean                @default(true)
+  createdAt    DateTime               @default(now())
+  updatedAt    DateTime               @updatedAt
+  stages       TemplateMvpRuleStage[]
+
+  @@unique([templateKey, documentType])
+  @@index([templateKey])
+  @@index([documentType])
+}
+
+model TemplateMvpRuleStage {
+  id                String            @id @default(cuid())
+  configId          String
+  providerProductId String?
+  productCode       String
+  stageName         String
+  role              String
+  onFailure         String
+  priority          Int
+  enabled           Boolean           @default(true)
+  isFallback        Boolean           @default(false)
+  mergeInto         String?
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+  config            TemplateMvpConfig @relation(fields: [configId], references: [id], onDelete: Cascade)
+  providerProduct   ProviderProduct?  @relation(fields: [providerProductId], references: [id])
+
+  @@index([configId])
+  @@index([providerProductId])
+  @@index([priority])
+}
+
+model TemplateMvpTestPool {
+  id                String          @id @default(cuid())
+  providerProductId String
+  document          String
+  documentType      DocumentKind
+  hasDebt           Boolean         @default(false)
+  sourceFile        String
+  payload           Json?
+  metadata          Json?
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+  providerProduct   ProviderProduct @relation(fields: [providerProductId], references: [id], onDelete: Cascade)
+
+  @@unique([providerProductId, document, sourceFile])
+  @@index([providerProductId])
+  @@index([documentType])
+  @@index([document])
+}
+
+model ProductSessionFieldAssignment {
+  id               String                @id @default(cuid())
+  productId        String
+  canonicalFieldId String
+  sessionKey       String
+  sourcePath       String?
+  sortOrder        Int                   @default(0)
+  isActive         Boolean               @default(true)
+  createdAt        DateTime              @default(now())
+  updatedAt        DateTime              @updatedAt
+  canonicalField   CanonicalFieldCatalog @relation(fields: [canonicalFieldId], references: [id])
+  product          ProviderProduct       @relation(fields: [productId], references: [id])
+
+  @@unique([productId, sessionKey, canonicalFieldId])
+  @@index([productId, sessionKey])
+  @@index([canonicalFieldId])
+}
+
+model ProviderFieldMapping {
+  id               String                @id @default(cuid())
+  productId        String
+  canonicalFieldId String
+  sourcePath       String
+  transformName    String?
+  fallbackValue    String?
+  notes            String?
+  sortOrder        Int                   @default(0)
+  isActive         Boolean               @default(true)
+  createdAt        DateTime              @default(now())
+  updatedAt        DateTime              @updatedAt
+  uiStartLine      Int?
+  uiEndLine        Int?
+  canonicalField   CanonicalFieldCatalog @relation(fields: [canonicalFieldId], references: [id])
+  product          ProviderProduct       @relation(fields: [productId], references: [id])
+
+  @@index([productId])
+  @@index([canonicalFieldId])
+}
+
+model ProviderTestLog {
+  id                String             @id @default(cuid())
+  providerId        String
+  productId         String?
+  operationId       String?
+  createdById       String?
+  requestPayload    Json?
+  responsePayload   Json?
+  normalizedPayload Json?
+  statusCode        Int?
+  success           Boolean            @default(false)
+  errorMessage      String?
+  createdAt         DateTime           @default(now())
+  createdBy         User?              @relation(fields: [createdById], references: [id])
+  operation         ProviderOperation? @relation(fields: [operationId], references: [id])
+  product           ProviderProduct?   @relation(fields: [productId], references: [id])
+  provider          Provider           @relation(fields: [providerId], references: [id])
+
+  @@index([providerId])
+  @@index([productId])
+  @@index([operationId])
+}
+
+model Template {
+  id            String             @id @default(cuid())
+  companyId     String?
+  userId        String?
+  name          String
+  description   String?
+  visibility    TemplateVisibility @default(PRIVATE)
+  isFavorite    Boolean            @default(false)
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+  layout        Json?
+  logo          String?
+  consultations Consultation[]
+  company       Company?           @relation(fields: [companyId], references: [id])
+  user          User?              @relation(fields: [userId], references: [id])
+  items         TemplateItem[]
+
+  @@index([companyId])
+  @@index([userId])
+}
+
+model TemplateItem {
+  id                String          @id @default(cuid())
+  templateId        String
+  providerProductId String
+  sortOrder         Int             @default(0)
+  alias             String?
+  createdAt         DateTime        @default(now())
+  providerProduct   ProviderProduct @relation(fields: [providerProductId], references: [id])
+  template          Template        @relation(fields: [templateId], references: [id])
+
+  @@unique([templateId, providerProductId])
+  @@index([providerProductId])
+}
+
+model Consultation {
+  id                String                  @id @default(cuid())
+  companyId         String?
+  requestedByUserId String?
+  templateId        String?
+  subjectDocument   String
+  subjectType       String
+  totalCost         Decimal                 @default(0) @db.Decimal(14, 2)
+  status            ConsultationStatus      @default(DRAFT)
+  mergedPayload     Json?
+  renderPayload     Json?
+  errorMessage      String?
+  createdAt         DateTime                @default(now())
+  updatedAt         DateTime                @updatedAt
+  completedAt       DateTime?
+  externalUserId    String?
+  company           Company?                @relation(fields: [companyId], references: [id])
+  requestedByUser   User?                   @relation(fields: [requestedByUserId], references: [id])
+  template          Template?               @relation(fields: [templateId], references: [id])
+  executions        ConsultationExecution[]
+  items             ConsultationItem[]
+  ledgerEntries     LedgerEntry[]
+  mergeLogs         MergeLog[]
+
+  @@index([companyId])
+  @@index([requestedByUserId])
+  @@index([templateId])
+  @@index([companyId, externalUserId])
+}
+
+model ConsultationItem {
+  id                String                  @id @default(cuid())
+  consultationId    String
+  providerProductId String
+  sortOrder         Int                     @default(0)
+  requestedCost     Decimal                 @db.Decimal(14, 2)
+  executions        ConsultationExecution[]
+  consultation      Consultation            @relation(fields: [consultationId], references: [id])
+  providerProduct   ProviderProduct         @relation(fields: [providerProductId], references: [id])
+
+  @@index([consultationId])
+  @@index([providerProductId])
+}
+
+model ConsultationExecution {
+  id                 String            @id @default(cuid())
+  consultationId     String
+  consultationItemId String?
+  providerId         String
+  productId          String?
+  status             ExecutionStatus   @default(PENDING)
+  usedCache          Boolean           @default(false)
+  requestPayload     Json?
+  rawResponse        Json?
+  normalizedPayload  Json?
+  providerCost       Decimal?          @db.Decimal(14, 2)
+  statusCode         Int?
+  errorMessage       String?
+  startedAt          DateTime?
+  completedAt        DateTime?
+  createdAt          DateTime          @default(now())
+  consultation       Consultation      @relation(fields: [consultationId], references: [id])
+  consultationItem   ConsultationItem? @relation(fields: [consultationItemId], references: [id])
+  product            ProviderProduct?  @relation(fields: [productId], references: [id])
+  provider           Provider          @relation(fields: [providerId], references: [id])
+
+  @@index([consultationId])
+  @@index([providerId])
+  @@index([productId])
+}
+
+model MergeLog {
+  id                 String        @id @default(cuid())
+  consultationId     String?
+  createdById        String?
+  sourceReferenceIds String[]
+  mergedPayload      Json
+  strategy           String
+  createdAt          DateTime      @default(now())
+  consultation       Consultation? @relation(fields: [consultationId], references: [id])
+  createdBy          User?         @relation(fields: [createdById], references: [id])
+
+  @@index([consultationId])
+  @@index([createdById])
+}
+
+model CustomBlock {
+  id          String   @id @default(cuid())
+  tenantId    String
+  name        String
+  description String?
+  category    String   @default("custom")
+  template    String
+  skeleton    String
+  variables   Json     @default("[]")
+  isSystem    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  tenant      Tenant   @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId])
+  @@map("custom_blocks")
+}
+
 enum Role {
   PLATFORM_ADMIN
   COMPANY_OWNER
@@ -28,8 +583,8 @@ enum InviteStatus {
 
 enum TokenOwnerType {
   TENANT
-  COMPANY
   INTERNAL
+  COMPANY
 }
 
 enum UserAccountStatus {
@@ -92,517 +647,13 @@ enum TemplateVisibility {
   GLOBAL
 }
 
-model Tenant {
-  id                   String     @id @default(cuid())
-  name                 String
-  slug                 String     @unique
-  domain               String?
-  branding             Json?
-  /** Políticas avançadas de execução (retries, fila, pausa) — merge com defaults na aplicação */
-  integrationSettings  Json?
-  isActive             Boolean    @default(true)
-  createdAt            DateTime   @default(now())
-  updatedAt            DateTime   @updatedAt
-
-  companies    Company[]
-  apiTokens    ApiToken[]
-  customBlocks CustomBlock[]
+enum MvpTemplateKey {
+  DIVIDAS_SIMPLES
+  BACEN_SIMPLES
+  PREMIUM
 }
 
-model ApiToken {
-  id          String         @id @default(cuid())
-  ownerType   TokenOwnerType
-  tenantId    String?
-  companyId   String?
-  label       String
-  tokenHash   String         @unique
-  last4       String
-  scopes      Json?
-  isActive    Boolean        @default(true)
-  expiresAt   DateTime?
-  lastUsedAt  DateTime?
-  createdById String?
-  createdAt   DateTime       @default(now())
-
-  tenant      Tenant?        @relation(fields: [tenantId], references: [id])
-  company     Company?       @relation(fields: [companyId], references: [id])
-  createdBy   User?          @relation("api_tokens_created_by_user", fields: [createdById], references: [id])
-
-  @@index([tenantId])
-  @@index([companyId])
-}
-
-model Company {
-  id            String        @id @default(cuid())
-  tenantId      String?
-  name          String
-  slug          String        @unique
-  document      String        @unique
-  email         String?
-  phone         String?
-  metadata      Json?
-  isActive      Boolean       @default(true)
-  createdAt     DateTime      @default(now())
-  updatedAt     DateTime      @updatedAt
-
-  tenant        Tenant?       @relation(fields: [tenantId], references: [id])
-  users         User[]
-  invites       Invite[]
-  wallet        Wallet?
-  templates     Template[]
-  consultations Consultation[]
-  ledgerEntries LedgerEntry[]
-  apiTokens     ApiToken[]
-
-  @@index([tenantId])
-}
-
-model User {
-  id              String      @id @default(cuid())
-  companyId       String?
-  fullName        String
-  email           String      @unique
-  document        String?     @unique
-  phone           String?
-  passwordHash    String
-  role            Role        @default(USER)
-  isActive        Boolean     @default(true)
-  accountStatus   UserAccountStatus @default(ACTIVE)
-  lastLoginAt     DateTime?
-  createdAt       DateTime    @default(now())
-  updatedAt       DateTime    @updatedAt
-
-  company         Company?    @relation(fields: [companyId], references: [id])
-  invitesCreated  Invite[]    @relation("invites_created_by_user")
-  templates       Template[]
-  consultations   Consultation[]
-  ledgerEntries    LedgerEntry[]
-  providerTestLogs ProviderTestLog[]
-  mergeLogs       MergeLog[]
-  apiTokensCreated ApiToken[] @relation("api_tokens_created_by_user")
-  adminAuditLogs   AdminAuditLog[] @relation("admin_audit_actor")
-
-  @@index([companyId])
-}
-
-model AdminAuditLog {
-  id          String   @id @default(cuid())
-  actorUserId String?
-  action      String
-  entityType  String
-  entityId    String?
-  metadata    Json?
-  createdAt   DateTime @default(now())
-
-  actor       User?    @relation("admin_audit_actor", fields: [actorUserId], references: [id])
-
-  @@index([actorUserId])
-  @@index([entityType, entityId])
-  @@index([createdAt])
-}
-
-/// Política global: qual papel pode chamar cada endpoint externo catalogado (`routeKey`).
-model RoleEndpointPolicy {
-  id        String   @id @default(cuid())
-  role      Role
-  routeKey  String
-  isEnabled Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@unique([role, routeKey])
-  @@index([role])
-}
-
-model Invite {
-  id               String       @id @default(cuid())
-  type             InviteType
-  status           InviteStatus @default(PENDING)
-  companyId        String?
-  invitedByUserId  String?
-  email            String
-  document         String?
-  roleToAssign     Role?
-  tokenHash        String       @unique
-  expiresAt        DateTime
-  metadata         Json?
-  acceptedAt       DateTime?
-  createdAt        DateTime     @default(now())
-
-  company          Company?     @relation(fields: [companyId], references: [id])
-  invitedBy        User?        @relation("invites_created_by_user", fields: [invitedByUserId], references: [id])
-
-  @@index([companyId])
-}
-
-model Wallet {
-  id          String      @id @default(cuid())
-  companyId   String      @unique
-  balance     Decimal     @db.Decimal(14, 2) @default(0)
-  createdAt   DateTime    @default(now())
-  updatedAt   DateTime    @updatedAt
-
-  company     Company     @relation(fields: [companyId], references: [id])
-  entries     LedgerEntry[]
-}
-
-model LedgerEntry {
-  id              String         @id @default(cuid())
-  walletId        String
-  companyId       String?
-  userId          String?
-  consultationId  String?
-  type            LedgerEntryType
-  amount          Decimal        @db.Decimal(14, 2)
-  balanceBefore   Decimal        @db.Decimal(14, 2)
-  balanceAfter    Decimal        @db.Decimal(14, 2)
-  description     String
-  metadata        Json?
-  createdAt       DateTime       @default(now())
-
-  wallet          Wallet         @relation(fields: [walletId], references: [id])
-  company         Company?       @relation(fields: [companyId], references: [id])
-  user            User?          @relation(fields: [userId], references: [id])
-  consultation    Consultation?  @relation(fields: [consultationId], references: [id])
-
-  @@index([walletId])
-  @@index([companyId])
-  @@index([userId])
-  @@index([consultationId])
-}
-
-model ConsultationType {
-  id               String           @id @default(cuid())
-  key              String           @unique
-  name             String
-  description      String?
-  targetSectionKeys Json?
-  isActive         Boolean          @default(true)
-  createdAt        DateTime         @default(now())
-  updatedAt        DateTime         @updatedAt
-
-  products         ProviderProduct[]
-  reportFields     ConsultationTypeReportField[]
-}
-
-model ConsultationTypeReportField {
-  id                 String           @id @default(cuid())
-  consultationTypeId String
-  fieldKey           String
-  label              String
-  fieldType          String
-  displayOrder       Int              @default(0)
-  colorRules         Json?
-  isActive           Boolean          @default(true)
-  createdAt          DateTime         @default(now())
-  updatedAt          DateTime         @updatedAt
-
-  consultationType   ConsultationType @relation(fields: [consultationTypeId], references: [id], onDelete: Cascade)
-
-  @@unique([consultationTypeId, fieldKey])
-  @@index([consultationTypeId])
-}
-
-model CanonicalFieldCatalog {
-  id            String               @id @default(cuid())
-  pathKey       String               @unique
-  label         String
-  dataType      String
-  description   String?
-  uiItemFilters Json?
-  reportFieldConfig Json?
-  isActive      Boolean              @default(true)
-  createdAt     DateTime             @default(now())
-  updatedAt     DateTime             @updatedAt
-
-  mappings      ProviderFieldMapping[]
-  sessionAssignments ProductSessionFieldAssignment[]
-}
-
-model Provider {
-  id             String             @id @default(cuid())
-  name           String
-  slug           String             @unique
-  baseUrl        String
-  authType       ProviderAuthType   @default(NONE)
-  credentials    Json?
-  defaultHeaders Json?
-  isActive       Boolean            @default(true)
-  createdAt      DateTime           @default(now())
-  updatedAt      DateTime           @updatedAt
-
-  operations     ProviderOperation[]
-  products       ProviderProduct[]
-  testLogs       ProviderTestLog[]
-  executions     ConsultationExecution[]
-}
-
-model ProviderOperation {
-  id              String                @id @default(cuid())
-  providerId      String
-  operationType   ProviderOperationType
-  name            String
-  path            String
-  method          HttpMethod            @default(POST)
-  headersTemplate Json?
-  queryTemplate   Json?
-  bodyTemplate    Json?
-  timeoutMs       Int?
-  isActive        Boolean               @default(true)
-  createdAt       DateTime              @default(now())
-  updatedAt       DateTime              @updatedAt
-
-  provider        Provider              @relation(fields: [providerId], references: [id])
-  testLogs        ProviderTestLog[]
-
-  @@index([providerId])
-}
-
-model ProviderProduct {
-  id                 String                 @id @default(cuid())
-  providerId         String
-  consultationTypeId String?
-  name               String
-  code               String
-  externalId         String?
-  endpointPath       String
-  method             HttpMethod             @default(POST)
-  queryTemplate      Json?
-  bodyTemplate       Json?
-  headersTemplate    Json?
-  timeoutMs          Int?
-  /// Tarifa admin → provedor (custo na integração)
-  cost               Decimal                @db.Decimal(14, 2)
-  /// Valor debitado do cliente (carteira) por consulta deste produto
-  consultationPrice  Decimal                @db.Decimal(14, 2)
-  isActive           Boolean                @default(true)
-  sampleRequest      Json?
-  sampleResponse     Json?
-  /// Documento de layout visual (builder de template avançado).
-  templateLayout     Json?
-  /// Critérios de filtro por chave do tipo canônico (pathKey), por produto — não confundir com uiItemFilters do catálogo.
-  typeItemFilters       Json?
-  /// Overrides de política de execução (fila, retries, timeout, onExhausted) em relação ao tenant.
-  integrationOverrides  Json?
-  createdAt             DateTime               @default(now())
-  updatedAt             DateTime               @updatedAt
-
-  provider           Provider               @relation(fields: [providerId], references: [id])
-  consultationType   ConsultationType?      @relation(fields: [consultationTypeId], references: [id])
-  mappings           ProviderFieldMapping[]
-  sessionAssignments ProductSessionFieldAssignment[]
-  templateItems      TemplateItem[]
-  consultationItems  ConsultationItem[]
-  testLogs           ProviderTestLog[]
-  executions         ConsultationExecution[]
-
-  @@unique([providerId, code])
-  @@index([providerId])
-}
-
-model ProductSessionFieldAssignment {
-  id               String                @id @default(cuid())
-  productId        String
-  canonicalFieldId String
-  sessionKey       String
-  sourcePath       String?
-  sortOrder        Int                   @default(0)
-  isActive         Boolean               @default(true)
-  createdAt        DateTime              @default(now())
-  updatedAt        DateTime              @updatedAt
-
-  product          ProviderProduct       @relation(fields: [productId], references: [id])
-  canonicalField   CanonicalFieldCatalog @relation(fields: [canonicalFieldId], references: [id])
-
-  @@unique([productId, sessionKey, canonicalFieldId])
-  @@index([productId, sessionKey])
-  @@index([canonicalFieldId])
-}
-
-model ProviderFieldMapping {
-  id                String                 @id @default(cuid())
-  productId         String
-  canonicalFieldId  String
-  sourcePath        String
-  uiStartLine       Int?
-  uiEndLine         Int?
-  transformName     String?
-  fallbackValue     String?
-  notes             String?
-  sortOrder         Int                    @default(0)
-  isActive          Boolean                @default(true)
-  createdAt         DateTime               @default(now())
-  updatedAt         DateTime               @updatedAt
-
-  product           ProviderProduct        @relation(fields: [productId], references: [id])
-  canonicalField    CanonicalFieldCatalog  @relation(fields: [canonicalFieldId], references: [id])
-
-  @@index([productId])
-  @@index([canonicalFieldId])
-}
-
-model ProviderTestLog {
-  id                String             @id @default(cuid())
-  providerId        String
-  productId         String?
-  operationId       String?
-  createdById       String?
-  requestPayload    Json?
-  responsePayload   Json?
-  normalizedPayload Json?
-  statusCode        Int?
-  success           Boolean            @default(false)
-  errorMessage      String?
-  createdAt         DateTime           @default(now())
-
-  provider          Provider           @relation(fields: [providerId], references: [id])
-  product           ProviderProduct?   @relation(fields: [productId], references: [id])
-  operation         ProviderOperation? @relation(fields: [operationId], references: [id])
-  createdBy         User?              @relation(fields: [createdById], references: [id])
-
-  @@index([providerId])
-  @@index([productId])
-  @@index([operationId])
-}
-
-model Template {
-  id            String              @id @default(cuid())
-  companyId     String?
-  userId        String?
-  name          String
-  description   String?
-  visibility    TemplateVisibility  @default(PRIVATE)
-  isFavorite    Boolean             @default(false)
-  createdAt     DateTime            @default(now())
-  updatedAt     DateTime            @updatedAt
-
-  company       Company?            @relation(fields: [companyId], references: [id])
-  user          User?               @relation(fields: [userId], references: [id])
-  items         TemplateItem[]
-  consultations Consultation[]
-
-  @@index([companyId])
-  @@index([userId])
-}
-
-model TemplateItem {
-  id                String           @id @default(cuid())
-  templateId        String
-  providerProductId String
-  sortOrder         Int              @default(0)
-  alias             String?
-  createdAt         DateTime         @default(now())
-
-  template          Template         @relation(fields: [templateId], references: [id])
-  providerProduct   ProviderProduct  @relation(fields: [providerProductId], references: [id])
-
-  @@unique([templateId, providerProductId])
-  @@index([providerProductId])
-}
-
-model Consultation {
-  id                String              @id @default(cuid())
-  companyId         String?
-  requestedByUserId String
-  templateId        String?
-  subjectDocument   String
-  subjectType       String
-  totalCost         Decimal             @db.Decimal(14, 2) @default(0)
-  status            ConsultationStatus  @default(DRAFT)
-  mergedPayload     Json?
-  renderPayload     Json?
-  errorMessage      String?
-  createdAt         DateTime            @default(now())
-  updatedAt         DateTime            @updatedAt
-  completedAt       DateTime?
-
-  company           Company?            @relation(fields: [companyId], references: [id])
-  requestedByUser   User                @relation(fields: [requestedByUserId], references: [id])
-  template          Template?           @relation(fields: [templateId], references: [id])
-  items             ConsultationItem[]
-  executions        ConsultationExecution[]
-  ledgerEntries     LedgerEntry[]
-  mergeLogs         MergeLog[]
-
-  @@index([companyId])
-  @@index([requestedByUserId])
-  @@index([templateId])
-}
-
-model ConsultationItem {
-  id                String           @id @default(cuid())
-  consultationId    String
-  providerProductId String
-  sortOrder         Int              @default(0)
-  requestedCost     Decimal          @db.Decimal(14, 2)
-
-  consultation      Consultation     @relation(fields: [consultationId], references: [id])
-  providerProduct   ProviderProduct  @relation(fields: [providerProductId], references: [id])
-  executions        ConsultationExecution[]
-
-  @@index([consultationId])
-  @@index([providerProductId])
-}
-
-model ConsultationExecution {
-  id                 String            @id @default(cuid())
-  consultationId     String
-  consultationItemId String?
-  providerId         String
-  productId          String?
-  status             ExecutionStatus   @default(PENDING)
-  usedCache          Boolean           @default(false)
-  requestPayload     Json?
-  rawResponse        Json?
-  normalizedPayload  Json?
-  providerCost       Decimal?          @db.Decimal(14, 2)
-  statusCode         Int?
-  errorMessage       String?
-  startedAt          DateTime?
-  completedAt        DateTime?
-  createdAt          DateTime          @default(now())
-
-  consultation       Consultation      @relation(fields: [consultationId], references: [id])
-  consultationItem   ConsultationItem? @relation(fields: [consultationItemId], references: [id])
-  provider           Provider          @relation(fields: [providerId], references: [id])
-  product            ProviderProduct?  @relation(fields: [productId], references: [id])
-
-  @@index([consultationId])
-  @@index([providerId])
-  @@index([productId])
-}
-
-model MergeLog {
-  id                 String         @id @default(cuid())
-  consultationId     String?
-  createdById        String?
-  sourceReferenceIds String[]
-  mergedPayload      Json
-  strategy           String
-  createdAt          DateTime       @default(now())
-
-  consultation       Consultation?  @relation(fields: [consultationId], references: [id])
-  createdBy          User?          @relation(fields: [createdById], references: [id])
-
-  @@index([consultationId])
-  @@index([createdById])
-}
-
-model CustomBlock {
-  id          String   @id @default(cuid())
-  tenantId    String
-  name        String
-  description String?
-  category    String   @default("custom")
-  template    String
-  skeleton    String
-  variables   Json     @default("[]")
-  isSystem    Boolean  @default(false)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  tenant Tenant @relation(fields: [tenantId], references: [id])
-
-  @@index([tenantId])
-  @@map("custom_blocks")
+enum DocumentKind {
+  CPF
+  CNPJ
 }
