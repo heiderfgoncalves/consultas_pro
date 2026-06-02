@@ -22,6 +22,7 @@ import ProfilePage from "@/pages/ProfilePage";
 import AdminPage from "@/pages/AdminPage";
 import IntegrationsPage from "@/pages/IntegrationsPage";
 import ApiDocsPage from "@/pages/ApiDocsPage";
+import TemplatesDrawerPage from "@/pages/TemplatesDrawerPage";
 import NotFound from "@/pages/NotFound";
 import { openRechargeModal } from "@/stores/rechargeModalStore";
 
@@ -88,6 +89,7 @@ const App = () => (
               <Route path="/admin" element={<AdminPage />} />
               <Route path="/admin/canvas" element={<Navigate to="/admin" replace />} />
               <Route path="/admin/integracoes" element={<IntegrationsPage />} />
+              <Route path="/admin/templates-drawer" element={<TemplatesDrawerPage />} />
               <Route path="/documentacao/api" element={<ApiDocsPage />} />
             </Route>
 

@@ -208,3 +208,137 @@
     -webkit-mask-image: radial-gradient(ellipse 100% 70% at 50% 0%, black 20%, transparent 72%);
   }
 }
+
+/* ---------- Templates Plus CSS ---------- */
+
+:root {
+  --canvas: 0 0% 100%;
+  --chrome: 220 14% 98%;
+  --chrome-elevated: 220 14% 96%;
+  --code-bg: 220 13% 18%;
+  --code-fg: 220 14% 92%;
+  --code-gutter: 220 13% 24%;
+  --code-tag: 0 72% 51%;
+  --code-attr: 38 92% 50%;
+  --code-string: 142 71% 45%;
+  --code-expr: 212 100% 48%;
+  --code-comment: 220 9% 46%;
+
+  --color-accent: hsl(var(--primary));
+  --color-success: hsl(var(--success));
+  --color-warning: hsl(var(--warning));
+  --color-destructive: hsl(var(--destructive));
+
+  --color-muted-foreground: hsl(var(--muted-foreground));
+  --color-code-bg: hsl(var(--code-bg));
+  --color-code-fg: hsl(var(--code-fg));
+  --color-code-gutter: hsl(var(--code-gutter));
+  --color-code-tag: hsl(var(--code-tag));
+  --color-code-attr: hsl(var(--code-attr));
+  --color-code-string: hsl(var(--code-string));
+  --color-code-expr: hsl(var(--code-expr));
+  --color-code-comment: hsl(var(--code-comment));
+
+  /* Editor-specific tokens & helpers de TemplatesDrawer-v2 */
+  --editor-bg: hsl(220 14% 96%);
+  --editor-panel: #ffffff;
+  --editor-panel-border: hsl(220 13% 88%);
+  --editor-ribbon: hsl(220 14% 97%);
+  --editor-ribbon-accent: hsl(var(--primary));
+  --editor-canvas-bg: hsl(220 14% 92%);
+  --editor-frame-bg: #ffffff;
+  --editor-grid: hsl(220 13% 85% / 0.6);
+  --editor-selected: hsl(var(--primary));
+}
+
+.editor-grid-bg {
+  background-image:
+    linear-gradient(to right, var(--editor-grid) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--editor-grid) 1px, transparent 1px);
+}
+
+.dark {
+  --canvas: 225 28% 16%;
+  --chrome: 226 30% 11%;
+  --chrome-elevated: 224 27% 15%;
+
+  /* Tema escuro para o Templates Drawer */
+  --editor-bg: hsl(var(--background));
+  --editor-panel: hsl(var(--card));
+  --editor-panel-border: hsl(var(--border));
+  --editor-ribbon: hsl(var(--card));
+  --editor-ribbon-accent: hsl(var(--primary));
+  --editor-canvas-bg: hsl(226 30% 9%);
+  --editor-frame-bg: hsl(var(--background));
+  --editor-grid: rgba(255, 255, 255, 0.05);
+  --editor-selected: hsl(var(--primary));
+}
+
+.bg-canvas {
+  background-color: hsl(var(--canvas));
+}
+
+.bg-chrome {
+  background-color: hsl(var(--chrome));
+}
+
+.bg-chrome-elevated {
+  background-color: hsl(var(--chrome-elevated));
+}
+
+/* Subtle scrollbars for the editor chrome */
+.tp-scroll::-webkit-scrollbar { width: 10px; height: 10px; }
+.tp-scroll::-webkit-scrollbar-track { background: transparent; }
+.tp-scroll::-webkit-scrollbar-thumb {
+  background: color-mix(in oklab, hsl(var(--muted-foreground)) 25%, transparent);
+  border-radius: 8px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+.tp-scroll::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in oklab, hsl(var(--muted-foreground)) 45%, transparent);
+  background-clip: padding-box;
+  border: 2px solid transparent;
+}
+
+/* Skeleton mode: same layout as preview, colors stripped */
+.tp-skeleton, .tp-skeleton * {
+  color: hsl(var(--muted-foreground)) !important;
+  border-color: color-mix(in oklab, hsl(var(--muted-foreground)) 30%, transparent) !important;
+  background-color: transparent !important;
+  background-image: none !important;
+  fill: color-mix(in oklab, hsl(var(--muted-foreground)) 30%, transparent) !important;
+  stroke: color-mix(in oklab, hsl(var(--muted-foreground)) 50%, transparent) !important;
+  box-shadow: none !important;
+}
+.tp-skeleton img { opacity: 0.25; filter: grayscale(1); }
+
+.tp-expression {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: hsl(var(--muted-foreground));
+  background: color-mix(in oklab, hsl(var(--muted)) 80%, transparent);
+  padding: 2px 6px;
+  border-radius: 4px;
+  border: 1px solid hsl(var(--border));
+  display: inline-block;
+}
+
+/* Inline editable: subtle hover/focus rings, no layout shift */
+.tp-inline {
+  outline: none;
+  border-radius: 3px;
+  padding: 0 2px;
+  margin: 0 -2px;
+  cursor: text;
+  transition: background 120ms, box-shadow 120ms;
+  min-width: 1ch;
+  display: inline-block;
+}
+.tp-inline:hover { background: color-mix(in oklab, hsl(var(--primary)) 8%, transparent); }
+.tp-inline:focus { background: color-mix(in oklab, hsl(var(--primary)) 14%, transparent); box-shadow: inset 0 0 0 1px color-mix(in oklab, hsl(var(--primary)) 60%, transparent); }
+.tp-inline[data-empty="true"]:not(:focus)::before {
+  content: attr(data-placeholder);
+  color: color-mix(in oklab, hsl(var(--muted-foreground)) 55%, transparent);
+  font-style: italic;
+}
