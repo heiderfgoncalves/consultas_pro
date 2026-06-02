@@ -61,9 +61,9 @@ function extractByJsonPath(payload: unknown, path: string) {
   try {
     return JSONPath({
       path,
-      json: payload,
+      json: payload as any,
       wrap: true,
-    }) as unknown[];
+    }) as any;
   } catch {
     return [];
   }
@@ -88,7 +88,7 @@ function applyTransform(value: unknown, transformName?: string | null, dataType?
   }
 }
 
-function normalizePrimitive(value: unknown) {
+function normalizePrimitive(value: unknown): any {
   if (Array.isArray(value)) {
     if (value.length === 1) return normalizePrimitive(value[0]);
     return value.map(normalizePrimitive);
@@ -103,7 +103,18 @@ function setDeep(target: Record<string, unknown>, path: string, value: unknown) 
   parts.forEach((part, index) => {
     const isLast = index === parts.length - 1;
     if (isLast) {
-      current[part] = value;
+      if (
+        current[part] &&
+        typeof current[part] === 'object' &&
+        !Array.isArray(current[part]) &&
+        value &&
+        typeof value === 'object' &&
+        !Array.isArray(value)
+      ) {
+        current[part] = { ...current[part] as Record<string, unknown>, ...value as Record<string, unknown> };
+      } else {
+        current[part] = value;
+      }
       return;
     }
 

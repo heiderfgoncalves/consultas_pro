@@ -16,6 +16,7 @@
     "prisma:migrate": "prisma migrate dev",
     "prisma:deploy": "prisma migrate deploy",
     "prisma:seed": "tsx prisma/seed.ts",
+    "reset-user-password": "tsx prisma/reset-user-password.ts",
     "check": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {

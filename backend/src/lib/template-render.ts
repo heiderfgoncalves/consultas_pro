@@ -1,3 +1,4 @@
+// @ts-ignore
 import Mustache from 'mustache';
 
 export function renderTemplateObject<T = unknown>(input: T, context: Record<string, unknown>): T {

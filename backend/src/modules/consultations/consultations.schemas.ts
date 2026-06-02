@@ -5,6 +5,7 @@ export const createConsultationSchema = z.object({
   subjectType: z.enum(['CPF', 'CNPJ']).default('CPF'),
   templateId: z.string().optional(),
   providerProductIds: z.array(z.string()).optional(),
+  externalUserId: z.string().optional(),
 });
 
 export const mergePreviewSchema = z.object({

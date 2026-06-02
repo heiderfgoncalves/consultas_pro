@@ -9,12 +9,13 @@ import {
 } from '../../lib/integration-settings';
 
 export async function createConsultation(app: FastifyInstance, input: {
-  requestedByUserId: string;
+  requestedByUserId?: string | null;
   companyId?: string | null;
   subjectDocument: string;
   subjectType: string;
   templateId?: string;
   providerProductIds?: string[];
+  externalUserId?: string | null;
 }) {
   if (!input.templateId && (!input.providerProductIds || input.providerProductIds.length === 0)) {
     throw new ValidationError('Informe um template ou pelo menos um produto de consulta');
@@ -50,12 +51,13 @@ export async function createConsultation(app: FastifyInstance, input: {
     const created = await tx.consultation.create({
       data: {
         companyId: input.companyId ?? null,
-        requestedByUserId: input.requestedByUserId,
+        requestedByUserId: input.requestedByUserId ?? null,
         templateId: input.templateId,
         subjectDocument: normalizeDocument(input.subjectDocument),
         subjectType: input.subjectType,
         totalCost,
         status: 'QUEUED',
+        externalUserId: input.externalUserId ?? null,
         items: {
           createMany: {
             data: products.map((product, index) => ({
@@ -83,7 +85,7 @@ export async function createConsultation(app: FastifyInstance, input: {
         data: {
           walletId: companyWallet.id,
           companyId: input.companyId,
-          userId: input.requestedByUserId,
+          userId: input.requestedByUserId ?? null,
           consultationId: created.id,
           type: 'DEBIT',
           amount: totalCost,
@@ -92,6 +94,7 @@ export async function createConsultation(app: FastifyInstance, input: {
           description: `Débito da consulta ${created.id}`,
           metadata: {
             productIds: products.map((product) => product.id),
+            externalUserId: input.externalUserId ?? null,
           },
         },
       });

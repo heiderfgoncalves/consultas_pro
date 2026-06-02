@@ -6,11 +6,12 @@ import { ok, fail } from '../../core/http';
 import { createCustomBlockSchema, updateCustomBlockSchema } from './custom-blocks.schemas';
 import { validateTemplate } from '../../lib/expression-validator';
 
-export async function registerCustomBlockRoutes(app: FastifyInstance) {
-  app.addHook('onRequest', authenticate);
-  app.addHook('onRequest', requireRoles([Role.PLATFORM_ADMIN]));
+const customBlocksAdmin = {
+  preHandler: [authenticate, requireRoles([Role.PLATFORM_ADMIN])],
+};
 
-  app.get('/admin/custom-blocks', async (request, reply) => {
+export async function registerCustomBlockRoutes(app: FastifyInstance) {
+  app.get('/admin/custom-blocks', customBlocksAdmin, async (request, reply) => {
     const { tenantId } = request.authUser!;
     const blocks = await app.prisma.customBlock.findMany({
       where: tenantId ? { tenantId } : undefined,
@@ -19,7 +20,7 @@ export async function registerCustomBlockRoutes(app: FastifyInstance) {
     return ok(reply, blocks);
   });
 
-  app.post('/admin/custom-blocks', async (request, reply) => {
+  app.post('/admin/custom-blocks', customBlocksAdmin, async (request, reply) => {
     const { tenantId } = request.authUser!;
     const body = createCustomBlockSchema.parse(request.body);
 
@@ -47,7 +48,7 @@ export async function registerCustomBlockRoutes(app: FastifyInstance) {
     return ok(reply, block, 201);
   });
 
-  app.patch('/admin/custom-blocks/:id', async (request, reply) => {
+  app.patch('/admin/custom-blocks/:id', customBlocksAdmin, async (request, reply) => {
     const { id } = request.params as { id: string };
     const body = updateCustomBlockSchema.parse(request.body);
 
@@ -71,7 +72,7 @@ export async function registerCustomBlockRoutes(app: FastifyInstance) {
     return ok(reply, block);
   });
 
-  app.delete('/admin/custom-blocks/:id', async (request, reply) => {
+  app.delete('/admin/custom-blocks/:id', customBlocksAdmin, async (request, reply) => {
     const { id } = request.params as { id: string };
 
     const existing = await app.prisma.customBlock.findUnique({ where: { id } });

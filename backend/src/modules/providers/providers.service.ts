@@ -19,7 +19,7 @@ export async function createProvider(app: FastifyInstance, payload: {
   if (exists) throw new ConflictError('Já existe um provedor com este slug');
 
   return app.prisma.provider.create({
-    data: payload,
+    data: payload as any,
   });
 }
 
@@ -235,6 +235,7 @@ export async function createApiToken(app: FastifyInstance, input: {
   label: string;
   scopes?: Record<string, unknown>;
   expiresAt?: Date | null;
+  allowedOrigins?: string[];
 }) {
   if (input.companyId && input.tenantId) {
     throw new ConflictError('Informe apenas tenantId ou companyId para o token');
@@ -270,6 +271,7 @@ export async function createApiToken(app: FastifyInstance, input: {
       tokenHash,
       last4: rawToken.slice(-4),
       scopes: input.scopes as Prisma.InputJsonValue | undefined,
+      allowedOrigins: input.allowedOrigins ? (input.allowedOrigins as Prisma.InputJsonValue) : undefined,
       expiresAt: input.expiresAt ?? null,
     },
   });

@@ -764,7 +764,7 @@ export async function registerAdminRoutes(app: FastifyInstance) {
         ...rest,
         cost: payload.cost,
         consultationPrice: consultationPrice ?? payload.cost,
-      },
+      } as any,
     }), 201);
   });
 

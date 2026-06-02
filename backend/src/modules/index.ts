@@ -8,6 +8,7 @@ import { registerTemplateRoutes } from './templates/templates.routes';
 import { registerConsultationRoutes } from './consultations/consultations.routes';
 import { registerAdminRoutes } from './admin/admin.routes';
 import { registerCustomBlockRoutes } from './admin/custom-blocks.routes';
+import { registerTemplatesMvpAdminRoutes } from './admin/templates-mvp.routes';
 
 export async function registerModules(app: FastifyInstance) {
   await registerHealthRoutes(app);
@@ -19,4 +20,5 @@ export async function registerModules(app: FastifyInstance) {
   await registerConsultationRoutes(app);
   await registerAdminRoutes(app);
   await registerCustomBlockRoutes(app);
+  await registerTemplatesMvpAdminRoutes(app);
 }

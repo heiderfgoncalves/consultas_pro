@@ -12,12 +12,13 @@ export async function registerConsultationRoutes(app: FastifyInstance) {
     const payload = createConsultationSchema.parse(request.body);
 
     return ok(reply, await createConsultation(app, {
-      requestedByUserId: request.authUser!.userId,
+      requestedByUserId: request.authUser?.userId === 'api-bot' ? null : request.authUser?.userId,
       companyId: request.authUser?.companyId,
       subjectDocument: payload.subjectDocument,
       subjectType: payload.subjectType,
       templateId: payload.templateId,
       providerProductIds: payload.providerProductIds,
+      externalUserId: payload.externalUserId,
     }), 201);
   });
 
@@ -75,5 +76,18 @@ export async function registerConsultationRoutes(app: FastifyInstance) {
     });
 
     return ok(reply, consultation);
+  });
+
+  app.get('/widget.js', async (_request, reply) => {
+    const fs = require('fs');
+    const path = require('path');
+    const widgetPath = path.join(__dirname, '../../public/widget.js');
+    const content = fs.readFileSync(widgetPath, 'utf8');
+    
+    return reply
+      .header('Access-Control-Allow-Origin', '*')
+      .header('Cross-Origin-Resource-Policy', 'cross-origin')
+      .type('application/javascript; charset=utf-8')
+      .send(content);
   });
 }

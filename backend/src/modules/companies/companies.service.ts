@@ -56,7 +56,7 @@ export async function inviteCompanyUser(app: FastifyInstance, companyId: string,
     companyId,
     invitedByUserId: actorUserId,
     roleToAssign: payload.role as Role,
-    metadata: payload.metadata,
+    metadata: payload.metadata as any,
   });
 }
 

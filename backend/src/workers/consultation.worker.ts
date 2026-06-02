@@ -80,8 +80,8 @@ async function processConsultation(consultationId: string) {
         type: consultation.subjectType,
       },
       requester: {
-        id: consultation.requestedByUser.id,
-        email: consultation.requestedByUser.email,
+        id: consultation.requestedByUser?.id ?? '',
+        email: consultation.requestedByUser?.email ?? '',
       },
       companyId: consultation.companyId,
     };
