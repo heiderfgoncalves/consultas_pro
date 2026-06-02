@@ -25,3 +25,7 @@ build/
 # Python
 __pycache__/
 *.py[cod]
+
+# Local backups & archives
+old/
+frontend/package.zip

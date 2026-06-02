@@ -42,7 +42,7 @@ A API segue o envelope definido em `backend/src/core/http.ts`:
 
 ## Documentação relacionada
 
-- Visão geral de APIs: [Documentação técnica de back-end §14](../consultas_pro_documentacao_backend.md#14-apis-e-contratos).
+- Visão geral de APIs: [Documentação técnica de back-end](../arquitetura/backend.md).
 
 ## Licença
 

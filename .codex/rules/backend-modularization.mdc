@@ -1,0 +1,30 @@
+---
+description: Convenções reais do backend do Consultas PRO
+globs: backend/**/*.ts
+alwaysApply: false
+---
+# Consultas PRO Backend
+
+## Objetivo
+
+Garantir que mudanças no backend sigam a estrutura real do projeto: `Fastify + Prisma + Zod + BullMQ`, com reuso, consistência e baixo acoplamento.
+
+## Regras obrigatorias
+
+1. Antes de criar rota, service ou utilitário, buscar reuso em `backend/src/modules/`, `backend/src/core/`, `backend/src/lib/`, `backend/src/db/` e `backend/src/queues/`.
+2. O padrão preferencial é `module.routes.ts` + `module.service.ts` + `module.schemas.ts` quando fizer sentido. Não inventar `controller` ou `repository` se o módulo não usa isso.
+3. Validar entrada na borda com Zod e concentrar regra de negócio em `service` quando a lógica deixar de ser trivial.
+4. CRUD simples pode usar `app.prisma` direto na rota; lógica com múltiplas etapas, fila, saldo, merge ou integrações deve ir para `service`.
+5. Transações devem usar `app.prisma.$transaction(...)` ou `tx` do Prisma. Não orientar `pgPool.connect()` neste projeto.
+6. Jobs, filas e integrações externas devem ficar em `queues/`, `workers/` ou services dedicados, sem espalhar side effects pelo módulo.
+7. Preservar contratos existentes de rota, autenticação e erros em `backend/src/core/`.
+8. Novos módulos devem ficar em `backend/src/modules/<dominio>/`.
+9. Antes de finalizar, rodar ao menos `npm run check` no backend quando a alteração tocar TypeScript de forma relevante.
+10. Se houver diagnóstico/linter novo nos arquivos alterados, corrigir antes de concluir.
+
+## Exemplo rapido
+
+- ❌ Criar `users.controller.ts` e `users.repository.ts` só por formalidade.
+- ✅ Seguir o padrão já usado no módulo, com `routes`, `schemas` e `service` quando necessário.
+- ❌ Sugerir `pgPool.connect()` ou SQL cru como padrão principal.
+- ✅ Usar `app.prisma` e `app.prisma.$transaction(...)`.
