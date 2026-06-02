@@ -8,8 +8,11 @@ export default defineConfig(({ mode }) => ({
   server: {
     host: "::",
     port: 8080,
-    // Permite acesso via proxy/túnel com Host do ambiente de homologação
-    allowedHosts: ["consultaspro-app-homol.limpanome.pro"],
+    // Permite acesso via proxy/túnel com Host do ambiente de homologação e produção
+    allowedHosts: [
+      "consultaspro-app-homol.limpanome.pro",
+      "consultas.limpanome.pro"
+    ],
     hmr: {
       overlay: false,
     },
