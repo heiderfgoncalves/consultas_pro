@@ -32,6 +32,7 @@ export interface ConsultationHistory {
   reportComment?: string;
   reportStatus?: 'pending' | 'reviewed' | 'resolved';
   jsonLog?: string;
+  externalUserId?: string;
 }
 
 export interface FinancialEntry {
@@ -114,10 +115,10 @@ const sampleJsonLog = JSON.stringify({
 }, null, 2);
 
 export const mockHistory: ConsultationHistory[] = [
-  { id: '1', date: '2026-03-30 14:32', document: '***456789**', documentType: 'cpf', templateName: 'Análise Completa', totalPrice: 45.20, status: 'completed', blocks: mockTemplates[0].blocks, jsonLog: sampleJsonLog },
+  { id: '1', date: '2026-03-30 14:32', document: '***456789**', documentType: 'cpf', templateName: 'Análise Completa', totalPrice: 45.20, status: 'completed', blocks: mockTemplates[0].blocks, jsonLog: sampleJsonLog, externalUserId: 'cliente_rprotec_123' },
   { id: '2', date: '2026-03-29 09:15', document: '***345678**', documentType: 'cpf', templateName: 'Consulta Rápida', totalPrice: 18.20, status: 'completed', blocks: mockTemplates[1].blocks, reportedBy: 'Ana Souza', reportComment: 'Score parece inconsistente com os dados apresentados', reportStatus: 'pending', jsonLog: sampleJsonLog },
-  { id: '3', date: '2026-03-28 16:44', document: '**345678/0001-**', documentType: 'cnpj', templateName: 'Premium + Bacen', totalPrice: 82.50, status: 'processing', blocks: mockTemplates[2].blocks, jsonLog: sampleJsonLog },
-  { id: '4', date: '2026-03-27 11:20', document: '***789012**', documentType: 'cpf', templateName: 'Consulta Rápida', totalPrice: 18.20, status: 'completed', blocks: mockTemplates[1].blocks, reportedBy: 'Pedro Lima', reportComment: 'Dados do SPC não bateram com consulta manual', reportStatus: 'reviewed', jsonLog: sampleJsonLog },
+  { id: '3', date: '2026-03-28 16:44', document: '**345678/0001-**', documentType: 'cnpj', templateName: 'Premium + Bacen', totalPrice: 82.50, status: 'processing', blocks: mockTemplates[2].blocks, jsonLog: sampleJsonLog, externalUserId: 'api_rprotec_prod' },
+  { id: '4', date: '2026-03-27 11:20', document: '***789012**', documentType: 'cpf', templateName: 'Consulta Rápida', totalPrice: 18.20, status: 'completed', blocks: mockTemplates[1].blocks, reportedBy: 'Pedro Lima', reportComment: 'Dados do SPC não bateram com consulta manual', reportStatus: 'reviewed', jsonLog: sampleJsonLog, externalUserId: 'ana_silva' },
   { id: '5', date: '2026-03-26 08:05', document: '***234567**', documentType: 'cpf', templateName: 'Análise Completa', totalPrice: 45.20, status: 'error', blocks: mockTemplates[0].blocks, jsonLog: sampleJsonLog },
 ];
 

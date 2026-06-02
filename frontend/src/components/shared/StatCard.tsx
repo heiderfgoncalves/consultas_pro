@@ -60,7 +60,7 @@ interface PageHeaderProps {
 
 export function PageHeader({ title, subtitle, children, titleClassName, subtitleClassName }: PageHeaderProps) {
   return (
-    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
+    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-4">
       <div>
         <h1 className={cn('text-2xl font-bold text-foreground', titleClassName)}>{title}</h1>
         {subtitle && (

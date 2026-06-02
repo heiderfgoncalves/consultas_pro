@@ -17,8 +17,10 @@ import { Navigate, useSearchParams } from 'react-router-dom';
 import {
   Server, Plus, Pencil, Trash2, Database,
   Play, Tag, ChevronDown, ChevronRight, Search, RefreshCcw,
-  Code2, Link2, Save, Hash, Filter, Undo2, Loader2, Layers3, Cog,
+  Code2, Link2, Save, Hash, Filter, Undo2, Loader2, Layers3, Cog, Sliders,
 } from 'lucide-react';
+import { useIsolatedEditorStore } from '@/features/templates-drawer/store/isolated-editor.store';
+import { IsolatedEditorDialog } from '@/features/templates-drawer/components/IsolatedEditorDialog';
 import { useAuthStore } from '@/stores/authStore';
 import { PageHeader } from '@/components/shared/StatCard';
 import { Button } from '@/components/ui/button';
@@ -40,8 +42,9 @@ import type {
 } from '@/types/integrations';
 import JsonFieldMapper from '@/components/integrations/JsonFieldMapper';
 import TypeReportFieldsConfig from '@/components/integrations/TypeReportFieldsConfig';
-import TemplatesAdminTab from '@/components/integrations/TemplatesAdminTab';
+import TemplatesMvpTab from '@/components/integrations/TemplatesMvpTab';
 import IntegrationsSettingsTab from '@/components/integrations/IntegrationsSettingsTab';
+import CompanyApiTokensTab from '@/components/integrations/CompanyApiTokensTab';
 import { buildTypeLinkedConsultationMappedPreview } from '@/lib/consultationMappedPreview';
 import {
   buildSingleGroupTypeItemFilterConfig,
@@ -1619,8 +1622,24 @@ export default function IntegrationsPage() {
   const getLinkedConsultations = (fieldTypeKey: string) =>
     consultations.filter((c) => c.fieldMappings.some((m) => m.fieldTypeKey === fieldTypeKey));
 
-  if (user?.backendRole !== 'PLATFORM_ADMIN') {
+  const isCompanyManager = user?.backendRole === 'COMPANY_OWNER' || user?.backendRole === 'COMPANY_MANAGER';
+
+  if (user?.backendRole !== 'PLATFORM_ADMIN' && !isCompanyManager) {
     return <Navigate to="/dashboard" replace />;
+  }
+
+  if (isCompanyManager) {
+    return (
+      <div className="space-y-4">
+        <PageHeader
+          title="Integrações & API"
+          subtitle="Gerencie seus tokens de acesso e scripts White-Label"
+          titleClassName="text-3xl font-bold tracking-tight"
+          subtitleClassName="text-base text-muted-foreground mt-1.5"
+        />
+        <CompanyApiTokensTab accessToken={accessToken} />
+      </div>
+    );
   }
 
   return (
@@ -2182,10 +2201,43 @@ export default function IntegrationsPage() {
 
                 return (
                   <div className="space-y-2">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <Tag className={`w-5 h-5 ${ftColorClass(ft.color, 'text')}`} />
-                      <span className="text-base font-semibold text-foreground">{ft.label}</span>
-                      <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded-md">{linked.length} consultas</span>
+                    <div className="flex items-center justify-between gap-2 flex-wrap pb-2 border-b border-border/60">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <Tag className={`w-5 h-5 ${ftColorClass(ft.color, 'text')}`} />
+                        <span className="text-base font-semibold text-foreground">{ft.label}</span>
+                        <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded-md">{linked.length} consultas</span>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="h-8 gap-1.5 px-3 rounded-md hover:bg-indigo-50 hover:text-indigo-600 dark:hover:bg-indigo-950/20 dark:hover:text-indigo-400 shrink-0 cursor-pointer text-xs"
+                        onClick={() => {
+                          useIsolatedEditorStore.getState().openEditor({
+                            targetType: "canonicalField",
+                            targetId: ft.id,
+                            elementTree: ft.reportFieldConfig?.elementTree ?? [],
+                            code: ft.reportFieldConfig?.code ?? "",
+                            format: ft.reportFieldConfig?.format ?? "html",
+                            onSave: async (newTree, newCode, newFormat) => {
+                              try {
+                                await handleSaveTypeReportFields(ft, {
+                                  version: 1,
+                                  fields: ft.reportFieldConfig?.fields ?? [],
+                                  code: newCode,
+                                  format: newFormat,
+                                  elementTree: newTree
+                                });
+                              } catch (e) {
+                                console.error(e);
+                              }
+                            }
+                          });
+                        }}
+                      >
+                        <Sliders className="w-3.5 h-3.5" />
+                        Editar Layout/Código
+                      </Button>
                     </div>
 
                     <TypeReportFieldsConfig
@@ -2243,11 +2295,9 @@ export default function IntegrationsPage() {
         </TabsContent>
 
         <TabsContent value="templates" className="space-y-2">
-          <TemplatesAdminTab
+          <TemplatesMvpTab
             accessToken={accessToken}
-            providers={providers}
             consultations={consultations}
-            fieldTypes={fieldTypes}
           />
         </TabsContent>
       </Tabs>
@@ -2266,6 +2316,7 @@ export default function IntegrationsPage() {
         onSave={handleSaveFieldType}
         saving={savingFieldType}
       />
+      <IsolatedEditorDialog />
     </div>
   );
 }

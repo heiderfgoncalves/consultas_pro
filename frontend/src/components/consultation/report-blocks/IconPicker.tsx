@@ -1,9 +1,9 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   AlertTriangle, Gauge, Award, DollarSign, TrendingUp, ShieldAlert,
   Building2, FileX, Users, FileWarning, FileText, User, Hash, Tag,
   CheckCircle, CreditCard, BarChart3, Globe, Shield, Lock, Briefcase,
-  Phone, Mail, MapPin, Calendar, Clock, Star, Heart, Zap, Target,
+  Phone, Mail, MapPin, Calendar, Clock, Star, Heart, Zap, Target, Ban,
   type LucideIcon,
 } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -42,13 +42,23 @@ const ICON_CATALOG: { name: string; icon: LucideIcon }[] = [
 ];
 
 interface IconPickerProps {
-  currentIcon: LucideIcon;
+  currentIcon?: LucideIcon;
+  currentIconName?: string;
   onSelect: (iconName: string, icon: LucideIcon) => void;
   size?: number;
 }
 
-export default function IconPicker({ currentIcon: CurrentIcon, onSelect, size = 18 }: IconPickerProps) {
+const NO_ICON = '__none__';
+
+export default function IconPicker({ currentIcon: CurrentIcon = FileText, currentIconName, onSelect, size = 18 }: IconPickerProps) {
   const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState('');
+  const filteredIcons = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    const catalog = [{ name: NO_ICON, icon: Ban }, ...ICON_CATALOG];
+    return q ? catalog.filter(({ name }) => name.toLowerCase().includes(q)) : catalog;
+  }, [query]);
+  const selectedIconName = currentIconName || 'FileText';
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -57,19 +67,26 @@ export default function IconPicker({ currentIcon: CurrentIcon, onSelect, size = 
           <CurrentIcon style={{ width: size, height: size }} className="text-muted-foreground group-hover:text-primary" />
         </button>
       </PopoverTrigger>
-      <PopoverContent className="w-64 p-2" align="start">
+      <PopoverContent className="w-72 p-2" align="start">
         <p className="text-[10px] font-medium text-muted-foreground mb-2 px-1">Trocar ícone</p>
-        <div className="grid grid-cols-6 gap-1">
-          {ICON_CATALOG.map(({ name, icon: Icon }) => (
+        <input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Buscar ícone..."
+          className="mb-2 h-8 w-full rounded-md border border-input bg-background px-2 text-xs outline-none focus:border-primary"
+        />
+        <div className="grid max-h-56 grid-cols-6 gap-1 overflow-y-auto pr-1 scrollbar-thin">
+          {filteredIcons.map(({ name, icon: Icon }) => (
             <button
               key={name}
-              onClick={() => { onSelect(name, Icon); setOpen(false); }}
-              className="w-9 h-9 rounded-md flex items-center justify-center hover:bg-primary/10 hover:text-primary transition-colors cursor-pointer border border-transparent hover:border-primary/30"
-              title={name}
+              onClick={() => { onSelect(name, Icon); setOpen(false); setQuery(''); }}
+              className={`w-9 h-9 rounded-md flex items-center justify-center hover:bg-primary/10 hover:text-primary transition-colors cursor-pointer border ${selectedIconName === name ? 'border-primary bg-primary/10 text-primary' : 'border-transparent hover:border-primary/30'}`}
+              title={name === NO_ICON ? 'Sem ícone' : name}
             >
               <Icon className="w-4 h-4" />
             </button>
           ))}
+          {filteredIcons.length === 0 && <div className="col-span-6 py-4 text-center text-[11px] text-muted-foreground">Nenhum ícone encontrado</div>}
         </div>
       </PopoverContent>
     </Popover>
@@ -78,5 +95,7 @@ export default function IconPicker({ currentIcon: CurrentIcon, onSelect, size = 
 
 export { ICON_CATALOG };
 export function getIconByName(name: string): LucideIcon {
+  if (!name || name === NO_ICON) return Ban;
   return ICON_CATALOG.find((i) => i.name === name)?.icon ?? FileText;
 }
+export { NO_ICON };

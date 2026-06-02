@@ -1,13 +1,14 @@
 /** Chave de query na rota `/admin/integracoes` para abrir aba direta. */
 export const INTEGRATIONS_TAB_QUERY_KEY = 'aba';
 
-export type IntegrationsTab = 'providers' | 'consultations' | 'types' | 'templates' | 'settings';
+export type IntegrationsTab = 'providers' | 'consultations' | 'types' | 'templates' | 'templates_plus' | 'settings';
 
 const ABA_PARAM: Record<IntegrationsTab, string> = {
   providers: 'provedores',
   consultations: 'consultas',
   types: 'tipos',
   templates: 'templates',
+  templates_plus: 'templates-plus',
   settings: 'configuracoes',
 };
 
@@ -16,6 +17,7 @@ export function parseIntegrationsTabFromSearch(
 ): IntegrationsTab | null {
   const raw = params.get(INTEGRATIONS_TAB_QUERY_KEY)?.toLowerCase().normalize('NFD').replace(/\p{M}/gu, '');
   if (raw === ABA_PARAM.templates) return 'templates';
+  if (raw === ABA_PARAM.templates_plus) return 'templates_plus';
   if (raw === ABA_PARAM.types) return 'types';
   if (raw === ABA_PARAM.consultations) return 'consultations';
   if (raw === ABA_PARAM.providers) return 'providers';

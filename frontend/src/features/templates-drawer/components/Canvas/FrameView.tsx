@@ -1,0 +1,40 @@
+import type { Frame } from "../../schema/template";
+import { useEditorStore } from "../../store/editor.store";
+
+export function FrameView({ frame }: { frame: Frame }) {
+  const active = useEditorStore((s) => s.activeFrameId === frame.id);
+  const setActive = useEditorStore((s) => s.setActiveFrame);
+  return (
+    <div
+      style={{
+        position: "absolute",
+        left: frame.x,
+        top: frame.y,
+        width: frame.width,
+        height: frame.height,
+        background: frame.background ?? "var(--editor-frame-bg)",
+        boxShadow: "0 6px 24px rgba(15,23,42,0.18)",
+        border: active ? "2px solid var(--editor-selected)" : "1px solid #cbd5e1",
+        zIndex: 0,
+      }}
+      onMouseDown={(e) => {
+        // clicking inside frame background activates it but doesn't deselect everything immediately
+        if (e.target === e.currentTarget) setActive(frame.id);
+      }}
+    >
+      <div
+        style={{
+          position: "absolute",
+          top: -22,
+          left: 0,
+          fontSize: 11,
+          color: "#475569",
+          fontFamily: "Inter, sans-serif",
+          userSelect: "none",
+        }}
+      >
+        {frame.name} · {frame.width}×{frame.height}
+      </div>
+    </div>
+  );
+}

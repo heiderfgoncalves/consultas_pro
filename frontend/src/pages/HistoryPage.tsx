@@ -19,7 +19,9 @@ export default function HistoryPage() {
   const canReport = (user?.accessLevel ?? 2) >= 1;
 
   const filtered = mockHistory.filter(h => {
-    const matchSearch = h.document.includes(searchQuery) || h.templateName.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchSearch = h.document.includes(searchQuery) || 
+      h.templateName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      ((h as any).externalUserId && (h as any).externalUserId.toLowerCase().includes(searchQuery.toLowerCase()));
     const matchStatus = statusFilter === 'all' || h.status === statusFilter;
     return matchSearch && matchStatus;
   });
@@ -68,6 +70,7 @@ export default function HistoryPage() {
                   <th className="text-left text-[10px] uppercase font-semibold text-muted-foreground px-4 py-3 tracking-wider">Documento</th>
                   <th className="text-left text-[10px] uppercase font-semibold text-muted-foreground px-4 py-3 tracking-wider">Template</th>
                   <th className="text-right text-[10px] uppercase font-semibold text-muted-foreground px-4 py-3 tracking-wider">Valor</th>
+                  <th className="text-left text-[10px] uppercase font-semibold text-muted-foreground px-4 py-3 tracking-wider">ID Cliente</th>
                   <th className="text-center text-[10px] uppercase font-semibold text-muted-foreground px-4 py-3 tracking-wider">Status</th>
                   {isAdmin && <th className="text-center text-[10px] uppercase font-semibold text-muted-foreground px-4 py-3 tracking-wider">Report</th>}
                   <th className="text-right text-[10px] uppercase font-semibold text-muted-foreground px-4 py-3 tracking-wider">Ações</th>
@@ -87,6 +90,7 @@ export default function HistoryPage() {
                       <td className="px-4 py-3 text-sm text-foreground font-mono">{item.document}</td>
                       <td className="px-4 py-3 text-sm text-foreground">{item.templateName}</td>
                       <td className="px-4 py-3 text-sm text-foreground text-right font-semibold">R$ {item.totalPrice.toFixed(2)}</td>
+                      <td className="px-4 py-3 text-sm text-muted-foreground whitespace-nowrap font-mono">{((item as any).externalUserId) || '—'}</td>
                       <td className="px-4 py-3 text-center"><StatusBadge status={item.status} /></td>
                       {isAdmin && (
                         <td className="px-4 py-3 text-center">

@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Navigate } from 'react-router-dom';
+import { Navigate, useSearchParams } from 'react-router-dom';
 import {
-  Building2, ClipboardList, Copy, CreditCard, KeyRound, Mail, Plus, RefreshCw, Route, Search, Trash2, UserPlus, Users,
+  AlertTriangle, ArrowRight, Building2, Check, ClipboardList, Copy, CreditCard, FileCode, Globe, KeyRound, Mail, Palette, Plus, RefreshCw, Route, Search, Trash2, UserPlus, Users,
 } from 'lucide-react';
 import { useAuthStore } from '@/stores/authStore';
 import { PageHeader } from '@/components/shared/StatCard';
@@ -51,6 +51,7 @@ import {
   revokeAdminInviteApi,
 } from '@/api/admin-panel';
 import { RoleEndpointAccessTab } from '@/components/admin/RoleEndpointAccessTab';
+import { apiBase } from '@/lib/api';
 
 const labelCls = 'text-xs font-medium text-muted-foreground uppercase tracking-wide';
 const inputCls = 'h-9 text-sm bg-background placeholder:text-muted-foreground';
@@ -76,7 +77,27 @@ export default function AdminPage() {
   const { user, accessToken } = useAuthStore();
   const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
-  const [tab, setTab] = useState('users');
+  const [tokensDefaultCompanyId, setTokensDefaultCompanyId] = useState<string | null>(null);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [tab, setTab] = useState(() => {
+    return searchParams.get('aba') || 'users';
+  });
+
+  useEffect(() => {
+    const fromUrl = searchParams.get('aba');
+    if (fromUrl && fromUrl !== tab) {
+      setTab(fromUrl);
+    }
+  }, [searchParams]);
+
+  const setTabWithUrl = (newTab: string) => {
+    setTab(newTab);
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      next.set('aba', newTab);
+      return next;
+    }, { replace: true });
+  };
 
   const enabled = !!accessToken && user?.backendRole === 'PLATFORM_ADMIN';
 
@@ -146,7 +167,7 @@ export default function AdminPage() {
         </div>
       </PageHeader>
 
-      <Tabs value={tab} onValueChange={setTab} className="space-y-4">
+      <Tabs value={tab} onValueChange={setTabWithUrl} className="space-y-4">
         <TabsList className="h-10 bg-muted/50 p-1 rounded-lg gap-1 flex-wrap h-auto min-h-10">
           <TabsTrigger value="users" className="text-sm gap-2"><Users className="w-4 h-4" /> Usuários</TabsTrigger>
           <TabsTrigger value="companies" className="text-sm gap-2"><Building2 className="w-4 h-4" /> Contas</TabsTrigger>
@@ -154,6 +175,7 @@ export default function AdminPage() {
           <TabsTrigger value="invites" className="text-sm gap-2"><Mail className="w-4 h-4" /> Convites</TabsTrigger>
           <TabsTrigger value="audit" className="text-sm gap-2"><ClipboardList className="w-4 h-4" /> Auditoria</TabsTrigger>
           <TabsTrigger value="api-access" className="text-sm gap-2"><Route className="w-4 h-4" /> Acesso API</TabsTrigger>
+          <TabsTrigger value="white-label" className="text-sm gap-2"><FileCode className="w-4 h-4" /> Guia White-Label</TabsTrigger>
         </TabsList>
 
         <TabsContent value="users" className="space-y-3">
@@ -183,6 +205,8 @@ export default function AdminPage() {
             companies={companies}
             loading={tokensQuery.isLoading}
             invalidateAll={invalidateAll}
+            defaultOpenCompanyId={tokensDefaultCompanyId}
+            onCloseDefaultOpen={() => setTokensDefaultCompanyId(null)}
           />
         </TabsContent>
 
@@ -206,6 +230,17 @@ export default function AdminPage() {
 
         <TabsContent value="api-access" className="space-y-3">
           <RoleEndpointAccessTab accessToken={accessToken} enabled={enabled} />
+        </TabsContent>
+
+        <TabsContent value="white-label" className="space-y-3">
+          <WhiteLabelTab
+            companies={companies}
+            tokens={tokensQuery.data ?? []}
+            onNavigateToTokens={(companyId) => {
+              setTokensDefaultCompanyId(companyId);
+              setTabWithUrl('tokens');
+            }}
+          />
         </TabsContent>
       </Tabs>
     </div>
@@ -882,12 +917,16 @@ function TokensTab({
   companies,
   loading,
   invalidateAll,
+  defaultOpenCompanyId,
+  onCloseDefaultOpen,
 }: {
   accessToken: string | null;
   tokens: AdminTokenRow[];
   companies: AdminCompanyRow[];
   loading: boolean;
   invalidateAll: () => void;
+  defaultOpenCompanyId?: string | null;
+  onCloseDefaultOpen?: () => void;
 }) {
   const [createOpen, setCreateOpen] = useState(false);
   const [newTokenPlain, setNewTokenPlain] = useState<string | null>(null);
@@ -914,6 +953,27 @@ function TokensTab({
 
   const [label, setLabel] = useState('');
   const [companyId, setCompanyId] = useState('');
+
+  // Ativa reativamente a criação de token para uma empresa pré-selecionada (redirecionamento do White-Label)
+  useEffect(() => {
+    if (defaultOpenCompanyId) {
+      const co = companies.find((c) => c.id === defaultOpenCompanyId);
+      if (co) {
+        setCompanyId(defaultOpenCompanyId);
+        setLabel(`Token ${co.name}`);
+        setNewTokenPlain(null);
+        setCreateOpen(true);
+      }
+    }
+  }, [defaultOpenCompanyId, companies]);
+
+  const handleCloseDialog = () => {
+    setCreateOpen(false);
+    setNewTokenPlain(null);
+    setLabel('');
+    setCompanyId('');
+    onCloseDefaultOpen?.();
+  };
 
   return (
     <div className="space-y-3">
@@ -950,15 +1010,30 @@ function TokensTab({
                     </Badge>
                   </TableCell>
                   <TableCell>
-                    {t.isActive ? (
-                      <Button type="button" variant="ghost" size="sm" className="h-8 text-destructive" onClick={() => revokeMut.mutate({ id: t.id, active: false })}>
-                        Revogar
+                    <div className="flex items-center gap-1 justify-end">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground"
+                        title="Copiar ID do Token"
+                        onClick={() => {
+                          void navigator.clipboard.writeText(t.id);
+                          toast.success('ID do token copiado para a área de transferência! (Nota: Por motivos de segurança, a chave secreta original só é mostrada no momento da criação).');
+                        }}
+                      >
+                        <Copy className="w-4 h-4" />
                       </Button>
-                    ) : (
-                      <Button type="button" variant="ghost" size="sm" className="h-8" onClick={() => revokeMut.mutate({ id: t.id, active: true })}>
-                        Reativar
-                      </Button>
-                    )}
+                      {t.isActive ? (
+                        <Button type="button" variant="ghost" size="sm" className="h-8 text-destructive" onClick={() => revokeMut.mutate({ id: t.id, active: false })}>
+                          Revogar
+                        </Button>
+                      ) : (
+                        <Button type="button" variant="ghost" size="sm" className="h-8" onClick={() => revokeMut.mutate({ id: t.id, active: true })}>
+                          Reativar
+                        </Button>
+                      )}
+                    </div>
                   </TableCell>
                 </TableRow>
               ))}
@@ -967,7 +1042,7 @@ function TokensTab({
         )}
       </div>
 
-      <Dialog open={createOpen} onOpenChange={(v) => { if (!v) setCreateOpen(false); }}>
+      <Dialog open={createOpen} onOpenChange={(v) => { if (!v) handleCloseDialog(); }}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Novo token de API</DialogTitle>
@@ -990,7 +1065,7 @@ function TokensTab({
                 </div>
               </div>
               <DialogFooter>
-                <Button variant="ghost" onClick={() => setCreateOpen(false)}>Cancelar</Button>
+                <Button variant="ghost" onClick={handleCloseDialog}>Cancelar</Button>
                 <Button
                   className="gradient-primary text-primary-foreground"
                   disabled={createMut.isPending || !label || !companyId}
@@ -1017,7 +1092,7 @@ function TokensTab({
                 >
                   <Copy className="w-4 h-4 mr-2" /> Copiar
                 </Button>
-                <Button type="button" className="flex-1" onClick={() => { setCreateOpen(false); setNewTokenPlain(null); setLabel(''); setCompanyId(''); }}>
+                <Button type="button" className="flex-1" onClick={handleCloseDialog}>
                   Fechar
                 </Button>
               </div>
@@ -1248,6 +1323,389 @@ function AuditTab({
               ))}
             </TableBody>
           </Table>
+        )}
+      </div>
+    </div>
+  );
+}
+
+interface WhiteLabelTabProps {
+  companies: AdminCompanyRow[];
+  tokens: AdminTokenRow[];
+  onNavigateToTokens: (companyId: string) => void;
+}
+
+function WhiteLabelTab({ companies, tokens, onNavigateToTokens }: WhiteLabelTabProps) {
+  const [selectedCompanyId, setSelectedCompanyId] = useState<string>('');
+  const [activeSubTab, setActiveSubTab] = useState<'integration' | 'parameters' | 'styling'>('integration');
+  const [copied, setCopied] = useState(false);
+
+  // Seleciona a primeira empresa por padrão se nenhuma estiver selecionada
+  useEffect(() => {
+    if (companies.length > 0 && !selectedCompanyId) {
+      setSelectedCompanyId(companies[0].id);
+    }
+  }, [companies, selectedCompanyId]);
+
+  const activeToken = useMemo(() => {
+    return tokens.find((t) => t.companyId === selectedCompanyId && t.isActive);
+  }, [tokens, selectedCompanyId]);
+
+  const hasActiveToken = !!activeToken;
+
+  const selectedCompany = useMemo(() => {
+    return companies.find((c) => c.id === selectedCompanyId);
+  }, [companies, selectedCompanyId]);
+
+  const baseUrl = useMemo(() => {
+    return apiBase() || window.location.origin;
+  }, []);
+
+  const widgetUrl = `${baseUrl}/widget.js`;
+
+  const snippetCode = useMemo(() => {
+    const tokenDisplay = activeToken ? `token_parceiro_...${activeToken.last4}` : 'SUA_API_KEY_AQUI';
+    const compName = selectedCompany ? selectedCompany.name : 'NOME_DA_EMPRESA';
+    const compId = selectedCompanyId || 'ID_DA_EMPRESA';
+    const compDoc = selectedCompany ? selectedCompany.document : 'CNPJ_DA_EMPRESA';
+
+    return `<!-- 1. Elemento de marcação HTML onde o widget de consulta será injetado -->
+<!-- Integração White-Label para a empresa: ${compName} (ID: ${compId}, Documento: ${compDoc}) -->
+<div id="cpro-widget-root"></div>
+
+<!-- 2. Carrega o script do widget direto da plataforma -->
+<script src="${widgetUrl}"></script>
+
+<!-- 3. Inicializa e renderiza o widget de consultas com suas credenciais -->
+<script>
+  document.addEventListener('DOMContentLoaded', () => {
+    const widget = new ConsultasProWidget({
+      targetId: 'cpro-widget-root',
+      
+      // Chave de API ativa para ${compName}
+      apiKey: '${tokenDisplay}', // Nota: Substitua pela chave secreta real fornecida na criação do token
+      
+      // [OPCIONAL] Vincule as consultas de forma granular ao ID do seu cliente final (ex: no app de estilo da ${compName})
+      // Permite que você controle saldo ou transações do seu sub-cliente de forma transparente.
+      externalUserId: '${compId}',
+      
+      // [OPCIONAL] Define se o widget deve injetar o visual premium automático (padrão: true)
+      // useDefaultStyles: true
+    });
+
+    // Inicializa a interface de consultas
+    widget.init();
+  });
+</script>`;
+  }, [widgetUrl, activeToken, selectedCompany, selectedCompanyId]);
+
+  const handleCopy = (text: string) => {
+    void navigator.clipboard.writeText(text);
+    setCopied(true);
+    toast.success('Snippet de código copiado!');
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="bg-card rounded-xl border border-border p-6 shadow-card space-y-4">
+        <div className="flex items-start gap-4">
+          <div className="p-3 rounded-lg bg-primary/10 text-primary">
+            <Palette className="w-6 h-6" />
+          </div>
+          <div>
+            <h2 className="text-lg font-semibold text-card-foreground">Integração White-Label (Widget JS)</h2>
+            <p className="text-sm text-muted-foreground mt-0.5">
+              Disponibilize o mecanismo de consultas no sistema ou site dos seus clientes finais, utilizando um script embutido simples de alta fidelidade visual.
+            </p>
+          </div>
+        </div>
+
+        <div className="border-t border-border pt-4">
+          <div className="max-w-xs space-y-1">
+            <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Selecionar Empresa Parceira</label>
+            <Select value={selectedCompanyId} onValueChange={setSelectedCompanyId}>
+              <SelectTrigger className="h-9">
+                <SelectValue placeholder="Selecione uma empresa" />
+              </SelectTrigger>
+              <SelectContent>
+                {companies.map((c) => (
+                  <SelectItem key={c.id} value={c.id}>
+                    {c.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+
+        {!hasActiveToken ? (
+          <div className="rounded-xl border border-amber-500/20 bg-amber-500/10 p-5 space-y-4 animate-in fade-in duration-200">
+            <div className="flex items-start gap-3">
+              <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+              <div className="space-y-1">
+                <h4 className="text-sm font-semibold text-amber-900 dark:text-amber-300">Token de API Faltante ou Inativo</h4>
+                <p className="text-xs text-amber-800/90 dark:text-amber-400/90 leading-relaxed">
+                  Para habilitar e usar as funções do widget de integração White-Label para a empresa{' '}
+                  <strong className="font-bold">{selectedCompany?.name || 'parceira'}</strong>, é obrigatório possuir um Token de API ativo no banco de dados. Sem ele, as requisições enviadas pelo widget JS não serão autenticadas e serão bloqueadas com erro.
+                </p>
+              </div>
+            </div>
+            <div className="flex justify-start">
+              <Button
+                type="button"
+                size="sm"
+                className="bg-amber-600 hover:bg-amber-700 text-white gap-2 font-medium"
+                onClick={() => selectedCompanyId && onNavigateToTokens(selectedCompanyId)}
+              >
+                Criar Token de API Agora
+                <ArrowRight className="w-4 h-4" />
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-4 animate-in fade-in duration-200">
+            <div className="rounded-lg border border-emerald-500/10 bg-emerald-500/5 px-4 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                <span className="text-xs text-muted-foreground">
+                  Empresa parceira com credencial ativa: <strong className="font-medium text-foreground">{activeToken.label}</strong> (Fim: …{activeToken.last4})
+                </span>
+              </div>
+              <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
+                <Badge variant="outline" className="bg-emerald-500/10 text-emerald-600 border-emerald-500/20 text-[10px] h-6 flex items-center">
+                  PRONTO PARA USO
+                </Badge>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-7 text-xs px-2.5 bg-background border-border/80 text-foreground hover:bg-muted hover:text-foreground gap-1.5 font-medium"
+                  onClick={() => {
+                    const testUrl = `/teste-integracao.html?apiKey=${activeToken.id}`;
+                    window.open(testUrl, '_blank');
+                  }}
+                >
+                  <Globe className="w-3.5 h-3.5 text-primary" />
+                  Testar Integração Rápida
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-7 text-xs px-2.5 bg-background border-border/80 text-foreground hover:bg-muted hover:text-foreground gap-1.5 font-medium"
+                  onClick={() => {
+                    const cleanName = selectedCompany ? selectedCompany.name.toLowerCase().replace(/[^a-z0-9]/g, '_') : 'test';
+                    const sandboxUrl = `/test-whitelabel.html?apiKey=${activeToken.id}&externalUserId=test_user_${cleanName}&scriptUrl=${encodeURIComponent(widgetUrl)}`;
+                    window.open(sandboxUrl, '_blank');
+                  }}
+                >
+                  <FileCode className="w-3.5 h-3.5" />
+                  Visualizar na Sandbox
+                </Button>
+              </div>
+            </div>
+
+            <div className="border border-border rounded-lg overflow-hidden">
+              <div className="flex bg-muted/30 border-b border-border p-1 gap-1">
+                <button
+                  type="button"
+                  onClick={() => setActiveSubTab('integration')}
+                  className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
+                    activeSubTab === 'integration'
+                      ? 'bg-background text-foreground shadow-sm border border-border/50'
+                      : 'text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  <FileCode className="w-3.5 h-3.5 inline mr-1.5 -mt-0.5" /> Script de Integração
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveSubTab('parameters')}
+                  className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
+                    activeSubTab === 'parameters'
+                      ? 'bg-background text-foreground shadow-sm border border-border/50'
+                      : 'text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  <Building2 className="w-3.5 h-3.5 inline mr-1.5 -mt-0.5" /> Controle de Saldo
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveSubTab('styling')}
+                  className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
+                    activeSubTab === 'styling'
+                      ? 'bg-background text-foreground shadow-sm border border-border/50'
+                      : 'text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  <Palette className="w-3.5 h-3.5 inline mr-1.5 -mt-0.5" /> Customização Visual (CSS)
+                </button>
+              </div>
+
+              <div className="p-5">
+                {activeSubTab === 'integration' && (
+                  <div className="space-y-4 animate-in fade-in duration-150">
+                    <div className="space-y-1">
+                      <h3 className="text-sm font-semibold text-foreground">Como integrar o widget no site</h3>
+                      <p className="text-xs text-muted-foreground">
+                        Copie o snippet de marcação HTML e javascript abaixo e cole no local desejado da página web do seu parceiro ou sistema de white-label.
+                      </p>
+                    </div>
+
+                    <div className="relative rounded-lg bg-zinc-950 p-4 border border-zinc-800 font-mono text-xs text-zinc-200 shadow-lg">
+                      <div className="flex justify-between items-center pb-2 mb-3 border-b border-zinc-800 text-zinc-500 text-[10px]">
+                        <span>INTEGRAÇÃO DO WIDGET JS</span>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 text-zinc-400 hover:text-white hover:bg-zinc-800 gap-1.5 text-[11px]"
+                          onClick={() => handleCopy(snippetCode)}
+                        >
+                          {copied ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
+                          {copied ? 'Copiado!' : 'Copiar'}
+                        </Button>
+                      </div>
+                      <pre className="whitespace-pre overflow-x-auto select-all">{snippetCode}</pre>
+                    </div>
+
+                    <div className="rounded-lg border border-border bg-muted/40 p-4 space-y-2 text-xs">
+                      <span className="font-semibold text-foreground block">⚠️ Atenção à Chave de API</span>
+                      <p className="text-muted-foreground leading-relaxed">
+                        Por motivos de segurança e conformidade, os tokens de API são criptografados como hashes unidirecionais no banco de dados. O snippet acima possui um placeholder com o final do token ativo para sua referência (`...{activeToken.last4}`). Você deve substituí-lo pela <strong className="font-bold text-foreground">Chave de API real em formato texto puro</strong> fornecida na geração inicial do token. Se você perdeu a chave original, basta revogar o token atual e gerar um novo instantaneamente na aba <strong className="font-medium text-foreground">Tokens API</strong>.
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {activeSubTab === 'parameters' && (
+                  <div className="space-y-4 animate-in fade-in duration-150">
+                    <div className="space-y-1">
+                      <h3 className="text-sm font-semibold text-foreground">Microgerenciamento de Saldo e Usuários Finais</h3>
+                      <p className="text-xs text-muted-foreground">
+                        Entenda como funciona o sistema de saldo e faturamento de consultas executadas através do script White-Label.
+                      </p>
+                    </div>
+
+                    <div className="space-y-3 text-xs text-muted-foreground leading-relaxed">
+                      <p>
+                        Por padrão, todas as consultas processadas através deste widget White-Label são cobradas e debitadas diretamente do saldo da carteira da empresa parceira (<strong className="font-semibold text-foreground">{selectedCompany?.name}</strong>).
+                      </p>
+                      
+                      <div className="bg-primary/5 border border-primary/10 rounded-lg p-4 space-y-2">
+                        <span className="font-semibold text-foreground text-xs flex items-center gap-1.5">
+                          <Check className="w-4 h-4 text-primary" /> O que é o <code className="font-mono bg-primary/10 px-1 py-0.5 rounded text-[11px]">externalUserId</code>?
+                        </span>
+                        <p className="leading-relaxed">
+                          É o identificador exclusivo que você pode passar no construtor do widget representando o cliente final da sua plataforma parceira (por exemplo, a conta da <code className="font-mono">rprotec</code> ou de algum sub-cliente deles).
+                        </p>
+                        <p className="leading-relaxed">
+                          Ao especificar o <code className="font-mono">externalUserId</code>, o nosso sistema vinculará essa transação e a consulta a este usuário. No backend, o saldo principal da empresa parceira será debitado, mas você poderá extrair faturamentos detalhados, relatórios e demonstrativos de consumo agrupados por cada <code className="font-mono">externalUserId</code> individual de forma ágil, facilitando a cobrança ou o repasse de moedas internas do seu app.
+                        </p>
+                      </div>
+
+                      <div className="space-y-2 pt-2">
+                        <span className="font-semibold text-foreground block">Exemplo Prático (Caso do Parceiro rprotec):</span>
+                        <ol className="list-decimal pl-4 space-y-1">
+                          <li>Seu cliente (ex: rprotec) compra R$ 500,00 em saldo de consultas no seu sistema, o que é registrado na carteira principal deles.</li>
+                          <li>Os usuários internos da rprotec compram créditos em moedas dentro do app deles.</li>
+                          <li>Quando um usuário da rprotec faz uma consulta no widget, o sistema deles inicializa o widget injetando o ID do usuário do app deles como <code className="font-mono">externalUserId: 'user_rprotec_987'</code>.</li>
+                          <li>O nosso backend deduz o valor da consulta do saldo principal da rprotec e registra o consumo especificamente para <code className="font-mono text-foreground">user_rprotec_987</code>.</li>
+                          <li>A rprotec desconta o saldo de moedas internamente no painel deles. Todos ganham com transparência total!</li>
+                        </ol>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {activeSubTab === 'styling' && (
+                  <div className="space-y-4 animate-in fade-in duration-150">
+                    <div className="space-y-1">
+                      <h3 className="text-sm font-semibold text-foreground">Customização Visual do Widget</h3>
+                      <p className="text-xs text-muted-foreground">
+                        O widget já injeta automaticamente uma folha de estilos CSS premium de alta qualidade (glassmorphism, loaders elegantes e tabelas responsivas). Caso queira herdar a tipografia e as cores do site de seu parceiro, você pode desativar os estilos padrão e criar sua própria folha de estilos.
+                      </p>
+                    </div>
+
+                    <div className="space-y-3 text-xs">
+                      <p className="text-muted-foreground">
+                        Para desativar a injeção do CSS embutido, defina <code className="font-mono text-foreground">useDefaultStyles: false</code> no construtor do widget:
+                      </p>
+
+                      <div className="rounded-lg bg-zinc-950 p-3 border border-zinc-800 font-mono text-[11px] text-zinc-300">
+                        useDefaultStyles: false
+                      </div>
+
+                      <div className="space-y-2 pt-2">
+                        <span className="font-semibold text-foreground block">Classes CSS disponíveis para sobrescrever:</span>
+                        <div className="border border-border rounded-lg overflow-hidden">
+                          <table className="w-full text-left border-collapse">
+                            <thead>
+                              <tr className="bg-muted/30 border-b border-border text-[11px] font-semibold text-muted-foreground">
+                                <th className="p-2.5">Classe CSS</th>
+                                <th className="p-2.5">Descrição do Elemento</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-border text-muted-foreground text-[11px]">
+                              <tr>
+                                <td className="p-2.5 font-mono text-foreground font-semibold">.cpro-widget-container</td>
+                                <td className="p-2.5">Container externo principal do widget.</td>
+                              </tr>
+                              <tr>
+                                <td className="p-2.5 font-mono text-foreground font-semibold">.cpro-search-box</td>
+                                <td className="p-2.5">Caixa do formulário de busca/consulta.</td>
+                              </tr>
+                              <tr>
+                                <td className="p-2.5 font-mono text-foreground font-semibold">.cpro-input</td>
+                                <td className="p-2.5">Campos de entrada e de seleção de consulta.</td>
+                              </tr>
+                              <tr>
+                                <td className="p-2.5 font-mono text-foreground font-semibold">.cpro-button</td>
+                                <td className="p-2.5">Botão primário para disparar a consulta.</td>
+                              </tr>
+                              <tr>
+                                <td className="p-2.5 font-mono text-foreground font-semibold">.cpro-loader-container</td>
+                                <td className="p-2.5">Container exibido durante o carregamento de dados.</td>
+                              </tr>
+                              <tr>
+                                <td className="p-2.5 font-mono text-foreground font-semibold">.cpro-spinner</td>
+                                <td className="p-2.5">Spinner animado de carregamento.</td>
+                              </tr>
+                              <tr>
+                                <td className="p-2.5 font-mono text-foreground font-semibold">.cpro-section</td>
+                                <td className="p-2.5">Blocos ou seções de dados retornados do resultado.</td>
+                              </tr>
+                              <tr>
+                                <td className="p-2.5 font-mono text-foreground font-semibold">.cpro-section-title</td>
+                                <td className="p-2.5">Título decorado de cada seção do resultado.</td>
+                              </tr>
+                              <tr>
+                                <td className="p-2.5 font-mono text-foreground font-semibold">.cpro-grid</td>
+                                <td className="p-2.5">Grade responsiva para exibir cartões chave-valor.</td>
+                              </tr>
+                              <tr>
+                                <td className="p-2.5 font-mono text-foreground font-semibold">.cpro-table-wrapper</td>
+                                <td className="p-2.5">Container com overflow para rolagem horizontal fluida de tabelas.</td>
+                              </tr>
+                              <tr>
+                                <td className="p-2.5 font-mono text-foreground font-semibold">.cpro-table</td>
+                                <td className="p-2.5">Tabela estilizada de resultados mais complexos.</td>
+                              </tr>
+                              <tr>
+                                <td className="p-2.5 font-mono text-foreground font-semibold">.cpro-error-container</td>
+                                <td className="p-2.5">Caixa de mensagem em caso de erros ou falhas.</td>
+                              </tr>
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
         )}
       </div>
     </div>

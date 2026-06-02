@@ -5,7 +5,7 @@ import {
   LayoutDashboard, Search, History, Receipt,
   Users, UserCircle, LogOut, Settings,
   Menu, X, Shield, PanelLeftClose, PanelLeft, Server, BookOpen,
-  ChevronDown,
+  ChevronDown, ClipboardList,
 } from 'lucide-react';
 import { useAuthStore, accessLevelLabels } from '@/stores/authStore';
 import ThemeToggle from '@/components/ThemeToggle';
@@ -31,6 +31,7 @@ const navItems = [
 
 const adminSubItems = [
   { label: 'Painel', icon: LayoutDashboard, path: '/admin' as const },
+  { label: 'Templates Drawer', icon: ClipboardList, path: '/admin/templates-drawer' as const },
   { label: 'Integrações', icon: Server, path: '/admin/integracoes' as const },
 ];
 

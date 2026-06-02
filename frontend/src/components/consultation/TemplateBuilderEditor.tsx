@@ -1,8 +1,8 @@
 import { useState, useMemo, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  Search, Plus, Minus, Wallet, Save, FileText, Eye, Upload, X,
-  Layers, LayoutGrid, Type as TypeIcon, Variable, PlusCircle, Settings2,
+  Search, Wallet, FileText, Eye, Upload, X,
+  Layers, LayoutGrid, Type as TypeIcon, Variable, PlusCircle, Settings2, Trash2, ChevronDown, ChevronRight, GripVertical,
   type LucideIcon,
 } from 'lucide-react';
 import { useAuthStore } from '@/stores/authStore';
@@ -11,8 +11,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
-import ConsultationPreview from '@/components/consultation/ConsultationPreview';
-import BaseReportSkeleton from '@/components/consultation/BaseReportSkeleton';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import TemplateRenderer from '@/components/consultation/TemplateRenderer';
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from '@/components/ui/resizable';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { VariablesPanel } from '@/components/integrations/template-builder/VariablesPanel';
@@ -20,13 +20,16 @@ import { ExpressionConsole } from '@/components/integrations/template-builder/Ex
 import { CustomBlockEditorModal } from '@/components/integrations/template-builder/CustomBlockEditorModal';
 import type { CustomBlockDraft } from '@/components/integrations/template-builder/CustomBlockEditorModal';
 import type { ConsultationFieldType, ProviderConsultation } from '@/types/integrations';
+import type { ExpressionContext } from '@/lib/expressionEngine';
 import type { TemplateBuilderCapabilities } from '@/types/template-layout';
+import type { TemplateDocument, TemplateRendererCapabilities } from '@/types/template-document';
+import { normalizeTemplateDocument, sectionsToTemplateDocument, serializeSectionXml } from '@/lib/templateDocument';
 import { createCapabilitiesByMode } from '@/lib/templateLayoutTransforms';
-import { createCustomBlockApi, getCustomBlocksApi } from '@/api/admin-integrations';
+import { createCustomBlockApi, deleteCustomBlockApi, getCustomBlocksApi } from '@/api/admin-integrations';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
-  DEFAULT_SECTIONS, createSection, createField, sectionToXml, xmlToFields,
+  DEFAULT_SECTIONS, createSection, createField, sectionToXml, xmlToFields, xmlToSection,
   type TemplateSection,
 } from '@/lib/templateSectionUtils';
 import {
@@ -35,8 +38,7 @@ import {
   useDroppable,
 } from '@dnd-kit/core';
 import { useDraggable } from '@dnd-kit/core';
-import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from '@dnd-kit/sortable';
-import { CSS } from '@dnd-kit/utilities';
+import { SortableContext, verticalListSortingStrategy, arrayMove } from '@dnd-kit/sortable';
 
 const iconMap: Record<string, LucideIcon> = {
   AlertTriangle: FileText, Gauge: FileText, Award: FileText, DollarSign: FileText,
@@ -52,6 +54,7 @@ type LayoutBlockItem = {
   description: string;
   icon: LucideIcon;
   kind: 'card-kpi' | 'container' | 'free-text';
+  template?: string;
 };
 
 const LAYOUT_BLOCKS: LayoutBlockItem[] = [
@@ -60,10 +63,9 @@ const LAYOUT_BLOCKS: LayoutBlockItem[] = [
   { id: 'lb-free-text', name: 'Texto Livre', description: 'Parágrafo com expressões dinâmicas', icon: TypeIcon, kind: 'free-text' },
 ];
 
-function DraggableCatalogBlock({ block, selected, onToggle, isAdmin, onEdit }: {
+function DraggableCatalogBlock({ block, selected, isAdmin, onEdit }: {
   block: ConsultationBlock;
   selected: boolean;
-  onToggle: () => void;
   isAdmin?: boolean;
   onEdit?: (block: ConsultationBlock) => void;
 }) {
@@ -97,20 +99,44 @@ function DraggableCatalogBlock({ block, selected, onToggle, isAdmin, onEdit }: {
               <Settings2 className="w-3 h-3" />
             </button>
           )}
-          <button onClick={(e) => { e.stopPropagation(); onToggle(); }}
-            className={`w-5 h-5 rounded-md flex items-center justify-center flex-shrink-0 transition-all duration-200 ${selected ? 'bg-primary text-primary-foreground' : 'border border-border text-muted-foreground group-hover:border-primary/40'}`}>
-            {selected ? <Minus className="w-3 h-3" /> : <Plus className="w-3 h-3" />}
-          </button>
+          {selected ? <span className="rounded-md bg-primary/10 px-1.5 py-0.5 text-[9px] font-semibold text-primary">Selecionado</span> : null}
         </div>
       </div>
     </motion.div>
   );
 }
 
-function SortableSection({ id, children }: { id: string; children: React.ReactNode }) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
-  const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1 };
-  return <div ref={setNodeRef} style={style} {...attributes} {...listeners}>{children}</div>;
+function LayoutDropZone({ children }: { children: React.ReactNode }) {
+  const { setNodeRef, isOver } = useDroppable({ id: 'layout-dropzone', data: { type: 'layout-dropzone' } });
+  return <div ref={setNodeRef} className={isOver ? 'ring-2 ring-primary/30 ring-inset bg-primary/5' : ''}>{children}</div>;
+}
+
+function DraggableLayoutBlock({ block, onEdit, onRemove }: {
+  block: LayoutBlockItem;
+  onEdit: () => void;
+  onRemove?: () => void;
+}) {
+  const Icon = block.icon;
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
+    id: `layout-${block.id}`,
+    data: { type: 'layout-block', block },
+  });
+
+  return (
+    <div ref={setNodeRef} {...attributes} {...listeners} className={`w-full rounded-lg border border-border p-2 hover:border-primary/30 transition-colors group text-left bg-card cursor-grab active:cursor-grabbing ${isDragging ? 'opacity-40' : ''}`}>
+      <div className="flex items-center gap-2">
+        <button type="button" className="w-6 h-6 rounded-md bg-muted flex items-center justify-center group-hover:bg-primary/10" title="Arrastar"><Icon className="w-3 h-3 text-muted-foreground group-hover:text-primary" /></button>
+        <div className="flex-1 min-w-0 text-left select-none">
+          <p className="text-[11px] font-medium text-foreground">{block.name}</p>
+          <p className="text-[9px] text-muted-foreground line-clamp-1">{block.description}</p>
+        </div>
+        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+          <button type="button" onPointerDown={(e) => e.stopPropagation()} onClick={onEdit} className="h-5 w-5 rounded border border-border flex items-center justify-center text-muted-foreground hover:text-primary" title="Editar bloco"><Settings2 className="h-3 w-3" /></button>
+          {onRemove && <button type="button" onPointerDown={(e) => e.stopPropagation()} onClick={onRemove} className="h-5 w-5 rounded border border-border flex items-center justify-center text-muted-foreground hover:text-destructive" title="Remover bloco"><Trash2 className="h-3 w-3" /></button>}
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function CatalogDragOverlay({ block }: { block: ConsultationBlock }) {
@@ -134,34 +160,106 @@ type TemplateBuilderEditorProps = {
   onClose?: () => void;
   initialBlocks?: ConsultationBlock[];
   templateName?: string;
-  onSave?: (payload: { name: string; blocks: ConsultationBlock[]; logo: string | null }) => void;
+  onSave?: (payload: { name: string; blocks: ConsultationBlock[]; logo: string | null; sections: TemplateSection[]; document: TemplateDocument }) => void;
   showBalance?: boolean;
   builderMode?: 'admin' | 'user';
   fieldTypes?: ConsultationFieldType[];
   accessToken?: string | null;
   availableConsultationBlocks?: ProviderConsultation[];
+  initialSections?: TemplateSection[];
+  initialLogo?: string | null;
+  selectedConsultation?: ProviderConsultation | null;
+  expressionContext?: ExpressionContext;
+  saveTrigger?: number;
+  showHeader?: boolean;
 };
 
 export default function TemplateBuilderEditor({
   open = true, mode = 'modal', onClose, initialBlocks, templateName: initialName,
   onSave, showBalance = true, builderMode = 'admin', fieldTypes = [],
-  accessToken = null, availableConsultationBlocks = [],
+  accessToken = null, availableConsultationBlocks = [], initialSections, initialLogo = null, selectedConsultation = null, expressionContext,
+  saveTrigger = 0, showHeader = true,
 }: TemplateBuilderEditorProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [activeCategory, setActiveCategory] = useState('Todos');
   const [blocks, setBlocks] = useState<ConsultationBlock[]>(initialBlocks || []);
   const [templateName, setTemplateName] = useState(initialName || '');
-  const [reportLogo, setReportLogo] = useState<string | null>(null);
+  const [reportLogo, setReportLogo] = useState<string | null>(initialLogo);
   const [activeDragItem, setActiveDragItem] = useState<ConsultationBlock | null>(null);
-  const [viewMode, setViewMode] = useState<'skeleton' | 'preview'>('skeleton');
+  const [activeLayoutDragItem, setActiveLayoutDragItem] = useState<LayoutBlockItem | null>(null);
+  const [viewMode, setViewMode] = useState<'skeleton' | 'preview'>(builderMode === 'user' ? 'preview' : 'skeleton');
   const [customBlockEditorOpen, setCustomBlockEditorOpen] = useState(false);
   const [customBlocks, setCustomBlocks] = useState<CustomBlockDraft[]>([]);
   const [editingBlockDraft, setEditingBlockDraft] = useState<Partial<CustomBlockDraft> | undefined>(undefined);
   const [editingSectionId, setEditingSectionId] = useState<string | null>(null);
-  const [templateSections, setTemplateSections] = useState<TemplateSection[]>(() => JSON.parse(JSON.stringify(DEFAULT_SECTIONS)));
+  const [templateSections, setTemplateSections] = useState<TemplateSection[]>(() => JSON.parse(JSON.stringify(initialSections ?? DEFAULT_SECTIONS)));
+  const [selectedFieldId, setSelectedFieldId] = useState<string | null>(null);
+  const [leftExpanded, setLeftExpanded] = useState<Record<string, boolean>>({ consultations: true, layout: true, variables: false });
+  const [lastSaveTrigger, setLastSaveTrigger] = useState(saveTrigger);
   const { user } = useAuthStore();
 
+
+  useEffect(() => {
+    setTemplateName(initialName || '');
+  }, [initialName]);
+
+
+  useEffect(() => {
+    setBlocks(initialBlocks || []);
+  }, [initialBlocks]);
+
+  useEffect(() => {
+    setReportLogo(initialLogo);
+  }, [initialLogo]);
+
+  useEffect(() => {
+    setTemplateSections(JSON.parse(JSON.stringify(initialSections ?? DEFAULT_SECTIONS)) as TemplateSection[]);
+  }, [initialSections]);
+
+  useEffect(() => {
+    if (builderMode === 'user') setViewMode('preview');
+  }, [builderMode]);
+
+  useEffect(() => {
+    if (saveTrigger === lastSaveTrigger) return;
+    setLastSaveTrigger(saveTrigger);
+    onSave?.({
+      name: templateName,
+      blocks,
+      logo: reportLogo,
+      sections: templateSections,
+      document: normalizeTemplateDocument(
+        sectionsToTemplateDocument({
+          name: templateName || initialName || 'Template',
+          sections: templateSections,
+          logo: reportLogo,
+          selectedBlockIds: blocks.map((block) => block.id),
+        }),
+      ),
+    });
+  }, [blocks, initialName, lastSaveTrigger, onSave, reportLogo, saveTrigger, templateName, templateSections]);
+
+  const toggleLeftSection = (key: string) => setLeftExpanded((prev) => ({ ...prev, [key]: !(prev[key] ?? true) }));
+
   const capabilities: TemplateBuilderCapabilities = useMemo(() => createCapabilitiesByMode(builderMode), [builderMode]);
+
+  const rendererCapabilities: TemplateRendererCapabilities = useMemo(() => ({
+    showSkeleton: builderMode === 'admin',
+    showPreview: true,
+    showXml: builderMode === 'admin',
+    showVariables: builderMode === 'admin',
+    showConsole: builderMode === 'admin',
+    canEditAdvanced: builderMode === 'admin',
+  }), [builderMode]);
+
+  const templateDocument: TemplateDocument = useMemo(() => normalizeTemplateDocument(
+    sectionsToTemplateDocument({
+      name: templateName || initialName || 'Template',
+      sections: templateSections,
+      logo: reportLogo,
+      selectedBlockIds: blocks.map((block) => block.id),
+    }),
+  ), [blocks, initialName, reportLogo, templateName, templateSections]);
   const totalPrice = blocks.reduce((sum, b) => sum + b.price, 0);
 
   const adminConsultationBlocks = useMemo<ConsultationBlock[]>(() => {
@@ -191,39 +289,56 @@ export default function TemplateBuilderEditor({
 
   const createCustomBlockMutation = useMutation({
     mutationFn: (draft: CustomBlockDraft) => createCustomBlockApi(accessToken, { name: draft.name, description: draft.description, category: draft.category, template: draft.template, skeleton: draft.template }),
-    onSuccess: (block) => { setCustomBlocks((prev) => [...prev, { name: block.name, description: block.description ?? '', category: block.category, template: block.template }]); void customBlocksQuery.refetch(); toast.success('Bloco salvo'); },
+    onSuccess: () => { void customBlocksQuery.refetch(); toast.success('Bloco salvo'); },
     onError: (error: Error) => toast.error(error.message || 'Falha ao salvar bloco'),
+  });
+
+
+  const deleteCustomBlockMutation = useMutation({
+    mutationFn: (blockId: string) => deleteCustomBlockApi(accessToken, blockId),
+    onSuccess: () => { void customBlocksQuery.refetch(); toast.success('Bloco removido'); },
+    onError: (error: Error) => toast.error(error.message || 'Falha ao remover bloco'),
   });
 
   useEffect(() => {
     if ((customBlocksQuery.data ?? []).length > 0) {
-      setCustomBlocks(customBlocksQuery.data!.map((b) => ({ name: b.name, description: b.description ?? '', category: b.category, template: b.template })));
+      setCustomBlocks(customBlocksQuery.data!.map((b) => ({ id: b.id, name: b.name, description: b.description ?? '', category: b.category, template: b.template, isSystem: b.isSystem })));
     }
   }, [customBlocksQuery.data]);
 
   const isSelected = (id: string) => blocks.some((b) => b.id === id);
-  const toggleBlock = (block: ConsultationBlock) => {
-    if (isSelected(block.id)) setBlocks((prev) => prev.filter((b) => b.id !== block.id));
-    else setBlocks((prev) => [...prev, block]);
-  };
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
 
   const handleDragStart = (event: DragStartEvent) => {
     const data = event.active.data.current;
     if (data?.type === 'catalog') setActiveDragItem(data.block);
+    if (data?.type === 'layout-block') setActiveLayoutDragItem(data.block);
   };
 
   const handleDragEnd = (event: DragEndEvent) => {
     setActiveDragItem(null);
+    setActiveLayoutDragItem(null);
     const { active, over } = event;
     if (!over) return;
     const activeId = String(active.id);
 
     if (activeId.startsWith('catalog-')) {
       const data = active.data.current;
+      const overId = String(over.id);
+      const validDrop = overId === 'layout-dropzone' || overId.startsWith('section-');
+      if (!validDrop) return;
       if (!data?.block || isSelected(data.block.id)) return;
       setBlocks((prev) => [...prev, data.block]);
+      return;
+    }
+
+    if (activeId.startsWith('layout-')) {
+      const data = active.data.current;
+      if (data?.block && (String(over.id) === 'layout-dropzone' || String(over.id).startsWith('section-'))) {
+        if (data.block.template) setTemplateSections((prev) => [...prev, xmlToSection(data.block.template, createSection(data.block.name, xmlToFields(data.block.template), { kind: 'custom', source: 'custom' }))]);
+        else addLayoutBlock(data.block.kind);
+      }
       return;
     }
 
@@ -256,15 +371,14 @@ export default function TemplateBuilderEditor({
       name: section.title,
       description: `Seção com ${section.fields.length} campos`,
       category: 'section',
-      template: sectionToXml(section),
+      template: serializeSectionXml(templateDocument, sectionId) || sectionToXml(section),
     });
     setCustomBlockEditorOpen(true);
   };
 
   const handleSaveCustomBlock = (draft: CustomBlockDraft) => {
     if (editingSectionId) {
-      const newFields = xmlToFields(draft.template);
-      setTemplateSections((prev) => prev.map((s) => s.id !== editingSectionId ? s : { ...s, title: draft.name, fields: newFields.length > 0 ? newFields : s.fields }));
+      setTemplateSections((prev) => prev.map((s) => s.id !== editingSectionId ? s : xmlToSection(draft.template, { ...s, title: draft.name })));
       setEditingSectionId(null);
       return;
     }
@@ -282,9 +396,9 @@ export default function TemplateBuilderEditor({
 
   const addLayoutBlock = (kind: LayoutBlockItem['kind']) => {
     const sectionMap: Record<string, () => TemplateSection> = {
-      'card-kpi': () => createSection('Card KPI', [createField('Label', '{$}'), createField('Valor', '{$}')]),
-      'container': () => createSection('Container', []),
-      'free-text': () => createSection('Texto Livre', [createField('Conteúdo', 'Texto editável aqui')]),
+      'card-kpi': () => createSection('Card KPI', [createField('Label', '{$}'), createField('Valor', '{$}')], { kind: 'kpi-row', source: 'custom' }),
+      'container': () => createSection('Container', [], { kind: 'container', source: 'custom' }),
+      'free-text': () => createSection('Texto Livre', [createField('Conteúdo', 'Texto editável aqui')], { kind: 'free-text', source: 'custom' }),
     };
     const factory = sectionMap[kind];
     if (factory) setTemplateSections((prev) => [...prev, factory()]);
@@ -294,29 +408,45 @@ export default function TemplateBuilderEditor({
     toast.info(`Variável copiada: ${expression}`, { duration: 2000 });
   };
 
-  const titleText = initialName ? `Editar: ${initialName}` : 'Novo Template';
-  const sectionIds = templateSections.map((s) => `section-${s.id}`);
 
-  const headerToolbar = (
+  const previewBlocks = useMemo(() => {
+    const hasScoreSection = templateSections.some((section) => section.kind === 'score' || section.id === 'score');
+    if (!hasScoreSection || blocks.some((block) => /score/i.test(block.name))) return blocks;
+    return [...blocks, {
+      id: '5',
+      name: 'Score de Crédito',
+      description: 'Bloco de score configurado no template',
+      price: 0,
+      category: 'Score & Rating',
+      icon: 'Gauge',
+    }];
+  }, [blocks, templateSections]);
+  const previewClientName = String(expressionContext?.$json.cliente && typeof expressionContext.$json.cliente === "object" ? (expressionContext.$json.cliente as Record<string, unknown>).nome ?? "JULIANO CAMPOS PEREIRA" : "JULIANO CAMPOS PEREIRA");
+  const previewDocumentId = String(expressionContext?.$json.cliente && typeof expressionContext.$json.cliente === "object" ? (expressionContext.$json.cliente as Record<string, unknown>).documento ?? "403.406.588-51" : "403.406.588-51");
+
+
+  const sectionIds = templateSections.map((s) => `section-${s.id}`);
+  const modalHeaderToolbar = (
     <>
-      <div className="flex items-center gap-3">
-        {mode === 'embedded' ? <h2 className="text-sm font-bold text-foreground">{titleText}</h2> : <DialogTitle className="text-sm font-bold">{titleText}</DialogTitle>}
-        <Input placeholder="Nome do template..." value={templateName} onChange={(e) => setTemplateName(e.target.value)} className="h-7 text-xs w-48" />
-      </div>
-      <div className="flex items-center gap-2">
-        <Button variant="outline" size="sm" className="text-xs h-7 gap-1" onClick={() => onSave?.({ name: templateName, blocks, logo: reportLogo })}>
-          <Save className="w-3 h-3" /> Salvar
-        </Button>
-      </div>
+      <DialogTitle className="text-sm font-bold">{templateName || initialName || 'Template'}</DialogTitle>
+      <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => onSave?.({
+      name: templateName,
+      blocks,
+      logo: reportLogo,
+      sections: templateSections,
+      document: templateDocument,
+    })}>Salvar</Button>
     </>
   );
 
   const content = (
     <>
-      {mode === 'embedded' ? (
-        <div className="px-4 py-2.5 border-b border-border flex flex-row items-center justify-between shrink-0">{headerToolbar}</div>
+      {!showHeader ? null : mode === 'embedded' ? (
+        <div className="px-3 py-1.5 border-b border-border shrink-0">
+          <h2 className="text-sm font-bold text-foreground">{templateName}</h2>
+        </div>
       ) : (
-        <DialogHeader className="px-4 py-2.5 border-b border-border flex-row items-center justify-between">{headerToolbar}</DialogHeader>
+        <DialogHeader className="px-4 py-2.5 border-b border-border flex-row items-center justify-between">{modalHeaderToolbar}</DialogHeader>
       )}
 
       <div className="flex-1 overflow-hidden flex flex-col">
@@ -338,57 +468,55 @@ export default function TemplateBuilderEditor({
                 </div>
                 <div className="flex-1 overflow-y-auto scrollbar-thin p-2 space-y-3">
                   <div>
-                    <div className="text-[10px] uppercase tracking-wide text-muted-foreground mb-1.5 px-1">Tipos de consulta</div>
-                    <div className="space-y-1.5">
-                      <AnimatePresence>
-                        {filteredBlocks.map((block) => (
-                          <DraggableCatalogBlock key={block.id} block={block} selected={isSelected(block.id)} onToggle={() => toggleBlock(block)} isAdmin={builderMode === 'admin'}
-                            onEdit={(b) => { setEditingSectionId(null); setEditingBlockDraft({ name: b.name, description: b.description, category: b.category }); setCustomBlockEditorOpen(true); }} />
-                        ))}
-                      </AnimatePresence>
-                    </div>
+                    <button type="button" onClick={() => toggleLeftSection('consultations')} className="w-full flex items-center justify-between text-[10px] uppercase tracking-wide text-muted-foreground mb-1.5 px-1">
+                      <span>Tipos de consulta</span>
+                      {leftExpanded.consultations ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+                    </button>
+                    {leftExpanded.consultations && (
+                      <div className="space-y-1.5">
+                        <AnimatePresence>
+                          {filteredBlocks.map((block) => (
+                            <DraggableCatalogBlock key={block.id} block={block} selected={isSelected(block.id)} isAdmin={false}
+                              onEdit={undefined} />
+                          ))}
+                        </AnimatePresence>
+                      </div>
+                    )}
                   </div>
 
                   {builderMode === 'admin' && (
                     <div>
-                      <div className="text-[10px] uppercase tracking-wide text-muted-foreground mb-1.5 px-1">Blocos de layout</div>
-                      <div className="space-y-1">
-                        {LAYOUT_BLOCKS.map((lb) => {
-                          const LbIcon = lb.icon;
-                          return (
-                            <button key={lb.id} onClick={() => addLayoutBlock(lb.kind)} className="w-full rounded-lg border border-border p-2 hover:border-primary/30 transition-colors cursor-pointer group text-left">
-                              <div className="flex items-center gap-2">
-                                <div className="w-6 h-6 rounded-md bg-muted flex items-center justify-center group-hover:bg-primary/10"><LbIcon className="w-3 h-3 text-muted-foreground group-hover:text-primary" /></div>
-                                <div className="flex-1 min-w-0">
-                                  <p className="text-[11px] font-medium text-foreground">{lb.name}</p>
-                                  <p className="text-[9px] text-muted-foreground line-clamp-1">{lb.description}</p>
-                                </div>
-                              </div>
-                            </button>
-                          );
-                        })}
-                        {customBlocks.map((cb, i) => (
-                          <div key={`custom-${i}`} className="rounded-lg border border-dashed border-primary/30 p-2 bg-primary/5">
-                            <div className="flex items-center gap-2">
-                              <div className="w-6 h-6 rounded-md bg-primary/10 flex items-center justify-center"><Variable className="w-3 h-3 text-primary" /></div>
-                              <div className="flex-1 min-w-0">
-                                <p className="text-[11px] font-medium text-foreground">{cb.name}</p>
-                                <p className="text-[9px] text-muted-foreground line-clamp-1">{cb.description || 'Bloco customizado'}</p>
-                              </div>
-                            </div>
-                          </div>
+                      <button type="button" onClick={() => toggleLeftSection('layout')} className="w-full flex items-center justify-between text-[10px] uppercase tracking-wide text-muted-foreground mb-1.5 px-1">
+                        <span>Blocos de layout</span>
+                        {leftExpanded.layout ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+                      </button>
+                      {leftExpanded.layout && <div className="space-y-1">
+                        {LAYOUT_BLOCKS.map((lb) => (
+                          <DraggableLayoutBlock key={lb.id} block={lb} onEdit={() => { setEditingSectionId(null); setEditingBlockDraft({ name: lb.name, description: lb.description, category: lb.kind, template: sectionToXml(createSection(lb.name, [], { kind: lb.kind === 'card-kpi' ? 'kpi-row' : lb.kind })) }); setCustomBlockEditorOpen(true); }} />
                         ))}
+                        {customBlocks
+                          .filter((cb) => !LAYOUT_BLOCKS.some((lb) => lb.name.toLowerCase() === cb.name.toLowerCase()))
+                          .map((cb, i) => {
+                            const customBlock: LayoutBlockItem = { id: cb.id ?? `custom-${i}`, name: cb.name, description: cb.description || 'Bloco customizado', icon: Variable, kind: 'free-text', template: cb.template };
+                            return <DraggableLayoutBlock key={customBlock.id} block={customBlock} onEdit={() => { setEditingSectionId(null); setEditingBlockDraft(cb); setCustomBlockEditorOpen(true); }} onRemove={!cb.isSystem && cb.id ? () => { if (window.confirm('Remover este bloco da lista?')) void deleteCustomBlockMutation.mutateAsync(cb.id!); } : undefined} />;
+                          })}
                         <button type="button" onClick={() => { setEditingSectionId(null); setEditingBlockDraft(undefined); setCustomBlockEditorOpen(true); }}
                           className="w-full rounded-lg border border-dashed border-border p-2 hover:border-primary hover:bg-primary/5 transition-colors flex items-center gap-2 cursor-pointer group">
                           <PlusCircle className="w-4 h-4 text-muted-foreground group-hover:text-primary" />
                           <span className="text-[11px] text-muted-foreground group-hover:text-primary font-medium">Criar bloco customizado</span>
                         </button>
-                      </div>
+                      </div>}
                     </div>
                   )}
 
-                  {fieldTypes.length > 0 && (
-                    <VariablesPanel fieldTypes={fieldTypes} capabilities={capabilities} onInsertVariable={handleInsertVariable} />
+                  {builderMode === 'admin' && fieldTypes.length > 0 && (
+                    <div>
+                      <button type="button" onClick={() => toggleLeftSection('variables')} className="w-full flex items-center justify-between text-[10px] uppercase tracking-wide text-muted-foreground mb-1.5 px-1">
+                        <span>Variáveis dinâmicas</span>
+                        {leftExpanded.variables ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+                      </button>
+                      {leftExpanded.variables && <VariablesPanel fieldTypes={fieldTypes} capabilities={capabilities} onInsertVariable={handleInsertVariable} />}
+                    </div>
                   )}
                 </div>
               </div>
@@ -405,31 +533,107 @@ export default function TemplateBuilderEditor({
                   </h3>
                   <div className="flex items-center gap-2">
                     <span className="text-[10px] text-muted-foreground bg-muted px-2 py-0.5 rounded-full">{blocks.length} blocos</span>
-                    <div className="flex items-center gap-1.5">
+                    {builderMode === 'admin' && <div className="flex items-center gap-1.5">
                       <Label htmlFor="view-toggle" className={`text-[10px] cursor-pointer ${viewMode === 'skeleton' ? 'text-foreground font-medium' : 'text-muted-foreground'}`}>Esqueleto</Label>
                       <Switch id="view-toggle" checked={viewMode === 'preview'} onCheckedChange={(c) => setViewMode(c ? 'preview' : 'skeleton')} className="h-4 w-7" />
                       <Label htmlFor="view-toggle" className={`text-[10px] cursor-pointer ${viewMode === 'preview' ? 'text-foreground font-medium' : 'text-muted-foreground'}`}>Preview</Label>
-                    </div>
+                    </div>}
                   </div>
                 </div>
 
                 {viewMode === 'preview' ? (
                   <div className="flex-1 overflow-y-auto scrollbar-thin">
-                    <ConsultationPreview blocks={blocks} document="403.406.588-51" clientName="JULIANO CAMPOS PEREIRA" logo={reportLogo} mode="preview" />
+                    <TemplateRenderer
+                      document={templateDocument}
+                      mode="preview"
+                      blocks={previewBlocks}
+                      capabilities={rendererCapabilities}
+                      context={expressionContext}
+                      logo={reportLogo}
+                      onLogoChange={setReportLogo}
+                      clientName={previewClientName}
+                      documentIdValue={previewDocumentId}
+                    />
                   </div>
                 ) : (
                   <div className={`flex-1 overflow-y-auto scrollbar-thin transition-all duration-200 ${activeDragItem ? 'ring-2 ring-primary/25 ring-inset bg-primary/5' : ''}`}>
+                    {blocks.length > 0 && (
+                      <div className="flex flex-wrap gap-1 border-b border-border/60 px-3 py-2">
+                        {blocks.map((block) => (
+                          <span key={block.id} className="rounded-md border border-border bg-muted px-2 py-0.5 text-[10px] text-muted-foreground">{block.name}</span>
+                        ))}
+                      </div>
+                    )}
+                    <LayoutDropZone>
                     <SortableContext items={sectionIds} strategy={verticalListSortingStrategy}>
-                      <BaseReportSkeleton
-                        sections={templateSections}
+                      <TemplateRenderer
+                        document={templateDocument}
+                        mode="skeleton"
+                        blocks={previewBlocks}
+                        capabilities={rendererCapabilities}
+                        context={expressionContext}
                         logo={reportLogo}
                         onLogoChange={setReportLogo}
                         onEditSection={handleEditSection}
                         onAddSection={handleAddSection}
                         onFieldExpressionChange={handleFieldExpressionChange}
                         onFieldLabelChange={handleFieldLabelChange}
+                        selectedFieldId={selectedFieldId}
+                        onFieldSelect={setSelectedFieldId}
+                        onCanvasDeselect={() => setSelectedFieldId(null)}
+                        onRemoveSection={(sectionId) => setTemplateSections((prev) => prev.filter((s) => s.id !== sectionId))}
+                        renderFieldOptionTrigger={(sectionId, field) => (
+                          <Popover>
+                            <PopoverTrigger asChild>
+                              <button type="button" className="rounded-md border border-border bg-card p-1 text-muted-foreground hover:bg-muted hover:text-foreground" title="Editar item">
+                                <Settings2 className="h-3 w-3" />
+                              </button>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-40 p-1" align="start">
+                              <button
+                                type="button"
+                                className="w-full rounded px-2 py-1 text-left text-xs hover:bg-muted"
+                                onClick={() => handleEditSection(sectionId)}
+                              >
+                                Editar no modal
+                              </button>
+                              <button
+                                type="button"
+                                className="w-full rounded px-2 py-1 text-left text-xs hover:bg-muted"
+                                onClick={() =>
+                                  setTemplateSections((prev) =>
+                                    prev.map((section) =>
+                                      section.id !== sectionId
+                                        ? section
+                                        : {
+                                            ...section,
+                                            fields: [
+                                              ...section.fields,
+                                              {
+                                                ...field,
+                                                id: `f_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+                                              },
+                                            ],
+                                          },
+                                    ),
+                                  )
+                                }
+                              >
+                                Duplicar item
+                              </button>
+                              <button
+                                type="button"
+                                className="w-full rounded px-2 py-1 text-left text-xs text-destructive hover:bg-destructive/10"
+                                onClick={() => setTemplateSections((prev) => prev.map((section) => section.id !== sectionId ? section : { ...section, fields: section.fields.filter((item) => item.id !== field.id) }))}
+                              >
+                                Remover item
+                              </button>
+                            </PopoverContent>
+                          </Popover>
+                        )}
                       />
                     </SortableContext>
+                    </LayoutDropZone>
                   </div>
                 )}
               </div>
@@ -496,9 +700,9 @@ export default function TemplateBuilderEditor({
               </div>
             </ResizablePanel>
           </ResizablePanelGroup>
-          <DragOverlay>{activeDragItem && <CatalogDragOverlay block={activeDragItem} />}</DragOverlay>
+          <DragOverlay>{activeDragItem && <CatalogDragOverlay block={activeDragItem} />}{activeLayoutDragItem && <div className="rounded-lg border-2 border-primary bg-card/95 p-3 shadow-elevated max-w-[240px] backdrop-blur-sm"><div className="text-[11px] font-semibold text-foreground">{activeLayoutDragItem.name}</div><div className="text-[10px] text-muted-foreground">{activeLayoutDragItem.description}</div></div>}</DragOverlay>
         </DndContext>
-        <div className="shrink-0"><ExpressionConsole defaultCollapsed={true} /></div>
+        {builderMode === 'admin' && <div className="shrink-0"><ExpressionConsole context={expressionContext} defaultCollapsed={true} /></div>}
       </div>
 
       <CustomBlockEditorModal
@@ -506,6 +710,9 @@ export default function TemplateBuilderEditor({
         onClose={() => { setCustomBlockEditorOpen(false); setEditingBlockDraft(undefined); setEditingSectionId(null); }}
         fieldTypes={fieldTypes}
         initialDraft={editingBlockDraft}
+        expressionContext={expressionContext}
+        selectedConsultation={selectedConsultation}
+        reusableBlocks={customBlocks}
         onSave={handleSaveCustomBlock}
       />
     </>

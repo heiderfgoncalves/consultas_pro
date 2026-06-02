@@ -1,29 +1,53 @@
-import { useState, useMemo, useEffect } from 'react';
-import { Code2, Eye, Braces, ChevronDown, ChevronRight, Search, Layers } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Braces, ChevronDown, ChevronRight, Code2, Copy, Eye, Layers, MoreHorizontal, Palette, Search, Trash2, Type as TypeIcon } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable';
-import type { ConsultationFieldType } from '@/types/integrations';
+import type { ConsultationFieldType, ProviderConsultation } from '@/types/integrations';
 import { SYSTEM_TEMPLATE_VARIABLES, buildTypeFieldVariables } from '@/lib/templateVariableCatalog';
 import { evaluateExpression, type ExpressionContext } from '@/lib/expressionEngine';
 import { MOCK_EXPRESSION_CONTEXT } from '@/lib/expressionMockContext';
 import { ExpressionConsole } from './ExpressionConsole';
 import { IconPicker, getIconByName } from '@/components/consultation/report-blocks';
+import { NO_ICON } from '@/components/consultation/report-blocks/IconPicker';
+import BaseReportSkeleton from '@/components/consultation/BaseReportSkeleton';
 import {
-  DndContext, PointerSensor, useSensor, useSensors, closestCenter, type DragEndEvent,
+  createField,
+  createSection,
+  formatTemplateXml,
+  sectionToXml,
+  xmlToSection,
+  type TemplateFieldTag,
+  type TemplateSection,
+} from '@/lib/templateSectionUtils';
+import {
+  DndContext,
+  PointerSensor,
+  useDraggable,
+  useDroppable,
+  useSensor,
+  useSensors,
+  closestCenter,
+  type DragEndEvent,
+  type DragStartEvent,
+  DragOverlay,
 } from '@dnd-kit/core';
 import {
-  SortableContext, arrayMove, useSortable, verticalListSortingStrategy,
+  SortableContext,
+  arrayMove,
+  verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
-import { CSS } from '@dnd-kit/utilities';
 
 export type CustomBlockDraft = {
+  id?: string;
   name: string;
   description: string;
   category: string;
   template: string;
+  isSystem?: boolean;
 };
 
 interface CustomBlockEditorModalProps {
@@ -32,84 +56,132 @@ interface CustomBlockEditorModalProps {
   fieldTypes: ConsultationFieldType[];
   initialDraft?: Partial<CustomBlockDraft>;
   onSave: (draft: CustomBlockDraft) => void;
+  expressionContext?: ExpressionContext;
+  selectedConsultation?: ProviderConsultation | null;
+  reusableBlocks?: CustomBlockDraft[];
 }
 
 const AVAILABLE_BLOCK_ELEMENTS = [
-  { tag: '<section>', desc: 'Seção agrupadora', snippet: '<section name="">\n  \n</section>' },
+  { tag: '<section>', desc: 'Seção agrupadora', snippet: '<section name="Nova seção" kind="custom">\n</section>' },
   { tag: '<card>', desc: 'Card com borda', snippet: '<card variant="kpi">\n  <label></label>\n  <value></value>\n</card>' },
-  { tag: '<container>', desc: 'Container flexível', snippet: '<container cols="3">\n  \n</container>' },
-  { tag: '<field>', desc: 'Campo com label', snippet: '<field label="" icon="">{$}</field>' },
+  { tag: '<container>', desc: 'Container flexível', snippet: '<container cols="3">\n</container>' },
+  { tag: '<field>', desc: 'Campo com label', snippet: '<field label="Novo campo" tag="value">{$}</field>' },
   { tag: '<divider>', desc: 'Linha separadora', snippet: '<divider />' },
   { tag: '<table>', desc: 'Tabela de dados', snippet: '<table source="">\n  <column key="" label="" />\n</table>' },
-  { tag: '<text>', desc: 'Texto livre', snippet: '<text></text>' },
+  { tag: '<text>', desc: 'Texto livre', snippet: '<text>Texto editável</text>' },
   { tag: '<speedometer>', desc: 'Velocímetro de score', snippet: '<speedometer value="{$SCORE.valor}" max="1000" />' },
   { tag: '<icon>', desc: 'Ícone Lucide', snippet: '<icon name="gauge" />' },
 ];
 
-type LayoutItem = { id: string; content: string };
+function escapeHtml(value: string) {
+  return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
 
-let _modalItemId = 1;
-function nextItemId() { return `item_${Date.now()}_${_modalItemId++}`; }
+function xmlHighlight(xml: string) {
+  const tokenRegex = /(\{\$[^}]+\}|<\/?[\w:-]+|[\w:-]+="[^"]*"|\/?>)/g;
+  let html = '';
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
 
-export function CustomBlockEditorModal({ open, onClose, fieldTypes, initialDraft, onSave }: CustomBlockEditorModalProps) {
+  while ((match = tokenRegex.exec(xml || '')) !== null) {
+    const token = match[0];
+    html += escapeHtml((xml || '').slice(lastIndex, match.index));
+    if (token.startsWith('{$')) {
+      html += `<span class="text-cyan-300 font-semibold">${escapeHtml(token)}</span>`;
+    } else if (token.startsWith('<')) {
+      html += `<span class="text-sky-300">${escapeHtml(token)}</span>`;
+    } else if (token.includes('=')) {
+      const [name, ...value] = token.split('=');
+      html += `<span class="text-amber-300">${escapeHtml(name ?? '')}</span>=<span class="text-emerald-300">${escapeHtml(value.join('='))}</span>`;
+    } else {
+      html += `<span class="text-slate-400">${escapeHtml(token)}</span>`;
+    }
+    lastIndex = match.index + token.length;
+  }
+
+  html += escapeHtml((xml || '').slice(lastIndex));
+  return html;
+}
+
+function sectionFromDraft(draft?: Partial<CustomBlockDraft>) {
+  const fallback = createSection(draft?.name || 'Bloco', [], { kind: 'custom' });
+  return draft?.template ? xmlToSection(draft.template, fallback) : fallback;
+}
+
+function DraggablePaletteItem({ id, label, description, snippet }: { id: string; label: string; description: string; snippet: string }) {
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id, data: { type: 'snippet', snippet, label, description } });
+  return (
+    <button
+      ref={setNodeRef}
+      type="button"
+      {...attributes}
+      {...listeners}
+      className={`w-full rounded border border-border bg-background px-2 py-1.5 text-left hover:border-primary/40 hover:bg-muted/40 cursor-grab active:cursor-grabbing ${isDragging ? 'opacity-50' : ''}`}
+    >
+      <code className="text-[10px] font-mono text-primary">{label}</code>
+      <p className="text-[9px] text-muted-foreground">{description}</p>
+    </button>
+  );
+}
+
+function CanvasDropZone({ children }: { children: React.ReactNode }) {
+  const { setNodeRef, isOver } = useDroppable({ id: 'modal-canvas-dropzone' });
+  return <div ref={setNodeRef} className={`rounded-lg border-2 border-dashed border-border/40 p-3 min-h-[100px] space-y-2 ${isOver ? 'bg-primary/5 ring-2 ring-primary/25' : ''}`}>{children}</div>;
+}
+
+export function CustomBlockEditorModal({
+  open,
+  onClose,
+  fieldTypes,
+  initialDraft,
+  onSave,
+  expressionContext,
+  selectedConsultation,
+  reusableBlocks = [],
+}: CustomBlockEditorModalProps) {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [category, setCategory] = useState('custom');
+  const [section, setSection] = useState<TemplateSection>(() => sectionFromDraft(initialDraft));
   const [template, setTemplate] = useState('');
+  const [initialSnapshot, setInitialSnapshot] = useState('');
   const [showPreview, setShowPreview] = useState(false);
   const [variableSearch, setVariableSearch] = useState('');
   const [expandedTypes, setExpandedTypes] = useState<Record<string, boolean>>({});
-  const [iconName, setIconName] = useState('FileText');
-  const [layoutItems, setLayoutItems] = useState<LayoutItem[]>([]);
+  const [iconName, setIconName] = useState(NO_ICON);
+  const [selectedFieldId, setSelectedFieldId] = useState<string | null>(null);
+  const [activeSnippet, setActiveSnippet] = useState<{ label: string; description: string } | null>(null);
+  const highlightRef = useRef<HTMLPreElement | null>(null);
+  const lineRef = useRef<HTMLPreElement | null>(null);
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
+  const ctx = expressionContext ?? MOCK_EXPRESSION_CONTEXT;
 
   useEffect(() => {
-    setName(initialDraft?.name ?? '');
+    const nextSection = sectionFromDraft(initialDraft);
+    const nextXml = formatTemplateXml(initialDraft?.template || sectionToXml(nextSection));
+    setName(initialDraft?.name ?? nextSection.title ?? '');
     setDescription(initialDraft?.description ?? '');
     setCategory(initialDraft?.category ?? 'custom');
-    setTemplate(initialDraft?.template ?? '');
-    setLayoutItems(
-      initialDraft?.template
-        ? initialDraft.template.split('\n').filter((l) => l.trim()).map((l) => ({ id: nextItemId(), content: l.trim() }))
-        : [],
-    );
+    setIconName(nextSection.icon ?? NO_ICON);
+    setSection(nextSection);
+    setSelectedFieldId(nextSection.fields[0]?.id ?? null);
+    setTemplate(nextXml);
+    setInitialSnapshot(JSON.stringify({ name: initialDraft?.name ?? nextSection.title ?? '', description: initialDraft?.description ?? '', category: initialDraft?.category ?? 'custom', template: nextXml }));
   }, [initialDraft, open]);
 
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
-
-  function SortableItem({ item }: { item: LayoutItem }) {
-    const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: item.id });
-    const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1 };
-    return (
-      <div ref={setNodeRef} style={style} {...attributes} {...listeners} className="rounded border border-dashed border-primary/30 bg-primary/5 p-2 text-[10px] font-mono cursor-grab active:cursor-grabbing truncate">
-        {item.content}
-      </div>
-    );
-  }
-
-  const handleLayoutDragEnd = (event: DragEndEvent) => {
-    const { active, over } = event;
-    if (!over || active.id === over.id) return;
-    const oldIndex = layoutItems.findIndex((i) => i.id === String(active.id));
-    const newIndex = layoutItems.findIndex((i) => i.id === String(over.id));
-    if (oldIndex >= 0 && newIndex >= 0) {
-      const next = arrayMove(layoutItems, oldIndex, newIndex);
-      setLayoutItems(next);
-      setTemplate(next.map((i) => i.content).join('\n'));
-    }
-  };
+  const hasChanges = JSON.stringify({ name, description, category, template }) !== initialSnapshot;
+  const displaySection = useMemo<TemplateSection>(() => {
+    if (!showPreview) return section;
+    return {
+      ...section,
+      fields: section.fields.map((field) => ({
+        ...field,
+        expression: evaluateExpression(field.expression, ctx),
+      })),
+    };
+  }, [ctx, section, showPreview]);
 
   const typeFieldVars = useMemo(() => buildTypeFieldVariables(fieldTypes), [fieldTypes]);
-  const ctx: ExpressionContext = MOCK_EXPRESSION_CONTEXT;
-
-  const renderedHtml = useMemo(() => {
-    if (!template.trim()) return '<p class="text-muted-foreground text-xs italic">Nenhum conteúdo</p>';
-    try {
-      return showPreview ? evaluateExpression(template, ctx) : template;
-    } catch {
-      return '<p class="text-destructive text-xs">Erro ao renderizar</p>';
-    }
-  }, [template, showPreview, ctx]);
-
   const byType = useMemo(() => {
     const grouped: Record<string, typeof typeFieldVars> = {};
     for (const item of typeFieldVars) {
@@ -119,147 +191,309 @@ export function CustomBlockEditorModal({ open, onClose, fieldTypes, initialDraft
     }
     return grouped;
   }, [typeFieldVars]);
-
   const q = variableSearch.trim().toLowerCase();
   const filteredSystem = useMemo(() => !q ? SYSTEM_TEMPLATE_VARIABLES : SYSTEM_TEMPLATE_VARIABLES.filter((v) => v.label.toLowerCase().includes(q) || v.expression.toLowerCase().includes(q)), [q]);
 
-  const insertAtCursor = (text: string) => {
-    setTemplate((prev) => prev + (prev && !prev.endsWith('\n') ? '\n' : '') + text);
-    const lines = text.split('\n').filter((l) => l.trim());
-    setLayoutItems((prev) => [...prev, ...lines.map((l) => ({ id: nextItemId(), content: l.trim() }))]);
+  const syncSection = (next: TemplateSection) => {
+    setSection(next);
+    setTemplate(formatTemplateXml(sectionToXml(next)));
   };
 
-  const handleSave = () => {
-    onSave({ name: name || 'Bloco sem nome', description, category, template });
+  const handleTemplateChange = (value: string) => {
+    setTemplate(value);
+    const parsed = xmlToSection(value, section);
+    if (parsed.fields.length > 0 || /<section\b/i.test(value)) setSection(parsed);
+  };
+
+  const insertSnippet = (snippet: string) => {
+    if (/^<field\b/i.test(snippet.trim())) {
+      const next = xmlToSection(`<section name="${section.title}" kind="${section.kind ?? 'custom'}">${snippet}</section>`, section);
+      syncSection({ ...section, fields: [...section.fields, ...next.fields] });
+      return;
+    }
+    handleTemplateChange(formatTemplateXml(`${template}${template.endsWith('\n') ? '' : '\n'}${snippet}`));
+  };
+
+  const insertField = (expression = '{$}') => {
+    const field = createField('Novo campo', expression, iconName);
+    syncSection({ ...section, fields: [...section.fields, field] });
+    setSelectedFieldId(field.id);
+  };
+
+  const selectedField = section.fields.find((field) => field.id === selectedFieldId) ?? section.fields[0] ?? null;
+  const updateField = (fieldId: string, patch: Partial<typeof section.fields[number]>) => {
+    syncSection({ ...section, fields: section.fields.map((field) => field.id === fieldId ? { ...field, ...patch } : field) });
+    setSelectedFieldId(fieldId);
+  };
+  const updateSelectedField = (patch: Partial<typeof section.fields[number]>) => {
+    if (!selectedField) return;
+    updateField(selectedField.id, patch);
+  };
+
+  const renderFieldOptions = (sectionId: string, field: typeof section.fields[number]) => {
+    if (sectionId !== section.id) return null;
+    return (
+      <Popover>
+        <PopoverTrigger asChild>
+          <button
+            type="button"
+            onClick={() => setSelectedFieldId(field.id)}
+            className="rounded-md border border-border bg-card p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+            title="Opções do item"
+          >
+            <MoreHorizontal className="h-3.5 w-3.5" />
+          </button>
+        </PopoverTrigger>
+        <PopoverContent className="w-80 p-3" align="start">
+          <div className="mb-2 flex items-center gap-2 text-xs font-semibold text-foreground"><TypeIcon className="h-3.5 w-3.5 text-primary" />Configuração do item</div>
+          <div className="space-y-2">
+            <Input value={field.label} onChange={(e) => updateField(field.id, { label: e.target.value })} className="h-8 text-xs" placeholder="Label" />
+            <Input value={field.expression} onChange={(e) => updateField(field.id, { expression: e.target.value })} className="h-8 font-mono text-xs" placeholder="Valor ou expressão" />
+            <div className="grid grid-cols-2 gap-2">
+              <select value={field.tag ?? 'value'} onChange={(e) => updateField(field.id, { tag: e.target.value as TemplateFieldTag })} className="h-8 rounded-md border border-input bg-background px-2 text-xs">
+                <option value="label">label</option><option value="value">valor</option><option value="icon">ícone</option><option value="image">imagem</option><option value="divider">divisória</option><option value="container">container</option><option value="table">tabela</option><option value="text">texto</option><option value="speedometer">speedometer</option>
+              </select>
+              <div className="flex items-center gap-2">
+                <IconPicker
+                  currentIcon={getIconByName(field.icon ?? NO_ICON)}
+                  currentIconName={field.icon ?? NO_ICON}
+                  size={14}
+                  onSelect={(name) => updateField(field.id, { icon: name === NO_ICON ? undefined : name })}
+                />
+                <Input value={field.icon ?? ''} onChange={(e) => updateField(field.id, { icon: e.target.value || undefined })} className="h-8 text-xs" placeholder="Ícone" />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <Input type="number" value={field.fontSize ?? ''} onChange={(e) => updateField(field.id, { fontSize: e.target.value ? Number(e.target.value) : undefined })} className="h-8 text-xs" placeholder="Fonte" />
+              <Input type="number" value={field.spacing ?? ''} onChange={(e) => updateField(field.id, { spacing: e.target.value ? Number(e.target.value) : undefined })} className="h-8 text-xs" placeholder="Espaço" />
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div className="flex items-center gap-1"><Palette className="h-3.5 w-3.5 text-muted-foreground" /><Input value={field.color ?? ''} onChange={(e) => updateField(field.id, { color: e.target.value || undefined })} className="h-8 text-xs" placeholder="Cor" /></div>
+              <Input value={field.backgroundColor ?? ''} onChange={(e) => updateField(field.id, { backgroundColor: e.target.value || undefined })} className="h-8 text-xs" placeholder="Fundo" />
+            </div>
+          </div>
+        </PopoverContent>
+      </Popover>
+    );
+  };
+
+  const requestClose = () => {
+    if (hasChanges && !window.confirm('Descartar alterações?')) return;
     onClose();
   };
 
+  const handleSave = () => {
+    const formatted = formatTemplateXml(template);
+    onSave({ id: initialDraft?.id, name: name || section.title || 'Bloco sem nome', description, category, template: formatted, isSystem: initialDraft?.isSystem });
+    onClose();
+  };
+
+  const handleDragStart = (event: DragStartEvent) => {
+    const data = event.active.data.current;
+    if (data?.type === 'snippet') {
+      setActiveSnippet({ label: String(data.label ?? 'Bloco'), description: String(data.description ?? '') });
+    }
+  };
+  const handleDragEnd = (event: DragEndEvent) => {
+    setActiveSnippet(null);
+    const { active, over } = event;
+    if (!over) return;
+    const activeId = String(active.id);
+    const overId = String(over.id);
+    if (active.data.current?.type === 'snippet') {
+      const dropOnCanvas = overId === 'modal-canvas-dropzone' || section.fields.some((field) => field.id === overId);
+      if (!dropOnCanvas) return;
+      insertSnippet(String(active.data.current.snippet ?? ''));
+      return;
+    }
+    const oldIndex = section.fields.findIndex((field) => field.id === activeId);
+    const newIndex = section.fields.findIndex((field) => field.id === String(over.id));
+    if (oldIndex >= 0 && newIndex >= 0 && oldIndex !== newIndex) syncSection({ ...section, fields: arrayMove(section.fields, oldIndex, newIndex) });
+  };
+
+
   return (
-    <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="max-w-[90vw] w-[90vw] max-h-[85vh] h-[85vh] p-0 overflow-hidden flex flex-col">
+    <Dialog open={open} onOpenChange={(v) => !v && requestClose()}>
+      <DialogContent className="max-w-[92vw] w-[92vw] max-h-[88vh] h-[88vh] p-0 overflow-hidden flex flex-col">
         <DialogHeader className="px-4 py-2.5 border-b border-border flex-row items-center justify-between shrink-0">
           <div className="flex items-center gap-3">
-            <IconPicker currentIcon={getIconByName(iconName)} onSelect={(n) => setIconName(n)} />
+            <IconPicker
+              currentIcon={getIconByName(iconName)}
+              currentIconName={iconName}
+              onSelect={(n) => {
+                const nextIcon = n === NO_ICON ? undefined : n;
+                setIconName(nextIcon ?? NO_ICON);
+                syncSection({ ...section, icon: nextIcon });
+              }}
+            />
             <DialogTitle className="text-sm font-bold">Editor de Bloco</DialogTitle>
-            <Input placeholder="Nome..." value={name} onChange={(e) => setName(e.target.value)} className="h-7 text-xs w-40" />
-            <Input placeholder="Descrição..." value={description} onChange={(e) => setDescription(e.target.value)} className="h-7 text-xs w-40" />
+            <Input placeholder="Nome..." value={name} onChange={(e) => { setName(e.target.value); syncSection({ ...section, title: e.target.value }); }} className="h-7 text-xs w-44" />
+            {selectedConsultation && <span className="rounded bg-muted px-2 py-1 text-[10px] text-muted-foreground">{selectedConsultation.name}</span>}
           </div>
-          <Button size="sm" className="h-7 text-xs gradient-primary text-primary-foreground" onClick={handleSave}>Salvar</Button>
+          <div className="flex items-center gap-2">
+            <Button type="button" variant="outline" size="sm" className="h-7 text-xs" onClick={requestClose}>Cancelar</Button>
+            <Button type="button" size="sm" className="h-7 text-xs gradient-primary text-primary-foreground" onClick={handleSave}>Salvar</Button>
+          </div>
         </DialogHeader>
 
         <div className="flex-1 overflow-hidden flex flex-col">
-          <ResizablePanelGroup direction="horizontal" className="flex-1">
-            <ResizablePanel defaultSize={25} minSize={18}>
-              <div className="h-full overflow-y-auto p-3 space-y-3">
-                <div>
-                  <div className="flex items-center gap-2 text-xs font-semibold text-foreground mb-2"><Layers className="h-3.5 w-3.5 text-primary" />Blocos disponíveis</div>
-                  <div className="space-y-1">
-                    {AVAILABLE_BLOCK_ELEMENTS.map((el) => (
-                      <button key={el.tag} type="button" onClick={() => insertAtCursor(el.snippet)} className="w-full rounded border border-border bg-background px-2 py-1.5 text-left hover:border-primary/40 hover:bg-muted/40 cursor-pointer">
-                        <code className="text-[10px] font-mono text-primary">{el.tag}</code>
-                        <p className="text-[9px] text-muted-foreground">{el.desc}</p>
-                      </button>
-                    ))}
+          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
+            <ResizablePanelGroup direction="horizontal" className="flex-1">
+              <ResizablePanel defaultSize={25} minSize={18}>
+                <div className="h-full overflow-y-auto p-3 space-y-3">
+                  <div>
+                    <div className="flex items-center gap-2 text-xs font-semibold text-foreground mb-2"><Layers className="h-3.5 w-3.5 text-primary" />Blocos disponíveis</div>
+                    <div className="space-y-1">
+                      <DraggablePaletteItem
+                        id="snippet-custom-field"
+                        label="<field> customizado"
+                        description="Adiciona um campo editável no canvas"
+                        snippet={'<field label="Novo campo" tag="value">{$}</field>'}
+                      />
+                      {AVAILABLE_BLOCK_ELEMENTS.map((el) => <DraggablePaletteItem key={el.tag} id={`snippet-${el.tag}`} label={el.tag} description={el.desc} snippet={el.snippet} />)}
+                      {reusableBlocks.map((block) => <DraggablePaletteItem key={block.id ?? block.name} id={`block-${block.id ?? block.name}`} label={block.name} description={block.description || 'Bloco customizado'} snippet={block.template} />)}
+                    </div>
                   </div>
-                </div>
-                <div>
-                  <div className="flex items-center gap-2 text-xs font-semibold text-foreground"><Braces className="h-3.5 w-3.5 text-primary" />Variáveis</div>
-                  <div className="relative mt-2">
-                    <Search className="h-3.5 w-3.5 absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground" />
-                    <Input value={variableSearch} onChange={(e) => setVariableSearch(e.target.value)} placeholder="Buscar..." className="h-7 pl-7 text-xs" />
-                  </div>
-                  <div className="space-y-1 mt-2">
-                    <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Sistêmicas</div>
-                    {filteredSystem.map((v) => (
-                      <button key={v.key} type="button" onClick={() => insertAtCursor(v.expression)} className="w-full rounded border border-border bg-background px-2 py-1 text-left text-[10px] font-mono text-foreground hover:border-primary/40 hover:bg-muted/40 cursor-pointer">{v.expression}</button>
-                    ))}
-                  </div>
-                  <div className="space-y-1 mt-2">
-                    <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Tipos e campos</div>
-                    <div className="space-y-1 max-h-48 overflow-y-auto">
-                      {fieldTypes.map((ft) => {
-                        const typeVars = byType[ft.key] ?? [];
-                        const matchesType = !q || ft.label.toLowerCase().includes(q) || ft.key.toLowerCase().includes(q);
-                        const filtered = q ? typeVars.filter((v) => v.label.toLowerCase().includes(q) || v.expression.toLowerCase().includes(q)) : typeVars;
-                        if (!matchesType && filtered.length === 0) return null;
-                        const expanded = expandedTypes[ft.key] ?? false;
-                        return (
-                          <div key={ft.id} className="rounded-md border border-border">
-                            <button type="button" className="w-full h-7 px-2 text-left flex items-center gap-1.5 hover:bg-muted/40 cursor-pointer" onClick={() => setExpandedTypes((prev) => ({ ...prev, [ft.key]: !expanded }))}>
-                              {expanded ? <ChevronDown className="h-3 w-3 text-muted-foreground" /> : <ChevronRight className="h-3 w-3 text-muted-foreground" />}
-                              <span className="text-[11px] font-medium text-foreground truncate">{ft.label}</span>
-                            </button>
-                            {expanded && (
-                              <div className="px-2 pb-1.5 space-y-0.5">
-                                {filtered.map((v) => (
-                                  <button key={v.key} type="button" onClick={() => insertAtCursor(v.expression)} className="w-full rounded border border-border bg-background px-2 py-0.5 text-left text-[10px] font-mono text-foreground hover:border-primary/40 hover:bg-muted/40 cursor-pointer">{v.expression}</button>
-                                ))}
-                                {filtered.length === 0 && <p className="text-[10px] text-muted-foreground py-1">Sem campos.</p>}
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })}
+                  <div>
+                    <div className="flex items-center gap-2 text-xs font-semibold text-foreground"><Braces className="h-3.5 w-3.5 text-primary" />Variáveis</div>
+                    <div className="relative mt-2">
+                      <Search className="h-3.5 w-3.5 absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                      <Input value={variableSearch} onChange={(e) => setVariableSearch(e.target.value)} placeholder="Buscar..." className="h-7 pl-7 text-xs" />
+                    </div>
+                    <div className="space-y-1 mt-2">
+                      <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Sistêmicas</div>
+                      {filteredSystem.map((v) => (
+                        <button key={v.key} type="button" onClick={() => insertField(v.expression)} className="w-full rounded border border-border bg-background px-2 py-1 text-left text-[10px] font-mono text-foreground hover:border-primary/40 hover:bg-muted/40 cursor-pointer">{v.expression}</button>
+                      ))}
+                    </div>
+                    <div className="space-y-1 mt-2">
+                      <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Tipos e campos</div>
+                      <div className="space-y-1 max-h-48 overflow-y-auto">
+                        {fieldTypes.map((ft) => {
+                          const typeVars = byType[ft.key] ?? [];
+                          const matchesType = !q || ft.label.toLowerCase().includes(q) || ft.key.toLowerCase().includes(q);
+                          const filtered = q ? typeVars.filter((v) => v.label.toLowerCase().includes(q) || v.expression.toLowerCase().includes(q)) : typeVars;
+                          if (!matchesType && filtered.length === 0) return null;
+                          const expanded = expandedTypes[ft.key] ?? false;
+                          return (
+                            <div key={ft.id} className="rounded-md border border-border">
+                              <button type="button" className="w-full h-7 px-2 text-left flex items-center gap-1.5 hover:bg-muted/40 cursor-pointer" onClick={() => setExpandedTypes((prev) => ({ ...prev, [ft.key]: !expanded }))}>
+                                {expanded ? <ChevronDown className="h-3 w-3 text-muted-foreground" /> : <ChevronRight className="h-3 w-3 text-muted-foreground" />}
+                                <span className="text-[11px] font-medium text-foreground truncate">{ft.label}</span>
+                              </button>
+                              {expanded && (
+                                <div className="px-2 pb-1.5 space-y-0.5">
+                                  {filtered.map((v) => <button key={v.key} type="button" onClick={() => insertField(v.expression)} className="w-full rounded border border-border bg-background px-2 py-0.5 text-left text-[10px] font-mono text-foreground hover:border-primary/40 hover:bg-muted/40 cursor-pointer">{v.expression}</button>)}
+                                  {filtered.length === 0 && <p className="text-[10px] text-muted-foreground py-1">Sem campos.</p>}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
-            </ResizablePanel>
+              </ResizablePanel>
 
-            <ResizableHandle withHandle />
+              <ResizableHandle withHandle />
 
-            <ResizablePanel defaultSize={40} minSize={25}>
-              <div className="h-full flex flex-col">
-                <div className="flex items-center justify-between px-3 py-2 border-b border-border bg-muted/30">
-                  <div className="flex items-center gap-2 text-xs font-semibold text-foreground"><Eye className="h-3.5 w-3.5 text-primary" />Layout do bloco</div>
-                  <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
-                    <span className={!showPreview ? 'text-foreground font-medium' : ''}>Esqueleto</span>
-                    <Switch checked={showPreview} onCheckedChange={setShowPreview} className="h-4 w-7" />
-                    <span className={showPreview ? 'text-foreground font-medium' : ''}>Preview</span>
-                  </div>
-                </div>
-                <div className="flex-1 overflow-y-auto p-4 bg-card">
-                  {layoutItems.length === 0 && !template.trim() ? (
-                    <div className="h-full flex flex-col items-center justify-center rounded-lg border-2 border-dashed border-border/60 p-6 text-center">
-                      <Layers className="w-8 h-8 text-muted-foreground/20 mb-2" />
-                      <p className="text-[11px] text-muted-foreground/60 mb-1">Nenhum conteúdo</p>
-                      <p className="text-[9px] text-muted-foreground/40">Insira blocos da coluna esquerda ou escreva XML</p>
+              <ResizablePanel defaultSize={40} minSize={25}>
+                <div className="h-full flex flex-col">
+                  <div className="flex items-center justify-between px-3 py-2 border-b border-border bg-muted/30">
+                    <div className="flex items-center gap-2 text-xs font-semibold text-foreground"><Eye className="h-3.5 w-3.5 text-primary" />Layout do bloco</div>
+                    <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
+                      <span className={!showPreview ? 'text-foreground font-medium' : ''}>Esqueleto</span>
+                      <Switch checked={showPreview} onCheckedChange={setShowPreview} className="h-4 w-7" />
+                      <span className={showPreview ? 'text-foreground font-medium' : ''}>Preview</span>
                     </div>
-                  ) : (
-                    <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleLayoutDragEnd}>
-                      <div className="rounded-lg border-2 border-dashed border-border/40 p-3 min-h-[100px] space-y-2">
-                        <SortableContext items={layoutItems.map((i) => i.id)} strategy={verticalListSortingStrategy}>
-                          {layoutItems.map((item) => <SortableItem key={item.id} item={item} />)}
-                        </SortableContext>
-                        {showPreview && (
-                          <div className="rounded border border-dashed border-border/30 p-2 mt-3">
-                            <div className="text-xs" dangerouslySetInnerHTML={{ __html: renderedHtml }} />
-                          </div>
+                  </div>
+                  <div className="flex-1 overflow-y-auto p-2 bg-card">
+                    <CanvasDropZone>
+                      <div className="group/canvas relative rounded-lg border border-dashed border-border/40 bg-card">
+                        <div className="pointer-events-none absolute left-1/2 top-2 z-20 flex -translate-x-1/2 items-center gap-1 rounded-full border border-border bg-popover px-1.5 py-1 opacity-0 shadow-lg transition-opacity group-hover/canvas:opacity-100">
+                          <span className="pointer-events-auto max-w-32 truncate rounded-full bg-muted px-2 py-0.5 text-[10px] text-muted-foreground">{selectedField?.label ?? 'Selecione um item'}</span>
+                          <button type="button" className="pointer-events-auto rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-foreground" title="Duplicar" onClick={() => selectedField && syncSection({ ...section, fields: [...section.fields, { ...selectedField, id: createField(selectedField.label, selectedField.expression, selectedField.icon).id }] })}><Copy className="h-3.5 w-3.5" /></button>
+                          <button type="button" className="pointer-events-auto rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-destructive" title="Remover item" onClick={() => selectedField && syncSection({ ...section, fields: section.fields.filter((field) => field.id !== selectedField.id) })}><Trash2 className="h-3.5 w-3.5" /></button>
+                        </div>
+                        {section.fields.length === 0 && !showPreview ? <div className="text-center text-[11px] text-muted-foreground py-10">Arraste blocos ou adicione variáveis para montar esta seção.</div> : (
+                          <SortableContext items={section.fields.map((field) => field.id)} strategy={verticalListSortingStrategy}>
+                            <BaseReportSkeleton
+                              sections={[displaySection]}
+                              selectedFieldId={selectedFieldId}
+                              onFieldSelect={setSelectedFieldId}
+                              onCanvasDeselect={() => setSelectedFieldId(null)}
+                              renderFieldOptionTrigger={renderFieldOptions}
+                              enableFieldSorting={true}
+                              onFieldExpressionChange={(sectionId, fieldId, value) => { setSelectedFieldId(fieldId); syncSection({ ...section, fields: section.fields.map((field) => field.id === fieldId ? { ...field, expression: value } : field) }); }}
+                              onFieldLabelChange={(sectionId, fieldId, value) => { setSelectedFieldId(fieldId); syncSection({ ...section, fields: section.fields.map((field) => field.id === fieldId ? { ...field, label: value } : field) }); }}
+                              onEditSection={undefined}
+                              onRemoveSection={undefined}
+                              showAddSection={false}
+                              showFooter={false}
+                            />
+                          </SortableContext>
                         )}
                       </div>
-                    </DndContext>
-                  )}
+                    </CanvasDropZone>
+                  </div>
                 </div>
-              </div>
-            </ResizablePanel>
+              </ResizablePanel>
 
-            <ResizableHandle withHandle />
+              <ResizableHandle withHandle />
 
-            <ResizablePanel defaultSize={35} minSize={22}>
-              <div className="h-full flex flex-col">
-                <div className="flex items-center gap-2 px-3 py-2 border-b border-border bg-muted/30">
-                  <Code2 className="h-3.5 w-3.5 text-primary" />
-                  <span className="text-xs font-semibold text-foreground">XML / Template</span>
+              <ResizablePanel defaultSize={35} minSize={22}>
+                <div className="h-full flex flex-col">
+                  <div className="flex items-center justify-between gap-2 px-3 py-2 border-b border-border bg-muted/30">
+                    <div className="flex items-center gap-2"><Code2 className="h-3.5 w-3.5 text-primary" /><span className="text-xs font-semibold text-foreground">XML / Template</span></div>
+                    <Button type="button" variant="outline" size="sm" className="h-6 text-[10px]" onClick={() => handleTemplateChange(formatTemplateXml(template))}>Formatar XML</Button>
+                  </div>
+                  <div
+                    className="relative m-3 flex-1 overflow-hidden rounded-lg border border-slate-700 bg-slate-900 font-mono text-[11px] leading-5 shadow-inner dark:border-slate-500 dark:bg-slate-950"
+                    onWheel={(event) => {
+                      if (!event.shiftKey) return;
+                      const textarea = event.currentTarget.querySelector('textarea');
+                      if (!textarea) return;
+                      event.preventDefault();
+                      textarea.scrollLeft += event.deltaY;
+                    }}
+                  >
+                    <div className="pointer-events-none absolute inset-y-0 left-0 z-10 w-10 border-r border-slate-700 bg-slate-900" />
+                    <pre
+                      ref={lineRef}
+                      className="pointer-events-none absolute inset-y-0 left-0 z-20 w-10 overflow-hidden border-r border-slate-700 bg-slate-900 px-2 py-3 text-right text-slate-500"
+                      aria-hidden
+                    >
+                      {Array.from({ length: Math.max(1, template.split('\n').length) }, (_, idx) => idx + 1).join('\n')}
+                    </pre>
+                    <pre ref={highlightRef} className="pointer-events-none absolute inset-0 overflow-auto whitespace-pre p-3 pl-12 text-slate-100" aria-hidden dangerouslySetInnerHTML={{ __html: xmlHighlight(template) }} />
+                    <textarea
+                      value={template}
+                      onChange={(e) => handleTemplateChange(e.target.value)}
+                      onScroll={(e) => {
+                        if (!highlightRef.current) return;
+                        highlightRef.current.scrollTop = e.currentTarget.scrollTop;
+                        highlightRef.current.scrollLeft = e.currentTarget.scrollLeft;
+                        if (lineRef.current) lineRef.current.scrollTop = e.currentTarget.scrollTop;
+                      }}
+                      placeholder="Escreva XML ou insira blocos..."
+                      className="absolute inset-0 z-30 h-full w-full resize-none overflow-auto whitespace-pre bg-transparent p-3 pl-12 text-transparent caret-white outline-none scrollbar-thin selection:bg-sky-500/30 placeholder:text-slate-400"
+                      spellCheck={false}
+                    />
+                  </div>
                 </div>
-                <div className="flex-1 overflow-hidden">
-                  <textarea value={template} onChange={(e) => setTemplate(e.target.value)}
-                    placeholder="Escreva XML ou insira blocos..."
-                    className="h-full w-full resize-none bg-transparent text-[11px] font-mono text-foreground p-3 outline-none scrollbar-thin placeholder:text-muted-foreground/40" spellCheck={false} />
+              </ResizablePanel>
+            </ResizablePanelGroup>
+            <DragOverlay>
+              {activeSnippet ? (
+                <div className="max-w-[260px] rounded-md border-2 border-primary bg-card p-2 shadow-lg">
+                  <div className="text-[10px] font-mono text-primary">{activeSnippet.label}</div>
+                  <div className="text-[9px] text-muted-foreground">{activeSnippet.description}</div>
                 </div>
-              </div>
-            </ResizablePanel>
-          </ResizablePanelGroup>
-          <div className="shrink-0"><ExpressionConsole defaultCollapsed={true} /></div>
+              ) : null}
+            </DragOverlay>
+          </DndContext>
+          <div className="shrink-0"><ExpressionConsole context={ctx} defaultCollapsed={true} /></div>
         </div>
       </DialogContent>
     </Dialog>

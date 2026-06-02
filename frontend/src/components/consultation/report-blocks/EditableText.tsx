@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import type { CSSProperties } from 'react';
 import { Check, Pencil, X } from 'lucide-react';
 
 interface EditableTextProps {
@@ -7,6 +8,8 @@ interface EditableTextProps {
   className?: string;
   tag?: 'span' | 'p' | 'h2' | 'h3' | 'div';
   placeholder?: string;
+  style?: CSSProperties;
+  onClick?: () => void;
 }
 
 export default function EditableText({
@@ -15,11 +18,15 @@ export default function EditableText({
   className,
   tag: TagName = 'span',
   placeholder,
+  style,
+  onClick,
 }: EditableTextProps) {
   const [editing, setEditing] = useState(false);
   const [text, setText] = useState(value);
 
-  if (!onChange) return <TagName className={className}>{value}</TagName>;
+  useEffect(() => setText(value), [value]);
+
+  if (!onChange) return <TagName className={className} style={style} onClick={onClick}>{value}</TagName>;
 
   if (editing) {
     return (
@@ -43,7 +50,7 @@ export default function EditableText({
             }
           }}
           className="bg-primary/5 border border-primary/30 rounded px-1.5 py-0.5 outline-none text-foreground w-full text-inherit"
-          style={{ fontSize: 'inherit', fontWeight: 'inherit' }}
+          style={{ fontSize: 'inherit', fontWeight: 'inherit', ...style }}
         />
         <button
           onClick={() => {
@@ -70,9 +77,9 @@ export default function EditableText({
   return (
     <span
       className="group/edit inline-flex items-center gap-1.5 relative cursor-pointer hover:bg-primary/5 rounded px-0.5 -mx-0.5 transition-colors"
-      onClick={() => setEditing(true)}
+      onClick={() => { onClick?.(); setEditing(true); }}
     >
-      <TagName className={className}>
+      <TagName className={className} style={style}>
         {text || placeholder || 'Clique para editar'}
       </TagName>
       <span className="opacity-0 group-hover/edit:opacity-100 transition-all duration-200 flex items-center gap-0.5 flex-shrink-0">

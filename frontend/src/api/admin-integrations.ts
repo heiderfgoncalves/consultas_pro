@@ -2,11 +2,15 @@ import { apiRequest } from '@/lib/api';
 import type {
   ConsultationFieldType,
   FieldMapping,
+  MvpDocumentType,
+  MvpTemplateKey,
   MappingItemFilter,
   ProductIntegrationOverrides,
   ProductSessionFieldAssignment,
   Provider,
   ProviderConsultation,
+  TemplateMvpConfig,
+  TemplateMvpPoolItem,
   TestLogEntry,
   TypeReportFieldConfig,
 } from '@/types/integrations';
@@ -349,6 +353,157 @@ export async function getProviders(accessToken: string | null) {
   return apiRequest<ApiProvider[]>('/admin/providers', { method: 'GET', token: tok(accessToken) });
 }
 
+export interface ApiTemplateItem {
+  id: string;
+  templateId: string;
+  providerProductId: string;
+  sortOrder: number;
+  alias: string | null;
+  providerProduct?: ApiProduct & { provider?: ApiProvider; consultationType?: unknown };
+}
+
+export interface ApiTemplate {
+  id: string;
+  name: string;
+  description: string | null;
+  visibility: 'PRIVATE' | 'COMPANY' | 'GLOBAL';
+  isFavorite: boolean;
+  layout?: unknown;
+  logo?: string | null;
+  items: ApiTemplateItem[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export async function getTemplatesApi(accessToken: string | null) {
+  return apiRequest<ApiTemplate[]>('/templates', { method: 'GET', token: tok(accessToken) });
+}
+
+export async function createTemplateApi(
+  accessToken: string | null,
+  body: {
+    name: string;
+    description?: string;
+    visibility?: 'PRIVATE' | 'COMPANY' | 'GLOBAL';
+    isFavorite?: boolean;
+    layout?: unknown;
+    logo?: string | null;
+    items: Array<{ providerProductId: string; sortOrder: number; alias?: string }>;
+  },
+) {
+  return apiRequest<ApiTemplate>('/templates', {
+    method: 'POST',
+    token: tok(accessToken),
+    body: JSON.stringify(body),
+  });
+}
+
+export async function patchTemplateLayoutApi(
+  accessToken: string | null,
+  templateId: string,
+  body: { name?: string; layout?: unknown; logo?: string | null; items?: Array<{ providerProductId: string; sortOrder: number; alias?: string }> },
+) {
+  return apiRequest<ApiTemplate>(`/templates/${templateId}/layout`, {
+    method: 'PATCH',
+    token: tok(accessToken),
+    body: JSON.stringify(body),
+  });
+}
+
+export async function deleteTemplateApi(accessToken: string | null, templateId: string) {
+  return apiRequest<{ id: string }>(`/templates/${templateId}`, {
+    method: 'DELETE',
+    token: tok(accessToken),
+  });
+}
+
+export async function favoriteTemplateApi(accessToken: string | null, templateId: string, isFavorite: boolean) {
+  return apiRequest<ApiTemplate>(`/templates/${templateId}/favorite`, {
+    method: 'PATCH',
+    token: tok(accessToken),
+    body: JSON.stringify({ isFavorite }),
+  });
+}
+
+export async function getTemplateMvpConfigApi(
+  accessToken: string | null,
+  templateKey: MvpTemplateKey,
+  documentType: MvpDocumentType,
+) {
+  return apiRequest<TemplateMvpConfig>(
+    `/admin/templates-mvp/config?templateKey=${encodeURIComponent(templateKey)}&documentType=${encodeURIComponent(documentType)}`,
+    { method: 'GET', token: tok(accessToken) },
+  );
+}
+
+export async function putTemplateMvpConfigApi(
+  accessToken: string | null,
+  payload: Pick<TemplateMvpConfig, 'templateKey' | 'documentType' | 'displayName' | 'stages'>,
+) {
+  return apiRequest<TemplateMvpConfig>('/admin/templates-mvp/config', {
+    method: 'PUT',
+    token: tok(accessToken),
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function importTemplateMvpPoolApi(
+  accessToken: string | null,
+  rootPath?: string,
+) {
+  return apiRequest<{ imported: number; ignored: number; scannedFiles: number }>('/admin/templates-mvp/test-pool/import', {
+    method: 'POST',
+    token: tok(accessToken),
+    body: JSON.stringify({ ...(rootPath ? { rootPath } : {}) }),
+  });
+}
+
+export async function getTemplateMvpPoolApi(
+  accessToken: string | null,
+  providerProductId?: string,
+) {
+  const q = providerProductId ? `?providerProductId=${encodeURIComponent(providerProductId)}` : '';
+  return apiRequest<TemplateMvpPoolItem[]>(`/admin/templates-mvp/test-pool${q}`, {
+    method: 'GET',
+    token: tok(accessToken),
+  });
+}
+
+export async function previewTemplateMvpApi(
+  accessToken: string | null,
+  payload: {
+    templateKey: MvpTemplateKey;
+    documentType: MvpDocumentType;
+    stageSelections: Array<{
+      stageId?: string;
+      providerProductId?: string;
+      productCode: string;
+      enabled: boolean;
+      selectedPoolId?: string;
+    }>;
+  },
+) {
+  return apiRequest<{
+    templateKey: MvpTemplateKey;
+    documentType: MvpDocumentType;
+    usedStages: Array<{ stageId: string | null; productId: string; productCode: string; productName: string }>;
+    mergedPayload: Record<string, unknown>;
+    preview: {
+      clientName: string;
+      document: string;
+      score: number;
+      hasBacen: boolean;
+      counts: Record<string, number>;
+      totals: { grossTotal: number; uniqueTotal: number };
+      byBureau: Record<string, unknown>;
+    };
+  }>('/admin/templates-mvp/preview', {
+    method: 'POST',
+    token: tok(accessToken),
+    body: JSON.stringify(payload),
+  });
+}
+
 export async function getCanonicalFields(accessToken: string | null) {
   return apiRequest<ApiCanonicalField[]>('/admin/catalog/canonical-fields', {
     method: 'GET',
@@ -650,5 +805,40 @@ export async function testProductDraftApi(
     method: 'POST',
     token: tok(accessToken),
     body: JSON.stringify(req),
+  });
+}
+
+export interface CompanyApiToken {
+  id: string;
+  ownerType: string;
+  companyId: string | null;
+  label: string;
+  last4: string;
+  allowedOrigins: string[] | null;
+  isActive: boolean;
+  createdAt: string;
+  lastUsedAt: string | null;
+  expiresAt: string | null;
+}
+
+export async function getCompanyTokensApi(accessToken: string | null): Promise<CompanyApiToken[]> {
+  return apiRequest<CompanyApiToken[]>('/companies/me/tokens', { method: 'GET', token: tok(accessToken) });
+}
+
+export async function createCompanyTokenApi(
+  accessToken: string | null,
+  body: { label: string; allowedOrigins?: string[] },
+): Promise<{ token: string; apiToken: CompanyApiToken }> {
+  return apiRequest<{ token: string; apiToken: CompanyApiToken }>('/companies/me/tokens', {
+    method: 'POST',
+    token: tok(accessToken),
+    body: JSON.stringify(body),
+  });
+}
+
+export async function revokeCompanyTokenApi(accessToken: string | null, tokenId: string): Promise<{ success: boolean }> {
+  return apiRequest<{ success: boolean }>(`/companies/me/tokens/${tokenId}`, {
+    method: 'DELETE',
+    token: tok(accessToken),
   });
 }

@@ -196,3 +196,46 @@ export interface TestLogEntry {
   responseJson: string;
   testedAt: string;
 }
+
+export type MvpTemplateKey = 'DIVIDAS_SIMPLES' | 'BACEN_SIMPLES' | 'PREMIUM';
+export type MvpDocumentType = 'CPF' | 'CNPJ';
+
+export interface TemplateMvpRuleStage {
+  id?: string;
+  configId?: string;
+  providerProductId?: string | null;
+  productCode: string;
+  stageName: string;
+  role: string;
+  onFailure: string;
+  priority: number;
+  enabled: boolean;
+  isFallback: boolean;
+  mergeInto?: string | null;
+}
+
+export interface TemplateMvpConfig {
+  id: string;
+  templateKey: MvpTemplateKey;
+  documentType: MvpDocumentType;
+  displayName: string;
+  isActive: boolean;
+  stages: TemplateMvpRuleStage[];
+}
+
+export interface TemplateMvpPoolItem {
+  id: string;
+  providerProductId: string;
+  document: string;
+  documentType: MvpDocumentType;
+  hasDebt: boolean;
+  sourceFile: string;
+  payload?: unknown;
+  metadata?: unknown;
+  providerProduct?: {
+    id: string;
+    name: string;
+    code: string;
+    externalId: string | null;
+  };
+}
