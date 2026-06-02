@@ -48,4 +48,4 @@ COPY --from=build /app/dist ./dist/
 EXPOSE 3333
 
 # Comando para iniciar a aplicação diretamente com o Node (permite tratamento correto de sinais do Docker)
-CMD ["node", "dist/server.js"]
+CMD ["node", "dist/src/server.js"]
