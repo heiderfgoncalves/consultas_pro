@@ -24,7 +24,9 @@ export async function buildApp() {
   app.decorate('authenticate', authenticate);
 
   await app.register(cors, buildCorsOptions());
-  await app.register(helmet);
+  await app.register(helmet, {
+    crossOriginResourcePolicy: { policy: 'cross-origin' },
+  });
   await app.register(jwt, {
     secret: env.JWT_SECRET,
   });
