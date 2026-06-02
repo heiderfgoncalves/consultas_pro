@@ -9,7 +9,7 @@
   },
   "scripts": {
     "dev": "tsx watch src/server.ts",
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.json && mkdir -p dist/src && cp -r src/public dist/src/",
     "start": "node dist/src/server.js",
     "worker": "tsx src/workers/consultation.worker.ts",
     "prisma:generate": "prisma generate",
