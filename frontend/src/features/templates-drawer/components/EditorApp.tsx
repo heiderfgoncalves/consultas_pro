@@ -7,7 +7,7 @@ import { TitleBar } from "./TitleBar";
 import { Ribbon } from "./Ribbon";
 import { FormulaBar } from "./FormulaBar";
 import { LeftPanel } from "./LeftPanel";
-import { StatusBar } from "./StatusBar";
+
 import { PageTabs } from "./PageTabs";
 import { BottomConsole } from "./BottomConsole";
 import { InfiniteCanvas } from "./Canvas/InfiniteCanvas";
@@ -88,7 +88,6 @@ export function EditorApp() {
               <InfiniteCanvas />
             </div>
             <PageTabs />
-            <StatusBar />
           </motion.div>
         </ResizablePanel>
 

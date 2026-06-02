@@ -11,7 +11,14 @@ import {
   MoreVertical, 
   Layers,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  Eye,
+  EyeOff,
+  Grid,
+  Magnet,
+  Terminal,
+  ZoomIn,
+  ZoomOut
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -21,6 +28,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { confirmDialog } from "./dialogs/ConfirmDialog";
 import { toast } from "sonner";
+import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "@/components/ui/tooltip";
 
 export function PageTabs() {
   const frames = useEditorStore((s) => s.template.frames);
@@ -31,6 +39,18 @@ export function PageTabs() {
   const duplicateFrame = useEditorStore((s) => s.duplicateFrame);
   const removeFrame = useEditorStore((s) => s.removeFrame);
   const setViewport = useEditorStore((s) => s.setViewport);
+
+  // Estados e Ações consolidadas do StatusBar
+  const zoom = useEditorStore((s) => s.viewport.zoom);
+  const viewportX = useEditorStore((s) => s.viewport.x);
+  const showGrid = useEditorStore((s) => s.showGrid);
+  const snap = useEditorStore((s) => s.snap);
+  const mode = useEditorStore((s) => s.mode);
+  const toggleGrid = useEditorStore((s) => s.toggleGrid);
+  const toggleSnap = useEditorStore((s) => s.toggleSnap);
+  const setMode = useEditorStore((s) => s.setMode);
+  const consoleOpen = useEditorStore((s) => s.consoleOpen);
+  const toggleConsole = useEditorStore((s) => s.toggleConsole);
 
   // Estados para edição rápida inline de nome
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -102,8 +122,89 @@ export function PageTabs() {
   };
 
   return (
-    <div className="h-9 w-full bg-slate-100 dark:bg-slate-950 border-t border-b border-slate-200 dark:border-slate-800 flex items-center px-2 select-none shrink-0 transition-colors">
+    <div className="h-9 w-full bg-slate-50 dark:bg-slate-950 border-t border-b border-slate-200 dark:border-slate-800 flex items-center px-2 select-none shrink-0 transition-colors">
       
+      {/* 1. Controles de Status (Modo, Grid, Snap, Console) - Estilo Excel */}
+      <div className="flex items-center gap-1 shrink-0 pr-2 border-r border-slate-200 dark:border-slate-800 mr-2">
+        <TooltipProvider delayDuration={150}>
+          {/* Modo Preview/Esqueleto */}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                onClick={() => setMode(mode === "skeleton" ? "preview" : "skeleton")}
+                className={cn(
+                  "p-1 rounded-md hover:bg-slate-200 dark:hover:bg-slate-800 transition-colors cursor-pointer shrink-0 text-slate-500",
+                  mode === "preview" && "text-indigo-650 dark:text-yellow-500 bg-indigo-50 dark:bg-indigo-950/45"
+                )}
+                aria-label="Alternar Modo de Exibição"
+              >
+                {mode === "preview" ? <Eye className="size-3.5" /> : <EyeOff className="size-3.5" />}
+              </button>
+            </TooltipTrigger>
+            <TooltipContent className="text-[11px] font-semibold bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900 px-2 py-1 shadow-md z-[110]">
+              Modo: {mode === "skeleton" ? "Esqueleto (Edição)" : "Preview (Visualização)"}
+            </TooltipContent>
+          </Tooltip>
+
+          {/* Grid On/Off */}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                onClick={toggleGrid}
+                className={cn(
+                  "p-1 rounded-md hover:bg-slate-200 dark:hover:bg-slate-800 transition-colors cursor-pointer shrink-0 text-slate-500",
+                  showGrid && "text-indigo-650 dark:text-yellow-500 bg-indigo-50 dark:bg-indigo-950/45"
+                )}
+                aria-label="Alternar Grid"
+              >
+                <Grid className="size-3.5" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent className="text-[11px] font-semibold bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900 px-2 py-1 shadow-md z-[110]">
+              Grade (Grid): {showGrid ? "Ativo" : "Inativo"}
+            </TooltipContent>
+          </Tooltip>
+
+          {/* Snap On/Off */}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                onClick={toggleSnap}
+                className={cn(
+                  "p-1 rounded-md hover:bg-slate-200 dark:hover:bg-slate-800 transition-colors cursor-pointer shrink-0 text-slate-500",
+                  snap && "text-indigo-650 dark:text-yellow-500 bg-indigo-50 dark:bg-indigo-950/45"
+                )}
+                aria-label="Alternar Snap"
+              >
+                <Magnet className="size-3.5" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent className="text-[11px] font-semibold bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900 px-2 py-1 shadow-md z-[110]">
+              Atração Magnética (Snap): {snap ? "Ativo" : "Inativo"}
+            </TooltipContent>
+          </Tooltip>
+
+          {/* Console On/Off */}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                onClick={toggleConsole}
+                className={cn(
+                  "p-1 rounded-md hover:bg-slate-200 dark:hover:bg-slate-800 transition-colors cursor-pointer shrink-0 text-slate-500",
+                  consoleOpen && "text-indigo-650 dark:text-yellow-500 bg-indigo-50 dark:bg-indigo-950/40"
+                )}
+                aria-label="Alternar Console"
+              >
+                <Terminal className="size-3.5" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent className="text-[11px] font-semibold bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900 px-2 py-1 shadow-md z-[110]">
+              Console: {consoleOpen ? "Aberto" : "Fechado"}
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      </div>
+
       {/* Botões de Rolagem se as abas passarem do tamanho */}
       <button 
         onClick={() => scrollTabs("left")}
@@ -281,6 +382,48 @@ export function PageTabs() {
           ))}
         </DropdownMenuContent>
       </DropdownMenu>
+
+      {/* Divisor Visual */}
+      <div className="w-px h-5 bg-slate-250 dark:bg-slate-800 mx-2 shrink-0" />
+
+      {/* 4. Barra de Scroll Horizontal do Canvas */}
+      <div className="flex items-center gap-1.5 px-2 flex-1 max-w-[160px] min-w-[70px] shrink-0">
+        <span className="text-[8px] text-slate-400 font-extrabold tracking-wider shrink-0 select-none">ROLAR</span>
+        <input
+          type="range"
+          min="-2500"
+          max="2500"
+          value={Math.round(viewportX)}
+          onChange={(e) => setViewport({ x: Number(e.target.value) })}
+          className="w-full h-1 bg-slate-250 dark:bg-slate-800 rounded-lg appearance-none cursor-pointer accent-indigo-650 dark:accent-yellow-500 focus:outline-none hover:h-1.5 transition-all"
+          title="Rolar Canvas Horizontalmente"
+        />
+      </div>
+
+      {/* 5. Controles de Zoom */}
+      <div className="flex items-center gap-1.5 shrink-0 ml-auto pl-2 border-l border-slate-200 dark:border-slate-800 h-5">
+        <button
+          onClick={() => setViewport({ zoom: Math.max(0.1, zoom / 1.2) })}
+          className="p-1 text-slate-500 hover:text-slate-850 dark:hover:text-slate-200 hover:bg-slate-200/50 dark:hover:bg-slate-900 rounded transition-colors cursor-pointer"
+          title="Diminuir Zoom"
+        >
+          <ZoomOut className="size-3.5" />
+        </button>
+        <span 
+          onClick={() => setViewport({ x: 60, y: 60, zoom: 0.6 })}
+          className="w-10 text-center text-[10px] font-extrabold text-slate-500 dark:text-slate-400 cursor-pointer hover:text-indigo-650 dark:hover:text-yellow-500 transition-colors"
+          title="Redefinir Câmera (Enquadrar)"
+        >
+          {Math.round(zoom * 100)}%
+        </span>
+        <button
+          onClick={() => setViewport({ zoom: Math.min(4, zoom * 1.2) })}
+          className="p-1 text-slate-500 hover:text-slate-850 dark:hover:text-slate-200 hover:bg-slate-200/50 dark:hover:bg-slate-900 rounded transition-colors cursor-pointer"
+          title="Aumentar Zoom"
+        >
+          <ZoomIn className="size-3.5" />
+        </button>
+      </div>
 
     </div>
   );
