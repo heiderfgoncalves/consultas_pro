@@ -10,6 +10,7 @@ const BUILTIN_ALLOWED = [
   'https://consultaspro-api-homol.limpanome.pro',
   'https://consultaspro-app-homol.limpanome.pro',
   'https://consultas.limpanome.pro',
+  'https://api-consultas.limpanome.pro',
 ] as const;
 
 function parseExtraOrigins(raw: string | undefined): string[] {
