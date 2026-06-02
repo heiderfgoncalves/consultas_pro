@@ -1,0 +1,24 @@
+# Regras do Projeto - Consultas PRO
+
+## Diretrizes de Deploy Automatizado
+
+Sempre que o usuário solicitar "deploy", "fazer deploy", "publicar", ou palavras-chave equivalentes, o agente de IA **DEVE** utilizar o script de deploy automatizado localizado na raiz do projeto:
+
+```bash
+node deploy.js [target]
+```
+
+### Comportamento e Alvos (target):
+- `node deploy.js frontend` - Commita por temas, faz push e aciona o deploy exclusivamente do frontend.
+- `node deploy.js backend` - Commita por temas, faz push e aciona o deploy exclusivamente do backend.
+- `node deploy.js` ou `node deploy.js all` - Se o usuário não especificar o alvo, use o padrão que commita, faz push e aciona o deploy de **ambos** (frontend e backend).
+
+### O que o script realiza de forma nativa e automática:
+1. **Agrupamento Temático:** Detecta os arquivos pendentes (modificados e não rastreados) e agrupa-os de forma inteligente por temas (exemplo: `frontend/docker`, `frontend/templates-drawer`, `backend/docker`).
+2. **Commits Segmentados:** Adiciona os arquivos de cada tema de forma isolada e executa um commit semântico limpo para cada grupo (ex: `chore(frontend/docker): sync and deploy changes automatically`).
+3. **Sincronização Remota:** Executa o `git push` para subir todas as alterações ao GitHub de uma só vez.
+4. **Disparo de Webhooks (Easypanel):** Envia requisições HTTP GET aos endpoints corretos de webhook do Easypanel para engatilhar as novas compilações automáticas:
+   - Webhook Frontend: `http://69.62.98.167:3000/api/deploy/c37bac2b8bbe093e81bc706a3451271c1c16c5211a9a2677`
+   - Webhook Backend: `http://69.62.98.167:3000/api/deploy/8452be1b3670670ee7b1c4b348d7d94d1ed752bfd9f270a8`
+
+**IMPORTANTE:** Nunca faça commits desorganizados, push genérico ou disparos de webhooks manualmente caso o usuário peça deploy. O script `./deploy.js` é a autoridade máxima e o fluxo canônico de deploy deste repositório.
