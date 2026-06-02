@@ -274,7 +274,7 @@
         if (currentOrigin.includes('localhost') || currentOrigin.includes('127.0.0.1')) {
           document.getElementById('script-url').value = 'http://localhost:3333/widget.js';
         } else {
-          document.getElementById('script-url').value = `${currentOrigin}/widget.js`;
+          document.getElementById('script-url').value = 'https://api-consultas.limpanome.pro/widget.js';
         }
       }
       
@@ -341,11 +341,13 @@
           placeholderBox.style.display = 'none';
           widgetTarget.style.display = 'block';
 
+          const currentOrigin = window.location.origin;
           // Inicializa o widget
           const widget = new ConsultasProWidget({
             targetId: 'my-widget-target',
             apiKey: apiKey,
             externalUserId: externalUserId || undefined,
+            apiBaseUrl: (currentOrigin.includes('localhost') || currentOrigin.includes('127.0.0.1')) ? 'http://localhost:3333' : 'https://api-consultas.limpanome.pro',
             useDefaultStyles: true
           });
 

@@ -291,7 +291,7 @@
       const currentOrigin = window.location.origin;
       const scriptUrl = (currentOrigin.includes('localhost') || currentOrigin.includes('127.0.0.1'))
         ? 'http://localhost:3333/widget.js'
-        : `${currentOrigin}/widget.js`;
+        : 'https://api-consultas.limpanome.pro/widget.js';
 
       // Remove script anterior se houver
       const oldScript = document.getElementById('cpro-widget-script');
@@ -315,7 +315,7 @@
           const widget = new ConsultasProWidget({
             targetId: 'cpro-widget-root',
             token: token, // Passa o token fornecido
-            apiBaseUrl: (currentOrigin.includes('localhost') || currentOrigin.includes('127.0.0.1')) ? 'http://localhost:3333' : currentOrigin,
+            apiBaseUrl: (currentOrigin.includes('localhost') || currentOrigin.includes('127.0.0.1')) ? 'http://localhost:3333' : 'https://api-consultas.limpanome.pro',
             useDefaultStyles: true
           });
 
