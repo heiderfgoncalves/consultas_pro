@@ -25,6 +25,9 @@ export type TemplateSection = {
   locked?: boolean;
   source?: 'system' | 'consultation-type' | 'custom';
   xml?: string;
+  customBlockId?: string;
+  variables?: string[];
+  arguments?: Record<string, string>;
 };
 
 let _nextId = 1;

@@ -40,9 +40,14 @@ function normalizeCell(v: unknown): string {
 /** Normaliza valor para comparar duplicatas (preview, relatório e dedup por path). */
 export function normalizeDedupFingerprintPart(value: unknown): string {
   if (value == null) return '';
-  const raw = String(value).trim();
+  let raw = String(value).trim();
   if (/^\d{1,2}\/\d{1,2}\/\d{2,4}$/.test(raw)) {
     return raw.toLowerCase();
+  }
+  // Se for uma string puramente alfanumérica (comum em contratos com padding de tamanho fixo)
+  if (/^[0-9a-zA-Z]+$/.test(raw)) {
+    raw = raw.replace(/^0+/, '');
+    if (raw === '') raw = '0';
   }
   return raw
     .toLowerCase()
@@ -55,7 +60,10 @@ export function normalizeDedupFingerprintPart(value: unknown): string {
     .replace(',', '.');
 }
 
-/** Fingerprint estável para dedup global no preview/relatório (chaves do relatório + valores normalizados). */
+/**
+ * Fingerprint estável para dedup **dentro de um único tipo** (chaves do relatório + valores normalizados).
+ * Inclui o nome da chave para que dois campos diferentes com mesmo valor não colidam intra-tipo.
+ */
 export function reportRowDedupFingerprint(
   row: Record<string, unknown>,
   dedupKeys: string[],
@@ -67,6 +75,33 @@ export function reportRowDedupFingerprint(
     .map((k) => {
       const v = Object.prototype.hasOwnProperty.call(row, k) ? row[k] : dedupSummary?.[k];
       return `${k}\0${normalizeDedupFingerprintPart(v)}`;
+    })
+    .join('\x1e');
+}
+
+/**
+ * Fingerprint para dedup **entre tipos**: usa chave canônica (reportFieldId) em vez do displayKey.
+ * Garante que dois tipos com o mesmo campo mas nomes de display diferentes sejam detectados como duplicatas.
+ * `dedupKeyToCanonical` mapeia displayKey → canonicalId (ex: reportFieldId).
+ */
+function reportRowCrossTypeDedupFingerprint(
+  row: Record<string, unknown>,
+  dedupKeys: string[],
+  dedupKeyToCanonical: Map<string, string>,
+  dedupSummary?: Record<string, unknown>,
+): string {
+  if (dedupKeys.length === 0) return '';
+  // Ordena pela chave canônica para comparação consistente entre tipos
+  const sorted = [...dedupKeys].sort((a, b) => {
+    const ca = dedupKeyToCanonical.get(a) ?? a;
+    const cb = dedupKeyToCanonical.get(b) ?? b;
+    return ca.localeCompare(cb, 'pt-BR');
+  });
+  return sorted
+    .map((k) => {
+      const canonical = dedupKeyToCanonical.get(k) ?? k;
+      const v = Object.prototype.hasOwnProperty.call(row, k) ? row[k] : dedupSummary?.[k];
+      return `${canonical}\0${normalizeDedupFingerprintPart(v)}`;
     })
     .join('\x1e');
 }
@@ -84,22 +119,30 @@ function rowHasDedupSubstance(
 
 /**
  * Marca índices de linha duplicados **entre tipos**: mesmo conjunto de campos deduplicar com os mesmos valores
- * (chaves do relatório + normalização), independentemente do tipo.
+ * (chaves canônicas + normalização), independentemente do tipo e dos nomes de display locais.
+ * `dedupKeyToCanonical` mapeia displayKey → canonicalId (ex: reportFieldId) para normalização cross-type.
  */
 export function computeGlobalDuplicateRowIndicesByType(
   typeKeysInOrder: string[],
   rowInfo: Map<
     string,
-    { rows: Record<string, unknown>[]; dedupKeys: string[]; dedupSummary?: Record<string, unknown> }
+    {
+      rows: Record<string, unknown>[];
+      dedupKeys: string[];
+      dedupSummary?: Record<string, unknown>;
+      /** displayKey → reportFieldId canônico para fingerprint cross-type */
+      dedupKeyToCanonical?: Map<string, string>;
+    }
   >,
 ): Map<string, Set<number>> {
   const byFp = new Map<string, { typeKey: string; rowIndex: number }[]>();
   for (const typeKey of typeKeysInOrder) {
     const pack = rowInfo.get(typeKey);
     if (!pack?.dedupKeys.length) continue;
+    const canonical = pack.dedupKeyToCanonical ?? new Map<string, string>();
     pack.rows.forEach((row, rowIndex) => {
       if (!rowHasDedupSubstance(row, pack.dedupKeys, pack.dedupSummary)) return;
-      const fp = reportRowDedupFingerprint(row, pack.dedupKeys, pack.dedupSummary);
+      const fp = reportRowCrossTypeDedupFingerprint(row, pack.dedupKeys, canonical, pack.dedupSummary);
       const list = byFp.get(fp) ?? [];
       list.push({ typeKey, rowIndex });
       byFp.set(fp, list);
@@ -122,7 +165,12 @@ export function buildByTypeWithGlobalDedupRemoved(
   typeKeysInOrder: string[],
   rowInfo: Map<
     string,
-    { rows: Record<string, unknown>[]; dedupKeys: string[]; dedupSummary?: Record<string, unknown> }
+    {
+      rows: Record<string, unknown>[];
+      dedupKeys: string[];
+      dedupSummary?: Record<string, unknown>;
+      dedupKeyToCanonical?: Map<string, string>;
+    }
   >,
 ): Record<string, unknown> {
   const seen = new Set<string>();
@@ -131,6 +179,7 @@ export function buildByTypeWithGlobalDedupRemoved(
     const pack = rowInfo.get(typeKey);
     const val = out[typeKey];
     if (!pack?.dedupKeys.length) continue;
+    const canonical = pack.dedupKeyToCanonical ?? new Map<string, string>();
 
     if (isMappedPreviewZipWrapper(val)) {
       const rows = val[MAPPED_PREVIEW_ROWS_KEY];
@@ -138,7 +187,7 @@ export function buildByTypeWithGlobalDedupRemoved(
         ...val,
         [MAPPED_PREVIEW_ROWS_KEY]: rows.filter((row) => {
           if (!rowHasDedupSubstance(row, pack.dedupKeys, pack.dedupSummary)) return true;
-          const fp = reportRowDedupFingerprint(row, pack.dedupKeys, pack.dedupSummary);
+          const fp = reportRowCrossTypeDedupFingerprint(row, pack.dedupKeys, canonical, pack.dedupSummary);
           if (seen.has(fp)) return false;
           seen.add(fp);
           return true;
@@ -151,7 +200,7 @@ export function buildByTypeWithGlobalDedupRemoved(
     const rows = val as Record<string, unknown>[];
     out[typeKey] = rows.filter((row) => {
       if (!rowHasDedupSubstance(row, pack.dedupKeys, pack.dedupSummary)) return true;
-      const fp = reportRowDedupFingerprint(row, pack.dedupKeys, pack.dedupSummary);
+      const fp = reportRowCrossTypeDedupFingerprint(row, pack.dedupKeys, canonical, pack.dedupSummary);
       if (seen.has(fp)) return false;
       seen.add(fp);
       return true;
@@ -248,8 +297,15 @@ function dedupeValueDeep(value: unknown, fieldPaths: string[]): unknown {
 function getDedupFieldPaths(config: TypeItemFilterConfig): string[] {
   if (!config.dedupFieldIds.length || !config.fieldMappings.length) return [];
   const selected = new Set(config.dedupFieldIds);
+  const resolvedIds = new Set<string>();
+  for (const id of selected) {
+    const computed = config.computedFields?.find((c) => c.id === id);
+    if (!computed) {
+      resolvedIds.add(id);
+    }
+  }
   return config.fieldMappings
-    .filter((mapping) => selected.has(mapping.reportFieldId))
+    .filter((mapping) => resolvedIds.has(mapping.reportFieldId))
     .map((mapping) => mapping.jsonPath.trim())
     .filter((path) => path.length > 0);
 }
@@ -357,10 +413,11 @@ export function hasVisiblePreviewValue(value: unknown): boolean {
 export function filterValueForPreviewDeep(
   value: unknown,
   filters: MappingItemFilter[] | TypeItemFilterConfig | undefined,
+  skipDedup = false,
 ): { value: unknown; hasData: boolean } {
   const normalized = normalizeTypeItemFilterConfig(filters);
   const activeGroups = getActiveTypeItemFilterGroups(normalized);
-  const dedupFieldPaths = getDedupFieldPaths(normalized);
+  const dedupFieldPaths = skipDedup ? [] : getDedupFieldPaths(normalized);
   if (!activeGroups.length && dedupFieldPaths.length === 0) {
     return { value, hasData: hasVisiblePreviewValue(value) };
   }
@@ -383,7 +440,7 @@ export function filterValueForPreviewDeep(
 
     const nestedItems: unknown[] = [];
     for (const item of value) {
-      const nested = filterValueForPreviewDeep(item, normalized);
+      const nested = filterValueForPreviewDeep(item, normalized, skipDedup);
       if (nested.hasData) nestedItems.push(nested.value);
     }
     const deduped = applyDedup(nestedItems);
@@ -398,7 +455,7 @@ export function filterValueForPreviewDeep(
     let matchedNestedChild = false;
 
     for (const [key, childValue] of Object.entries(value as Record<string, unknown>)) {
-      const nested = filterValueForPreviewDeep(childValue, normalized);
+      const nested = filterValueForPreviewDeep(childValue, normalized, skipDedup);
       if (nested.hasData) {
         nextObject[key] = nested.value;
         matchedNestedChild = true;
@@ -423,6 +480,7 @@ export function formatDeepFilteredValueAtPath(
   jsonPath: string,
   filters: MappingItemFilter[] | TypeItemFilterConfig | undefined,
   lineFallback: string,
+  skipDedup = false,
 ): { text: string; hasData: boolean } {
   try {
     const parsed = JSON.parse(rootJson) as unknown;
@@ -430,7 +488,7 @@ export function formatDeepFilteredValueAtPath(
     if (value === undefined) {
       return { text: lineFallback, hasData: lineFallback.trim().length > 0 };
     }
-    const filtered = filterValueForPreviewDeep(value, filters);
+    const filtered = filterValueForPreviewDeep(value, filters, skipDedup);
     const forDisplay = zipColumnarParallelArraysForPreview(filtered.value);
     return {
       text: JSON.stringify(forDisplay, null, 2) || '—',

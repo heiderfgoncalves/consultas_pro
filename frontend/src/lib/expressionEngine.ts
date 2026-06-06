@@ -2,6 +2,7 @@ export type ExpressionContext = {
   $json: Record<string, unknown>;
   $template: { protocol: string; date: string; company: string };
   $block: { id: string; name: string; type: string };
+  $params?: Record<string, unknown>;
 };
 
 function resolvePath(obj: unknown, path: string): unknown {
@@ -23,10 +24,21 @@ function resolveIdentifier(identifier: string, context: ExpressionContext): unkn
   if (trimmed.startsWith('block.')) {
     return resolvePath(context.$block, trimmed.slice(6));
   }
+  if (trimmed.startsWith('params.')) {
+    return resolvePath(context.$params, trimmed.slice(7));
+  }
   if (trimmed === 'template') return context.$template;
   if (trimmed === 'block') return context.$block;
+  if (trimmed === 'params') return context.$params;
 
-  return resolvePath(context.$json, trimmed);
+  const globalVal = resolvePath(context.$json, trimmed);
+  if (globalVal !== undefined) return globalVal;
+
+  if (context.$params) {
+    return resolvePath(context.$params, trimmed);
+  }
+
+  return undefined;
 }
 
 function parseLiteral(token: string): { value: unknown; consumed: boolean } {

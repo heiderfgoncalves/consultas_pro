@@ -1,4 +1,4 @@
-import type { ConsultationFieldType, FieldMapping, TypeItemFilterConfig } from '@/types/integrations';
+import type { ConsultationFieldType, FieldMapping, TypeItemFilterConfig, TypeComputedFieldDefinition } from '@/types/integrations';
 import {
   buildByTypeWithGlobalDedupRemoved,
   formatDeepFilteredValueAtPath,
@@ -149,36 +149,82 @@ export function buildComputedPreviewRows(params: {
   fieldType: ConsultationFieldType;
   filterCfg: TypeItemFilterConfig;
   parsedParts: unknown[];
+  parsedPartsUndeduplicated?: unknown[];
   partPaths: string[];
 }): { baseKey: string; value: unknown; reportFieldId: string }[] {
-  const { fieldType, filterCfg, parsedParts, partPaths } = params;
+  const { fieldType, filterCfg, parsedParts, parsedPartsUndeduplicated, partPaths } = params;
   const fieldsById = new Map((fieldType.reportFieldConfig?.fields ?? []).map((f) => [f.id, f]));
   const defs = filterCfg.computedFields ?? [];
   const out: { baseKey: string; value: unknown; reportFieldId: string }[] = [];
 
-  for (const comp of defs) {
-    if (!comp.label.trim() || !comp.sourceReportFieldId.trim()) continue;
-    const sourceField = fieldsById.get(comp.sourceReportFieldId);
-    const sourceMapping = filterCfg.fieldMappings.find(
-      (m) => m.reportFieldId === comp.sourceReportFieldId && m.jsonPath.trim().length > 0,
-    );
-    if (!sourceField || !sourceMapping) continue;
+  const computedValues = new Map<string, unknown>();
 
-    const trecho = sourceMapping.sourceTrechoPath?.trim() ?? '';
-    const relPath = sourceMapping.jsonPath.trim();
-    const rawValues: unknown[] = [];
-    for (let idx = 0; idx < partPaths.length; idx += 1) {
-      if (trecho.length > 0 && partPaths[idx] !== trecho) continue;
-      const partValue = parsedParts[idx];
-      if (partValue == null) continue;
-      rawValues.push(...collectValuesAtPath(partValue, relPath));
+  const resolveComputed = (comp: TypeComputedFieldDefinition): unknown => {
+    if (computedValues.has(comp.id)) {
+      return computedValues.get(comp.id);
     }
 
-    const value = aggregateComputedFieldValue({
-      rawValues,
-      sourceDataType: sourceField.dataType,
-      definition: comp,
-    });
+    if (!comp.label.trim() || !comp.sourceReportFieldId.trim()) {
+      computedValues.set(comp.id, null);
+      return null;
+    }
+
+    const sourceField = fieldsById.get(comp.sourceReportFieldId);
+    if (sourceField) {
+      const sourceMapping = filterCfg.fieldMappings.find(
+        (m) => m.reportFieldId === comp.sourceReportFieldId && m.jsonPath.trim().length > 0,
+      );
+      if (!sourceMapping) {
+        computedValues.set(comp.id, null);
+        return null;
+      }
+
+      const isDedupChecked = filterCfg.dedupFieldIds.includes(comp.id);
+      const effectiveParsedParts = (isDedupChecked || !parsedPartsUndeduplicated)
+        ? parsedParts
+        : parsedPartsUndeduplicated;
+
+      const trecho = sourceMapping.sourceTrechoPath?.trim() ?? '';
+      const relPath = sourceMapping.jsonPath.trim();
+      const rawValues: unknown[] = [];
+      for (let idx = 0; idx < partPaths.length; idx += 1) {
+        if (trecho.length > 0 && partPaths[idx] !== trecho) continue;
+        const partValue = effectiveParsedParts[idx];
+        if (partValue == null) continue;
+        rawValues.push(...collectValuesAtPath(partValue, relPath));
+      }
+
+      const value = aggregateComputedFieldValue({
+        rawValues,
+        sourceDataType: sourceField.dataType,
+        definition: comp,
+      });
+      computedValues.set(comp.id, value);
+      return value;
+    }
+
+    // Se a fonte for outro campo calculado
+    const sourceComputedDef = defs.find((c) => c.id === comp.sourceReportFieldId);
+    if (sourceComputedDef) {
+      const sourceValue = resolveComputed(sourceComputedDef);
+      const value = aggregateComputedFieldValue({
+        rawValues: sourceValue !== null && sourceValue !== undefined ? [sourceValue] : [],
+        sourceDataType: sourceComputedDef.dataType,
+        definition: comp,
+      });
+      computedValues.set(comp.id, value);
+      return value;
+    }
+
+    computedValues.set(comp.id, null);
+    return null;
+  };
+
+  for (const comp of defs) {
+    const value = resolveComputed(comp);
+    if (value === null && (!comp.label.trim() || !comp.sourceReportFieldId.trim())) {
+      continue;
+    }
     const baseKey = comp.key.trim() || slugifyReportFieldKey(comp.label);
     out.push({ baseKey, value, reportFieldId: comp.id });
   }
@@ -215,11 +261,23 @@ export function buildTypeLinkedConsultationMappedPreview(params: {
     return { path: m.jsonPath, text, hasData };
   }).filter((p) => !activeRules || p.hasData);
 
+  const partsUndeduplicated = trechoMappings.map((m) => {
+    const { text, hasData } = formatDeepFilteredValueAtPath(
+      sampleResponse,
+      m.jsonPath,
+      normalizedCfg,
+      '',
+      true, // skipDedup
+    );
+    return { path: m.jsonPath, text, hasData };
+  }).filter((p) => !activeRules || p.hasData);
+
   if (activeRules && parts.length === 0) {
     return 'Nenhum trecho corresponde aos critérios.';
   }
 
   const parsedParts = parts.map((p) => parsePreviewPartText(p.text));
+  const parsedPartsUndeduplicated = partsUndeduplicated.map((p) => parsePreviewPartText(p.text));
   const fieldsById = new Map(
     (fieldType.reportFieldConfig?.fields ?? []).map((f) => [f.id, f]),
   );
@@ -265,6 +323,7 @@ export function buildTypeLinkedConsultationMappedPreview(params: {
     fieldType,
     filterCfg: normalizedCfg,
     parsedParts,
+    parsedPartsUndeduplicated,
     partPaths: parts.map((p) => p.path),
   });
 
@@ -285,21 +344,20 @@ export function buildTypeLinkedConsultationMappedPreview(params: {
   const mappedBlock: Record<string, unknown> = {};
   const computedBlock: Record<string, unknown> = {};
   const dedupDisplayKeys: string[] = [];
+  /** displayKey → reportFieldId canônico para fingerprint cross-type */
+  const dedupKeyToCanonical = new Map<string, string>();
   const dedupSummary: Record<string, unknown> = {};
   mappedFieldRows.forEach((fieldRow, index) => {
     const displayKey = mappedDisplayKeys[index]!;
     mappedBlock[displayKey] = fieldRow.value;
     if (dedupFieldIdSet.has(fieldRow.reportFieldId)) {
       dedupDisplayKeys.push(displayKey);
+      dedupKeyToCanonical.set(displayKey, fieldRow.reportFieldId);
     }
   });
   computedPreviewRows.forEach((row, index) => {
     const displayKey = computedDisplayKeys[index]!;
     computedBlock[displayKey] = row.value;
-    if (dedupFieldIdSet.has(row.reportFieldId)) {
-      dedupDisplayKeys.push(displayKey);
-      dedupSummary[displayKey] = row.value;
-    }
   });
 
   const zippedMapped = zipAlignedMappedPreviewRows(mappedBlock);
@@ -327,12 +385,18 @@ export function buildTypeLinkedConsultationMappedPreview(params: {
     const byType = { [typeKey]: zipped };
     const rowInfo = new Map<
       string,
-      { rows: Record<string, unknown>[]; dedupKeys: string[]; dedupSummary?: Record<string, unknown> }
+      {
+        rows: Record<string, unknown>[];
+        dedupKeys: string[];
+        dedupSummary?: Record<string, unknown>;
+        dedupKeyToCanonical?: Map<string, string>;
+      }
     >();
     rowInfo.set(typeKey, {
       rows: rowsForDedup,
       dedupKeys: dedupDisplayKeys,
       ...(Object.keys(dedupSummary).length > 0 ? { dedupSummary } : {}),
+      ...(dedupKeyToCanonical.size > 0 ? { dedupKeyToCanonical } : {}),
     });
     const cleaned = buildByTypeWithGlobalDedupRemoved(byType, [typeKey], rowInfo);
     zipped = cleaned[typeKey];

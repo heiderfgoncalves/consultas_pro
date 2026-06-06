@@ -35,6 +35,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
 } from '@/components/ui/dialog';
+import { CustomDialog, useConfirmDialog } from '@/components/CustomDialog';
+import { useEditorStore } from '@/features/templates-drawer/store/editor.store';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import type {
   Provider, ProviderConsultation, ConsultationFieldType, FieldMapping,
@@ -588,6 +590,7 @@ const ConsultationEditor = forwardRef(function ConsultationEditor(
   const handleMapperTypeFiltersChange = useCallback((next: Record<string, TypeItemFilterConfig>) => {
     const cloned: Record<string, TypeItemFilterConfig> = {};
     for (const [k, config] of Object.entries(next)) {
+      if (k === 'default') continue;
       cloned[k] = cloneTypeItemFilterConfig(config);
     }
     setForm((f) => ({ ...f, typeItemFilters: cloned }));
@@ -600,14 +603,20 @@ const ConsultationEditor = forwardRef(function ConsultationEditor(
   const loadResponseFromLog = useCallback((entry: TestLogRow, opts?: { silent?: boolean }) => {
     setTestJson(entry.responseJson);
     setForm((f) => ({ ...f, sampleResponse: entry.responseJson }));
+    if (consultation.id) {
+      useEditorStore.getState().setDraftSampleResponse(consultation.id, entry.responseJson);
+    }
     if (!opts?.silent) toast.success('JSON carregado do log');
-  }, []);
+  }, [consultation.id]);
 
   const applyProviderResponsePayload = (payload: unknown) => {
     if (payload === undefined || payload === null) return;
     const str = typeof payload === 'string' ? payload : JSON.stringify(payload, null, 2);
     setTestJson(str);
     setForm((f) => ({ ...f, sampleResponse: str }));
+    if (consultation.id) {
+      useEditorStore.getState().setDraftSampleResponse(consultation.id, str);
+    }
   };
 
   const runTestInternal = useCallback(async () => {
@@ -658,7 +667,7 @@ const ConsultationEditor = forwardRef(function ConsultationEditor(
     setBodyTemplateJson(consultation.bodyTemplateJson || '');
     setCurlInput('');
   }, [
-    consultation,
+    consultation.id,
   ]);
 
   const handleSave = useCallback(() => {
@@ -671,6 +680,7 @@ const ConsultationEditor = forwardRef(function ConsultationEditor(
     } catch {
       return;
     }
+    console.log('[ConsultationEditor] Salvando payload com filtros:', form.typeItemFilters);
     void onSave({
       ...form,
       sampleResponse: testJson,
@@ -809,6 +819,9 @@ const ConsultationEditor = forwardRef(function ConsultationEditor(
           onJsonChange={(v) => {
             setTestJson(v);
             setForm((f) => ({ ...f, sampleResponse: v }));
+            if (consultation.id) {
+              useEditorStore.getState().setDraftSampleResponse(consultation.id, v);
+            }
           }}
           fieldTypes={fieldTypes}
           mappings={form.fieldMappings || []}

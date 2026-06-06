@@ -1,11 +1,11 @@
 import type { CSSProperties } from 'react';
 import {
-  FileText, Gauge, Image as ImageIcon, Plus, Settings2, Trash2, GripVertical,
+  FileText, Gauge, Image as ImageIcon, Plus, Settings2, Trash2, GripVertical, Braces,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import type { TemplateField, TemplateSection } from '@/lib/templateSectionUtils';
+import { xmlToSection, type TemplateField, type TemplateSection } from '@/lib/templateSectionUtils';
 import { evaluateExpression, type ExpressionContext } from '@/lib/expressionEngine';
 import { EditableText } from './report-blocks';
 import { getIconByName } from './report-blocks/IconPicker';
@@ -28,6 +28,7 @@ interface BaseReportSkeletonProps {
   enableFieldSorting?: boolean;
   mode?: 'skeleton' | 'preview';
   expressionContext?: ExpressionContext;
+  onSectionArgumentsChange?: (sectionId: string, args: Record<string, string>) => void;
 }
 
 function fieldStyle(field: TemplateField): CSSProperties {
@@ -134,18 +135,20 @@ export default function BaseReportSkeleton({
   enableFieldSorting = false,
   mode = 'skeleton',
   expressionContext,
+  onSectionArgumentsChange,
 }: BaseReportSkeletonProps) {
   const isPreview = mode === 'preview';
 
-  const resolveExpression = (value: string) => {
-    if (!isPreview || !expressionContext) return value;
-    return evaluateExpression(value, expressionContext);
+  const resolveExpression = (value: string, localCtx?: ExpressionContext) => {
+    const activeCtx = localCtx || expressionContext;
+    if (!isPreview || !activeCtx) return value;
+    return evaluateExpression(value, activeCtx);
   };
 
-  const renderExpr = (sectionId: string, field: TemplateField, className?: string) => (
+  const renderExpr = (sectionId: string, field: TemplateField, className?: string, localCtx?: ExpressionContext) => (
     <span className="group/field inline-flex items-center gap-1">
       <EditableText
-        value={resolveExpression(field.expression)}
+        value={resolveExpression(field.expression, localCtx)}
         onChange={onFieldExpressionChange ? (v) => onFieldExpressionChange(sectionId, field.id, v) : undefined}
         tag="span"
         className={`rounded border border-dashed px-1 py-0.5 font-mono text-[10px] text-muted-foreground/80 bg-muted/40 cursor-pointer ${selectedFieldId === field.id ? 'ring-2 ring-primary/35' : ''} ${className ?? ''}`}
@@ -172,7 +175,7 @@ export default function BaseReportSkeleton({
     />
   );
 
-  const renderGenericFields = (section: TemplateSection) => (
+  const renderGenericFields = (section: TemplateSection, localCtx?: ExpressionContext) => (
     <div className="rounded-lg border border-dashed border-border p-3">
       {section.fields.length > 0 ? (
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
@@ -184,7 +187,7 @@ export default function BaseReportSkeleton({
                 {field.icon && <Icon className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground/45" />}
                 <div className="min-w-0">
                   {renderLabel(section.id, field)}
-                  <div>{renderExpr(section.id, field)}</div>
+                  <div>{renderExpr(section.id, field, undefined, localCtx)}</div>
                 </div>
                 {renderFieldOptionTrigger ? <div className="absolute right-1 top-1 opacity-0 transition-opacity group-hover/item:opacity-100">{renderFieldOptionTrigger(section.id, field)}</div> : null}
                 </div>
@@ -198,7 +201,90 @@ export default function BaseReportSkeleton({
     </div>
   );
 
-  const renderSectionBody = (section: TemplateSection) => {
+  const renderSectionBody = (section: TemplateSection, localCtx?: ExpressionContext): React.ReactNode => {
+    // Interceptar se a seção for parametrizada
+    if (section.variables && section.variables.length > 0) {
+      if (isPreview) {
+        // Modo Preview: Avaliar expressões dos argumentos contra o contexto global
+        const baseCtx = expressionContext || {
+          $json: {},
+          $template: { protocol: '', date: '', company: '' },
+          $block: { id: '', name: '', type: '' }
+        };
+        const evaluatedArgs: Record<string, unknown> = {};
+        for (const v of section.variables) {
+          const argExpr = section.arguments?.[v] ?? '';
+          evaluatedArgs[v] = evaluateExpression(argExpr, baseCtx);
+        }
+
+        const mergedCtx: ExpressionContext = {
+          ...baseCtx,
+          $params: {
+            ...(baseCtx.$params ?? {}),
+            ...evaluatedArgs
+          }
+        };
+
+        const fallback = { ...section, fields: [] };
+        const tempSection = xmlToSection(section.xml || '', fallback);
+        return renderSectionBody(tempSection, mergedCtx);
+      } else {
+        // Modo Canvas/Skeleton: Barra de Expressões elegantes
+        return (
+          <div className="rounded-xl border border-border bg-muted/20 p-4 space-y-3 shadow-inner transition-all hover:bg-muted/30">
+            <div className="flex items-center justify-between border-b border-border/60 pb-2">
+              <div className="flex items-center gap-2">
+                <div className="rounded-md bg-cyan-500/10 p-1.5 text-cyan-600 dark:text-cyan-400 animate-pulse">
+                  <Braces className="h-4 w-4" />
+                </div>
+                <div>
+                  <h4 className="text-xs font-semibold text-foreground">Bloco de Layout Parametrizado</h4>
+                  <p className="text-[10px] text-muted-foreground">Insira as expressões para os parâmetros definidos no bloco</p>
+                </div>
+              </div>
+              {onEditSection && (
+                <button
+                  type="button"
+                  onClick={() => onEditSection(section.id)}
+                  className="flex items-center gap-1 rounded-md border border-border bg-background px-2.5 py-1 text-[10px] font-medium text-foreground hover:bg-muted transition-all active:scale-95"
+                >
+                  <Settings2 className="h-3 w-3 text-muted-foreground" /> Configurar XML
+                </button>
+              )}
+            </div>
+
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              {section.variables.map((v) => {
+                const currentVal = section.arguments?.[v] ?? '';
+                return (
+                  <div key={v} className="space-y-1">
+                    <label className="flex items-center gap-1 font-mono text-[10px] font-medium text-muted-foreground">
+                      <span className="text-cyan-600 dark:text-cyan-400">$params.</span>{v}
+                    </label>
+                    <div className="relative">
+                      <input
+                        type="text"
+                        value={currentVal}
+                        onChange={(e) => {
+                          const nextArgs = {
+                            ...(section.arguments ?? {}),
+                            [v]: e.target.value
+                          };
+                          onSectionArgumentsChange?.(section.id, nextArgs);
+                        }}
+                        placeholder={`Expressão para ${v}...`}
+                        className="h-8 w-full rounded-md border border-input bg-background px-3 py-1 text-xs font-mono shadow-sm transition-colors placeholder:text-muted-foreground/30 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                      />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      }
+    }
+
     if (section.kind === 'header' || section.id === 'header') {
       return (
         <div className="pb-2" style={{ borderBottom: '3px solid hsl(var(--primary))' }}>
@@ -221,12 +307,12 @@ export default function BaseReportSkeleton({
                 if (file) { const r = new FileReader(); r.onload = (ev) => onLogoChange?.(ev.target?.result as string); r.readAsDataURL(file); }
               }} />
               <div>
-                {section.fields[0] && <div>{renderExpr(section.id, section.fields[0])}</div>}
-                {section.fields[1] && <div className="mt-0.5 text-[9px] text-muted-foreground">{renderExpr(section.id, section.fields[1])}</div>}
+                {section.fields[0] && <div>{renderExpr(section.id, section.fields[0], undefined, localCtx)}</div>}
+                {section.fields[1] && <div className="mt-0.5 text-[9px] text-muted-foreground">{renderExpr(section.id, section.fields[1], undefined, localCtx)}</div>}
               </div>
             </div>
             <div className="space-y-0.5 text-right">
-              {section.fields.slice(2).map((field) => <div key={field.id}>{renderExpr(section.id, field)}</div>)}
+              {section.fields.slice(2).map((field) => <div key={field.id}>{renderExpr(section.id, field, undefined, localCtx)}</div>)}
             </div>
           </div>
         </div>
@@ -239,7 +325,7 @@ export default function BaseReportSkeleton({
           {section.fields.map((field) => (
             <div key={field.id} className="rounded-lg border border-dashed border-border p-2">
               {renderLabel(section.id, field)}
-              <div className="mt-0.5">{renderExpr(section.id, field)}</div>
+              <div className="mt-0.5">{renderExpr(section.id, field, undefined, localCtx)}</div>
             </div>
           ))}
         </div>
@@ -251,15 +337,15 @@ export default function BaseReportSkeleton({
       const subtitle = section.fields[1];
       const scoreIconField = section.fields.find((f) => f.tag === 'speedometer') ?? section.fields[2];
       const metricFields = section.fields.filter((field) => field.tag === 'value').slice(0, 4);
-      const extraTextFields = section.fields.filter((field) => field.tag === 'text').slice(2, 8);
+      const extraTextFields = section.fields.filter((field) => field.tag === 'text').slice(2);
       return (
         <div className="space-y-2 rounded-xl border border-dashed border-border p-3">
-          {title && <div>{renderExpr(section.id, title, 'block text-[12px] text-foreground/80 bg-transparent border-0 px-0')}</div>}
-          {subtitle && <div>{renderExpr(section.id, subtitle, 'block text-[10px] text-muted-foreground bg-transparent border-0 px-0')}</div>}
+          {title && <div>{renderExpr(section.id, title, 'block text-[12px] text-foreground/80 bg-transparent border-0 px-0', localCtx)}</div>}
+          {subtitle && <div>{renderExpr(section.id, subtitle, 'block text-[10px] text-muted-foreground bg-transparent border-0 px-0', localCtx)}</div>}
           <div className="flex flex-wrap items-start gap-3">
             <div className="w-[140px] rounded-lg border border-dashed border-border/60 p-3 text-center">
               <Gauge className="mx-auto h-8 w-8 text-muted-foreground/35" />
-              {scoreIconField && <div className="mt-1">{renderExpr(section.id, scoreIconField)}</div>}
+              {scoreIconField && <div className="mt-1">{renderExpr(section.id, scoreIconField, undefined, localCtx)}</div>}
             </div>
             <div className="grid min-w-[280px] flex-1 grid-cols-1 gap-2 sm:grid-cols-2">
               {metricFields.map((field) => {
@@ -270,7 +356,7 @@ export default function BaseReportSkeleton({
                     <Icon className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground/45" />
                     <div className="min-w-0">
                       {renderLabel(section.id, field)}
-                      <div>{renderExpr(section.id, field)}</div>
+                      <div>{renderExpr(section.id, field, undefined, localCtx)}</div>
                     </div>
                     {renderFieldOptionTrigger ? <div className="absolute right-1 top-1 opacity-0 transition-opacity group-hover/item:opacity-100">{renderFieldOptionTrigger(section.id, field)}</div> : null}
                     </div>
@@ -283,7 +369,7 @@ export default function BaseReportSkeleton({
             <FieldWrap key={field.id} field={field} enableSorting={enableFieldSorting}>
               <div className="group/item relative rounded border border-dashed border-border/60 p-2">
               {renderLabel(section.id, field)}
-              <div>{renderExpr(section.id, field, 'block bg-transparent border-0')}</div>
+              <div>{renderExpr(section.id, field, 'block bg-transparent border-0', localCtx)}</div>
               {renderFieldOptionTrigger ? <div className="absolute right-1 top-1 opacity-0 transition-opacity group-hover/item:opacity-100">{renderFieldOptionTrigger(section.id, field)}</div> : null}
               </div>
             </FieldWrap>
@@ -307,7 +393,7 @@ export default function BaseReportSkeleton({
               <tr className="border-t border-dashed border-border">
                 {section.fields.map((field) => (
                   <td key={field.id} className="group/item relative px-2 py-1.5">
-                    {renderExpr(section.id, field)}
+                    {renderExpr(section.id, field, undefined, localCtx)}
                     {renderFieldOptionTrigger ? <div className="absolute right-1 top-1 opacity-0 transition-opacity group-hover/item:opacity-100">{renderFieldOptionTrigger(section.id, field)}</div> : null}
                   </td>
                 ))}
@@ -318,7 +404,7 @@ export default function BaseReportSkeleton({
       );
     }
 
-    return renderGenericFields(section);
+    return renderGenericFields(section, localCtx);
   };
 
   return (

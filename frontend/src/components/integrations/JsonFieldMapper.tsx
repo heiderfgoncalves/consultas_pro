@@ -27,7 +27,7 @@ import {
   Tag, GripVertical, Pencil, Check, X, Copy,
   Move, Code2, Eye, Trash2, User, AlertTriangle, Gauge, FileWarning,
   Building2, FileX, Users, DollarSign, TrendingUp, Award, Hash,
-  Settings2, Plus, Search, ChevronLeft, ChevronRight,
+  Settings2, Plus, Search, ChevronLeft, ChevronRight, Sliders,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -83,7 +83,13 @@ interface MappedRegion {
   path: string;
 }
 
-type PreviewPartRow = { regionId: string; path: string; text: string; hasData: boolean };
+type PreviewPartRow = {
+  regionId: string;
+  path: string;
+  text: string;
+  hasData: boolean;
+  textUndeduplicated?: string;
+};
 
 type PreviewDisplayRow = {
   fieldTypeKey: string;
@@ -902,6 +908,13 @@ export default function JsonFieldMapper({
 
   const allJsonKeys = useMemo(() => extractJsonKeys(activeJson), [activeJson]);
 
+  const sortedFieldTypesForPanel = useMemo(() => {
+    const byKey = new Map(fieldTypes.map((ft) => [ft.key, ft]));
+    return fieldTypeDisplayOrder
+      .map((k) => byKey.get(k))
+      .filter((ft): ft is ConsultationFieldType => Boolean(ft));
+  }, [fieldTypeDisplayOrder, fieldTypes]);
+
   const setFiltersForType = useCallback(
     (fieldTypeKey: string, nextConfig: TypeItemFilterConfig) => {
       onTypeFiltersChange({ ...typeFilters, [fieldTypeKey]: nextConfig });
@@ -919,22 +932,19 @@ export default function JsonFieldMapper({
   const openFilterDialog = useCallback(
     (fieldTypeKey: string) => {
       const nextConfig = cloneTypeItemFilterConfig(typeFilters[fieldTypeKey] ?? emptyTypeItemFilterConfig());
-      setDraftTypeFilters((prev) => ({ ...prev, [fieldTypeKey]: nextConfig }));
+      setDraftTypeFilters((prev) => ({
+        ...prev,
+        [fieldTypeKey]: nextConfig,
+      }));
       setOpenFilterTypeKey(fieldTypeKey);
     },
     [typeFilters],
   );
 
   const closeFilterDialog = useCallback((fieldTypeKey?: string) => {
-    const key = fieldTypeKey ?? openFilterTypeKey;
-    if (!key) return;
-    setDraftTypeFilters((prev) => {
-      const next = { ...prev };
-      delete next[key];
-      return next;
-    });
-    setOpenFilterTypeKey((current) => (current === key ? null : current));
-  }, [openFilterTypeKey]);
+    setDraftTypeFilters({});
+    setOpenFilterTypeKey(null);
+  }, []);
 
   const saveFilterDialog = useCallback(
     (fieldTypeKey: string) => {
@@ -942,6 +952,7 @@ export default function JsonFieldMapper({
         fieldTypeKey,
         cloneTypeItemFilterConfig(draftTypeFilters[fieldTypeKey] ?? emptyTypeItemFilterConfig()),
       );
+      setDraftTypeFilters({});
       setOpenFilterTypeKey(null);
     },
     [draftTypeFilters, setFiltersForType],
@@ -1207,12 +1218,6 @@ export default function JsonFieldMapper({
     return typeKeysInOrder;
   }, [previewTypeStackOrder, typeKeysInOrder]);
 
-  const sortedFieldTypesForPanel = useMemo(() => {
-    const byKey = new Map(fieldTypes.map((ft) => [ft.key, ft]));
-    return fieldTypeDisplayOrder
-      .map((k) => byKey.get(k))
-      .filter((ft): ft is ConsultationFieldType => Boolean(ft));
-  }, [fieldTypeDisplayOrder, fieldTypes]);
 
   const handleTypesPanelDragEnd = useCallback(
     (event: DragEndEvent) => {
@@ -1287,7 +1292,14 @@ export default function JsonFieldMapper({
       const parts = regions.map(region => {
         const fallback = lineSlicePreview(region);
         const preview = getMappedValuePreview(activeJson, region.path, filters, fallback);
-        return { regionId: region.regionId, path: region.path, text: preview.text, hasData: preview.hasData };
+        const previewUndeduplicated = formatDeepFilteredValueAtPath(activeJson, region.path, filters, fallback, true);
+        return {
+          regionId: region.regionId,
+          path: region.path,
+          text: preview.text,
+          hasData: preview.hasData,
+          textUndeduplicated: previewUndeduplicated.text,
+        };
       }).filter(part => countActiveTypeItemRules(filters) === 0 || part.hasData);
       const filterCfg = filters ?? emptyTypeItemFilterConfig();
       if (countActiveTypeItemRules(filters) > 0 && parts.length === 0) {
@@ -1309,12 +1321,12 @@ export default function JsonFieldMapper({
 
     for (let pi = 0; pi < previewByType.length; pi++) {
       const row = previewByType[pi]!;
-      const filters =
-        openFilterTypeKey === row.fieldTypeKey
-          ? (draftTypeFilters[row.fieldTypeKey] ?? typeFilters[row.fieldTypeKey])
-          : typeFilters[row.fieldTypeKey];
+      const filters = openFilterTypeKey === row.fieldTypeKey
+        ? (draftTypeFilters[row.fieldTypeKey] ?? typeFilters[row.fieldTypeKey])
+        : typeFilters[row.fieldTypeKey];
       const filterCfg = filters ?? emptyTypeItemFilterConfig();
       const parsedParts = row.parts.map((part) => parsePreviewPartText(part.text));
+      const parsedPartsUndeduplicated = row.parts.map((part) => parsePreviewPartText(part.textUndeduplicated || part.text));
       const fieldsById = new Map((row.ft.reportFieldConfig?.fields ?? []).map((field) => [field.id, field]));
       const mappedFieldRows = filterCfg.fieldMappings
         .filter((mapping) => mapping.jsonPath.trim().length > 0)
@@ -1342,6 +1354,7 @@ export default function JsonFieldMapper({
         fieldType: row.ft,
         filterCfg,
         parsedParts,
+        parsedPartsUndeduplicated,
         partPaths: row.parts.map((p) => p.path),
       });
       const colors = getColors(row.ft.color);
@@ -1363,20 +1376,25 @@ export default function JsonFieldMapper({
       const mappedBlock: Record<string, unknown> = {};
       const computedBlock: Record<string, unknown> = {};
       const dedupDisplayKeys: string[] = [];
+      /** displayKey → reportFieldId canônico para fingerprint cross-type */
+      const dedupKeyToCanonical = new Map<string, string>();
       const dedupSummary: Record<string, unknown> = {};
       mappedFieldRows.forEach((fieldRow, index) => {
         const displayKey = mappedDisplayKeys[index]!;
         mappedBlock[displayKey] = fieldRow.value;
         if (dedupFieldIdSet.has(fieldRow.reportFieldId)) {
           dedupDisplayKeys.push(displayKey);
+          dedupKeyToCanonical.set(displayKey, fieldRow.reportFieldId);
         }
       });
       computedFieldRows.forEach((fieldRow, index) => {
         const displayKey = computedDisplayKeys[index]!;
         computedBlock[displayKey] = fieldRow.value;
+        // Campos calculados marcados para dedup → propagados como dedupSummary (são aggregados, não por linha)
         if (dedupFieldIdSet.has(fieldRow.reportFieldId)) {
-          dedupDisplayKeys.push(displayKey);
           dedupSummary[displayKey] = fieldRow.value;
+          dedupDisplayKeys.push(displayKey);
+          dedupKeyToCanonical.set(displayKey, fieldRow.reportFieldId);
         }
       });
       const zippedMapped = zipAlignedMappedPreviewRows(mappedBlock);
@@ -1403,6 +1421,7 @@ export default function JsonFieldMapper({
           rows: rowsForDedup,
           dedupKeys: dedupDisplayKeys,
           ...(Object.keys(dedupSummary).length > 0 ? { dedupSummary } : {}),
+          ...(dedupKeyToCanonical.size > 0 ? { dedupKeyToCanonical } : {}),
         });
       }
       byType[row.fieldTypeKey] = zipped;
@@ -1947,6 +1966,8 @@ export default function JsonFieldMapper({
               <DndContext sensors={typeReorderSensors} collisionDetection={closestCenter} onDragEnd={handleTypesPanelDragEnd}>
                 <SortableContext items={sortedFieldTypesForPanel.map((t) => t.key)} strategy={verticalListSortingStrategy}>
                   <div className="space-y-2 py-1.5 pl-1.5 pr-4 pb-1.5">
+
+
                     {sortedFieldTypesForPanel.map((ft) => {
                       const colors = getColors(ft.color);
                       const regionsForType = displayRegions.filter(r => r.fieldTypeKey === ft.key);

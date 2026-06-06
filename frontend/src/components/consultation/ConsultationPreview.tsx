@@ -189,6 +189,7 @@ export default function ConsultationPreview({
       cost: 0,
       consultationPrice: 0,
       fieldMappings: [],
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } as any;
 
     const ctx = buildExpressionContextFromConsultation(providerProduct);
@@ -210,6 +211,14 @@ export default function ConsultationPreview({
       <TemplateRenderer
         document={templateDoc}
         mode="preview"
+        capabilities={{
+          showPreview: false,
+          showSkeleton: true,
+          showXml: false,
+          showVariables: false,
+          showConsole: false,
+          canEditAdvanced: false,
+        }}
         context={expressionContext}
         logo={logo}
         onLogoChange={onLogoChange}

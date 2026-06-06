@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Braces, ChevronDown, ChevronRight, Code2, Copy, Eye, Layers, MoreHorizontal, Palette, Search, Trash2, Type as TypeIcon } from 'lucide-react';
+import { Braces, ChevronDown, ChevronRight, Code2, Copy, Eye, Layers, MoreHorizontal, Palette, Search, Trash2, Type as TypeIcon, X, Plus } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -8,6 +8,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable';
 import type { ConsultationFieldType, ProviderConsultation } from '@/types/integrations';
 import { SYSTEM_TEMPLATE_VARIABLES, buildTypeFieldVariables } from '@/lib/templateVariableCatalog';
+import { toast } from 'sonner';
 import { evaluateExpression, type ExpressionContext } from '@/lib/expressionEngine';
 import { MOCK_EXPRESSION_CONTEXT } from '@/lib/expressionMockContext';
 import { ExpressionConsole } from './ExpressionConsole';
@@ -48,6 +49,7 @@ export type CustomBlockDraft = {
   category: string;
   template: string;
   isSystem?: boolean;
+  variables?: string[];
 };
 
 interface CustomBlockEditorModalProps {
@@ -139,6 +141,9 @@ export function CustomBlockEditorModal({
   selectedConsultation,
   reusableBlocks = [],
 }: CustomBlockEditorModalProps) {
+  const [variables, setVariables] = useState<string[]>([]);
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [category, setCategory] = useState('custom');
@@ -156,6 +161,25 @@ export function CustomBlockEditorModal({
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
   const ctx = expressionContext ?? MOCK_EXPRESSION_CONTEXT;
 
+  const insertTextAtCursor = (text: string) => {
+    const textarea = textareaRef.current;
+    if (!textarea) {
+      handleTemplateChange(template + text);
+      return;
+    }
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const before = template.substring(0, start);
+    const after = template.substring(end);
+    const newVal = before + text + after;
+    handleTemplateChange(newVal);
+
+    setTimeout(() => {
+      textarea.focus();
+      textarea.setSelectionRange(start + text.length, start + text.length);
+    }, 0);
+  };
+
   useEffect(() => {
     const nextSection = sectionFromDraft(initialDraft);
     const nextXml = formatTemplateXml(initialDraft?.template || sectionToXml(nextSection));
@@ -166,10 +190,17 @@ export function CustomBlockEditorModal({
     setSection(nextSection);
     setSelectedFieldId(nextSection.fields[0]?.id ?? null);
     setTemplate(nextXml);
-    setInitialSnapshot(JSON.stringify({ name: initialDraft?.name ?? nextSection.title ?? '', description: initialDraft?.description ?? '', category: initialDraft?.category ?? 'custom', template: nextXml }));
+    setVariables(initialDraft?.variables ?? []);
+    setInitialSnapshot(JSON.stringify({
+      name: initialDraft?.name ?? nextSection.title ?? '',
+      description: initialDraft?.description ?? '',
+      category: initialDraft?.category ?? 'custom',
+      template: nextXml,
+      variables: initialDraft?.variables ?? [],
+    }));
   }, [initialDraft, open]);
 
-  const hasChanges = JSON.stringify({ name, description, category, template }) !== initialSnapshot;
+  const hasChanges = JSON.stringify({ name, description, category, template, variables }) !== initialSnapshot;
   const displaySection = useMemo<TemplateSection>(() => {
     if (!showPreview) return section;
     return {
@@ -284,7 +315,7 @@ export function CustomBlockEditorModal({
 
   const handleSave = () => {
     const formatted = formatTemplateXml(template);
-    onSave({ id: initialDraft?.id, name: name || section.title || 'Bloco sem nome', description, category, template: formatted, isSystem: initialDraft?.isSystem });
+    onSave({ id: initialDraft?.id, name: name || section.title || 'Bloco sem nome', description, category, template: formatted, isSystem: initialDraft?.isSystem, variables });
     onClose();
   };
 
@@ -353,6 +384,77 @@ export function CustomBlockEditorModal({
                       {AVAILABLE_BLOCK_ELEMENTS.map((el) => <DraggablePaletteItem key={el.tag} id={`snippet-${el.tag}`} label={el.tag} description={el.desc} snippet={el.snippet} />)}
                       {reusableBlocks.map((block) => <DraggablePaletteItem key={block.id ?? block.name} id={`block-${block.id ?? block.name}`} label={block.name} description={block.description || 'Bloco customizado'} snippet={block.template} />)}
                     </div>
+                  </div>
+                  <div className="space-y-2 border-b border-border pb-3">
+                    <div className="flex items-center justify-between text-xs font-semibold text-foreground">
+                      <span className="flex items-center gap-2">
+                        <Braces className="h-3.5 w-3.5 text-primary" /> Parâmetros de Entrada
+                      </span>
+                      <span className="rounded-md bg-muted px-1.5 py-0.5 text-[9px] text-muted-foreground">{variables.length}</span>
+                    </div>
+
+                    <p className="text-[9px] text-muted-foreground leading-normal">
+                      Crie variáveis de entrada para parametrizar o bloco. Clique nelas para inseri-las no cursor do XML.
+                    </p>
+
+                    <form
+                      onSubmit={(e) => {
+                        e.preventDefault();
+                        const form = e.currentTarget;
+                        const input = form.elements.namedItem('paramName') as HTMLInputElement;
+                        const nameVal = input.value.trim().replace(/[^a-zA-Z0-9_]/g, '');
+                        if (!nameVal) return;
+                        if (variables.includes(nameVal)) {
+                          toast.error('Este parâmetro já existe');
+                          return;
+                        }
+                        setVariables((prev) => [...prev, nameVal]);
+                        form.reset();
+                      }}
+                      className="flex items-center gap-1.5"
+                    >
+                      <Input
+                        name="paramName"
+                        placeholder="nome_parametro..."
+                        className="h-7 text-xs flex-1 border-border bg-background focus-visible:ring-primary/20"
+                        pattern="^[a-zA-Z0-9_]+$"
+                        title="Apenas letras, números e sublinhados"
+                      />
+                      <Button type="submit" size="sm" className="h-7 px-2 text-xs gradient-primary text-primary-foreground">
+                        + Add
+                      </Button>
+                    </form>
+
+                    {variables.length > 0 ? (
+                      <div className="flex flex-wrap gap-1 max-h-24 overflow-y-auto p-1.5 rounded-lg border border-border bg-muted/20">
+                        {variables.map((v) => (
+                          <span
+                            key={v}
+                            className="inline-flex items-center gap-1 rounded bg-cyan-500/10 px-1.5 py-0.5 font-mono text-[9px] text-cyan-600 dark:text-cyan-400 group-hover:bg-cyan-500/15"
+                          >
+                            <button
+                              type="button"
+                              onClick={() => insertTextAtCursor(`{$params.${v}}`)}
+                              className="hover:text-cyan-800 dark:hover:text-cyan-300 transition-colors cursor-pointer"
+                              title="Inserir {$params.nome} no XML"
+                            >
+                              {v}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setVariables((prev) => prev.filter((p) => p !== v))}
+                              className="text-muted-foreground hover:text-destructive cursor-pointer"
+                            >
+                              <X className="h-2.5 w-2.5" />
+                            </button>
+                          </span>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="text-[10px] text-muted-foreground italic py-1 text-center bg-muted/10 rounded border border-dashed border-border">
+                        Nenhum parâmetro adicionado
+                      </div>
+                    )}
                   </div>
                   <div>
                     <div className="flex items-center gap-2 text-xs font-semibold text-foreground"><Braces className="h-3.5 w-3.5 text-primary" />Variáveis</div>
@@ -468,6 +570,7 @@ export function CustomBlockEditorModal({
                     </pre>
                     <pre ref={highlightRef} className="pointer-events-none absolute inset-0 overflow-auto whitespace-pre p-3 pl-12 text-slate-100" aria-hidden dangerouslySetInnerHTML={{ __html: xmlHighlight(template) }} />
                     <textarea
+                      ref={textareaRef}
                       value={template}
                       onChange={(e) => handleTemplateChange(e.target.value)}
                       onScroll={(e) => {
