@@ -28,6 +28,7 @@ import Index from "@/pages/Index";
 import { openRechargeModal } from "@/stores/rechargeModalStore";
 import { ThemeRouteObserver } from "@/components/layout/ThemeRouteObserver";
 import { SplashScreen } from "@/components/layout/SplashScreen";
+import VersionChecker from "@/components/VersionChecker";
 
 function RechargeRouteRedirect() {
   const access = useAuthStore.getState().user?.accessLevel ?? 2;
@@ -69,6 +70,7 @@ function AuthBootstrap() {
 
 const App = () => (
   <ThemeProvider>
+    <VersionChecker />
     <QueryClientProvider client={queryClient}>
       <AuthBootstrap />
       <TooltipProvider>
