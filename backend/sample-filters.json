@@ -1,0 +1,412 @@
+{
+  "DIVIDAS_SPC": {
+    "groups": [
+      {
+        "id": "group_1k7d5fil",
+        "rules": [
+          {
+            "id": "rule_jdet7kuq",
+            "op": "eq",
+            "field": "INFORMANTE",
+            "value": "BASE II"
+          }
+        ],
+        "joinOperator": "and"
+      }
+    ],
+    "version": 2,
+    "dedupFieldIds": [
+      "field_m58y6o6e",
+      "field_ritbyt9n",
+      "computed_mada2fjla",
+      "computed_bmk4sl8v_15vp"
+    ],
+    "fieldMappings": [
+      {
+        "id": "field_m58y6o6e_1775337257515",
+        "jsonPath": "DATA_VENCIMENTO",
+        "reportFieldId": "field_m58y6o6e",
+        "reportFieldLabel": "Data Ocorrência",
+        "sourceTrechoPath": "CREDCADASTRAL.PEND_FINANCEIRAS.OCORRENCIAS"
+      },
+      {
+        "id": "field_8zw1b47x_1775337259115",
+        "jsonPath": "DATA_INCLUSAO",
+        "reportFieldId": "field_8zw1b47x",
+        "reportFieldLabel": "Data Inclusão",
+        "sourceTrechoPath": "CREDCADASTRAL.PEND_FINANCEIRAS.OCORRENCIAS"
+      },
+      {
+        "id": "field_r3j16ljw_1775337268804",
+        "jsonPath": "ORIGEM",
+        "reportFieldId": "field_r3j16ljw",
+        "reportFieldLabel": "Origem",
+        "sourceTrechoPath": "CREDCADASTRAL.PEND_FINANCEIRAS.OCORRENCIAS"
+      },
+      {
+        "id": "field_2m76ta0k_1775337270547",
+        "jsonPath": "CONTRATO",
+        "reportFieldId": "field_2m76ta0k",
+        "reportFieldLabel": "Contrato",
+        "sourceTrechoPath": "CREDCADASTRAL.PEND_FINANCEIRAS.OCORRENCIAS"
+      },
+      {
+        "id": "field_ritbyt9n_1775337273900",
+        "jsonPath": "VALOR",
+        "reportFieldId": "field_ritbyt9n",
+        "reportFieldLabel": "Valor",
+        "sourceTrechoPath": "CREDCADASTRAL.PEND_FINANCEIRAS.OCORRENCIAS"
+      }
+    ],
+    "computedFields": [
+      {
+        "id": "computed_er10vaqlb",
+        "key": "totalapontado_spc",
+        "label": "TotalApontado_spc",
+        "dataType": "currency",
+        "operator": "sum",
+        "sourceReportFieldId": "field_ritbyt9n"
+      },
+      {
+        "id": "computed_mada2fjla",
+        "key": "totaldeduzido_spc",
+        "label": "TotalDeduzido_spc",
+        "dataType": "currency",
+        "operator": "sum",
+        "sourceReportFieldId": "field_ritbyt9n"
+      },
+      {
+        "id": "computed_6sh7wxgq_15re",
+        "key": "totalapontado_global",
+        "label": "TotalApontado_global",
+        "dataType": "currency",
+        "operator": "sum",
+        "sourceReportFieldId": "field_ritbyt9n"
+      },
+      {
+        "id": "computed_bmk4sl8v_15vp",
+        "key": "totaldeduzido_global",
+        "label": "TotalDeduzido_global",
+        "dataType": "currency",
+        "operator": "sum",
+        "sourceReportFieldId": "field_m58y6o6e"
+      }
+    ]
+  },
+  "SCORE_CREDITO": {
+    "groups": [],
+    "version": 2,
+    "dedupFieldIds": [],
+    "fieldMappings": [
+      {
+        "id": "field_kx6q4nyf_1775436826779",
+        "jsonPath": "SCORE",
+        "reportFieldId": "field_kx6q4nyf",
+        "reportFieldLabel": "Score",
+        "sourceTrechoPath": "CREDCADASTRAL.SCORES.OCORRENCIAS"
+      },
+      {
+        "id": "field_dk7r47e0_1775436829859",
+        "jsonPath": "TIPO_SCORE",
+        "reportFieldId": "field_dk7r47e0",
+        "reportFieldLabel": "Tipo Score",
+        "sourceTrechoPath": "CREDCADASTRAL.SCORES.OCORRENCIAS"
+      },
+      {
+        "id": "field_7iuws1ku_1775436832676",
+        "jsonPath": "PROBABILIDADE_INADIMPLENCIA",
+        "reportFieldId": "field_7iuws1ku",
+        "reportFieldLabel": "Probabilidade Inadimplencia",
+        "sourceTrechoPath": "CREDCADASTRAL.SCORES.OCORRENCIAS"
+      }
+    ],
+    "computedFields": [
+      {
+        "id": "computed_n5f1lt9iq",
+        "key": "scorecerto",
+        "label": "ScoreCerto",
+        "dataType": "numeric",
+        "operator": "avg",
+        "sourceReportFieldId": "field_kx6q4nyf"
+      }
+    ]
+  },
+  "DADOS_PESSOAIS": {
+    "groups": [],
+    "version": 2,
+    "dedupFieldIds": [],
+    "fieldMappings": [
+      {
+        "id": "field_0ry7fm4h_1775355606342",
+        "jsonPath": "NOME",
+        "reportFieldId": "field_0ry7fm4h",
+        "reportFieldLabel": "Nome",
+        "sourceTrechoPath": "CREDCADASTRAL.DADOS_RECEITA_FEDERAL"
+      },
+      {
+        "id": "field_mhccusuh_1775355612758",
+        "jsonPath": "CPFCNPJ",
+        "reportFieldId": "field_mhccusuh",
+        "reportFieldLabel": "Documento",
+        "sourceTrechoPath": "HEADER.PARAMETROS"
+      }
+    ],
+    "computedFields": []
+  },
+  "DIVIDAS_SERASA": {
+    "groups": [
+      {
+        "id": "group_ie6u6mq6",
+        "rules": [
+          {
+            "id": "rule_5ed7tyqa",
+            "op": "eq",
+            "field": "INFORMANTE",
+            "value": "BASE I"
+          }
+        ],
+        "joinOperator": "and"
+      }
+    ],
+    "version": 2,
+    "dedupFieldIds": [
+      "field_1q3d2rbc",
+      "field_cofn8r46",
+      "computed_7ypn3twmg",
+      "computed_0ek87c0h_15vp"
+    ],
+    "fieldMappings": [
+      {
+        "id": "field_1q3d2rbc_1775342688493",
+        "jsonPath": "DATA_VENCIMENTO",
+        "reportFieldId": "field_1q3d2rbc",
+        "reportFieldLabel": "Data Ocorrência",
+        "sourceTrechoPath": "CREDCADASTRAL.PEND_FINANCEIRAS.OCORRENCIAS"
+      },
+      {
+        "id": "field_uwvk2wrj_1775342690701",
+        "jsonPath": "DATA_INCLUSAO",
+        "reportFieldId": "field_uwvk2wrj",
+        "reportFieldLabel": "Data Inclusão",
+        "sourceTrechoPath": "CREDCADASTRAL.PEND_FINANCEIRAS.OCORRENCIAS"
+      },
+      {
+        "id": "field_e5nrh2bh_1775342696718",
+        "jsonPath": "ORIGEM",
+        "reportFieldId": "field_e5nrh2bh",
+        "reportFieldLabel": "Origem",
+        "sourceTrechoPath": "CREDCADASTRAL.PEND_FINANCEIRAS.OCORRENCIAS"
+      },
+      {
+        "id": "field_1fyen6k1_1775342701806",
+        "jsonPath": "CONTRATO",
+        "reportFieldId": "field_1fyen6k1",
+        "reportFieldLabel": "Contrato",
+        "sourceTrechoPath": "CREDCADASTRAL.PEND_FINANCEIRAS.OCORRENCIAS"
+      },
+      {
+        "id": "field_cofn8r46_1775342704566",
+        "jsonPath": "VALOR",
+        "reportFieldId": "field_cofn8r46",
+        "reportFieldLabel": "Valor",
+        "sourceTrechoPath": "CREDCADASTRAL.PEND_FINANCEIRAS.OCORRENCIAS"
+      }
+    ],
+    "computedFields": [
+      {
+        "id": "computed_bws48fg1x",
+        "key": "totalapontado_serasa",
+        "label": "TotalApontado_serasa",
+        "dataType": "currency",
+        "operator": "sum",
+        "sourceReportFieldId": "field_cofn8r46"
+      },
+      {
+        "id": "computed_7ypn3twmg",
+        "key": "totaldeduzido_serasa",
+        "label": "TotalDeduzido_serasa",
+        "dataType": "currency",
+        "operator": "sum",
+        "sourceReportFieldId": "field_cofn8r46"
+      },
+      {
+        "id": "computed_nyib51on_15re",
+        "key": "totalapontado_global",
+        "label": "TotalApontado_global",
+        "dataType": "currency",
+        "operator": "sum",
+        "sourceReportFieldId": "field_cofn8r46"
+      },
+      {
+        "id": "computed_0ek87c0h_15vp",
+        "key": "totaldeduzido_global",
+        "label": "TotalDeduzido_global",
+        "dataType": "currency",
+        "operator": "sum",
+        "sourceReportFieldId": "field_1q3d2rbc"
+      }
+    ]
+  },
+  "RATING_CREDITO": {
+    "groups": [],
+    "version": 2,
+    "dedupFieldIds": [],
+    "fieldMappings": [],
+    "computedFields": []
+  },
+  "RENDA_PRESUMIDA": {
+    "groups": [],
+    "version": 2,
+    "dedupFieldIds": [],
+    "fieldMappings": [],
+    "computedFields": []
+  },
+  "DIVIDAS_BOA_VISTA": {
+    "groups": [
+      {
+        "id": "group_kdja0mli",
+        "rules": [
+          {
+            "id": "rule_la7vfpu7",
+            "op": "eq",
+            "field": "INFORMANTE",
+            "value": "BASE III"
+          }
+        ],
+        "joinOperator": "and"
+      }
+    ],
+    "version": 2,
+    "dedupFieldIds": [
+      "field_a4375s5d",
+      "field_xyvpvirp"
+    ],
+    "fieldMappings": [
+      {
+        "id": "field_xyvpvirp_1775348818712",
+        "jsonPath": "DATA_VENCIMENTO",
+        "reportFieldId": "field_xyvpvirp",
+        "reportFieldLabel": "Data Ocorrência",
+        "sourceTrechoPath": "CREDCADASTRAL.PEND_FINANCEIRAS.OCORRENCIAS"
+      },
+      {
+        "id": "field_e8649vk5_1775348820567",
+        "jsonPath": "DATA_INCLUSAO",
+        "reportFieldId": "field_e8649vk5",
+        "reportFieldLabel": "Data Inclusão",
+        "sourceTrechoPath": "CREDCADASTRAL.PEND_FINANCEIRAS.OCORRENCIAS"
+      },
+      {
+        "id": "field_6gbu5bqd_1775348823935",
+        "jsonPath": "ORIGEM",
+        "reportFieldId": "field_6gbu5bqd",
+        "reportFieldLabel": "Origem",
+        "sourceTrechoPath": "CREDCADASTRAL.PEND_FINANCEIRAS.OCORRENCIAS"
+      },
+      {
+        "id": "field_qal51ity_1775348826607",
+        "jsonPath": "CONTRATO",
+        "reportFieldId": "field_qal51ity",
+        "reportFieldLabel": "Contrato",
+        "sourceTrechoPath": "CREDCADASTRAL.PEND_FINANCEIRAS.OCORRENCIAS"
+      },
+      {
+        "id": "field_a4375s5d_1775348830287",
+        "jsonPath": "VALOR",
+        "reportFieldId": "field_a4375s5d",
+        "reportFieldLabel": "Valor",
+        "sourceTrechoPath": "CREDCADASTRAL.PEND_FINANCEIRAS.OCORRENCIAS"
+      }
+    ],
+    "computedFields": []
+  },
+  "PROTESTO_CARTORIO": {
+    "groups": [],
+    "version": 2,
+    "dedupFieldIds": [],
+    "fieldMappings": [
+      {
+        "id": "field_lqu3njay_1775358876214",
+        "jsonPath": "DATA_OCORRENCIA",
+        "reportFieldId": "field_lqu3njay",
+        "reportFieldLabel": "Data",
+        "sourceTrechoPath": "CREDCADASTRAL.PROTESTO_SINTETICO.OCORRENCIAS"
+      },
+      {
+        "id": "field_tmp5g8tj_1775358879263",
+        "jsonPath": "CARTORIO",
+        "reportFieldId": "field_tmp5g8tj",
+        "reportFieldLabel": "Cartório",
+        "sourceTrechoPath": "CREDCADASTRAL.PROTESTO_SINTETICO.OCORRENCIAS"
+      },
+      {
+        "id": "field_24yffyis_1775358881414",
+        "jsonPath": "COMARCA",
+        "reportFieldId": "field_24yffyis",
+        "reportFieldLabel": "Local",
+        "sourceTrechoPath": "CREDCADASTRAL.PROTESTO_SINTETICO.OCORRENCIAS"
+      },
+      {
+        "id": "field_2t5u0yei_1775358885534",
+        "jsonPath": "VALOR",
+        "reportFieldId": "field_2t5u0yei",
+        "reportFieldLabel": "Valor",
+        "sourceTrechoPath": "CREDCADASTRAL.PROTESTO_SINTETICO.OCORRENCIAS"
+      }
+    ],
+    "computedFields": []
+  },
+  "APONTAMENTOS_BACEN": {
+    "groups": [],
+    "version": 2,
+    "dedupFieldIds": [],
+    "fieldMappings": [
+      {
+        "id": "field_bdeijwia_1780388967663",
+        "jsonPath": "CONTEUDO",
+        "reportFieldId": "field_bdeijwia",
+        "reportFieldLabel": "Teste",
+        "sourceTrechoPath": "HEADER.CONTROLE.OCORRENCIAS"
+      }
+    ],
+    "computedFields": []
+  },
+  "CHEQUES_DEVOLVIDOS": {
+    "groups": [],
+    "version": 2,
+    "dedupFieldIds": [],
+    "fieldMappings": [],
+    "computedFields": [
+      {
+        "id": "computed_3vjevsg3_15vp",
+        "key": "totaldeduzido_global",
+        "label": "TotalDeduzido_global",
+        "dataType": "currency",
+        "operator": "sum",
+        "sourceReportFieldId": ""
+      }
+    ]
+  },
+  "CAPACIDADE_PAGAMENTO": {
+    "groups": [],
+    "version": 2,
+    "dedupFieldIds": [],
+    "fieldMappings": [
+      {
+        "id": "field_526dvnqo_1780412419468",
+        "jsonPath": "INICIO",
+        "reportFieldId": "field_526dvnqo",
+        "reportFieldLabel": "Teste 2",
+        "sourceTrechoPath": "HEADER.INFORMACOES_RETORNO.TEMPO_RESPOSTA"
+      }
+    ],
+    "computedFields": []
+  },
+  "PARTICIPACAO_SOCIETARIA": {
+    "groups": [],
+    "version": 2,
+    "dedupFieldIds": [],
+    "fieldMappings": [],
+    "computedFields": []
+  }
+}
