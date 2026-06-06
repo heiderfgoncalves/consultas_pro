@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Route, Routes, Navigate } from "react-router-dom";
+import { BrowserRouter, Route, Routes, Navigate, useLocation } from "react-router-dom";
 import { AUTH_STORAGE_KEYS } from "@/lib/api";
 import { useAuthStore } from "@/stores/authStore";
 import { Toaster as Sonner } from "@/components/ui/sonner";
@@ -34,6 +34,11 @@ function RechargeRouteRedirect() {
   const access = useAuthStore.getState().user?.accessLevel ?? 2;
   if (access <= 1) openRechargeModal();
   return <Navigate to="/financeiro" replace />;
+}
+
+function IndexRedirect() {
+  const location = useLocation();
+  return <Navigate to={`/${location.search}`} replace />;
 }
 
 const queryClient = new QueryClient({});
@@ -79,6 +84,7 @@ const App = () => (
           <SplashScreen />
           <Routes>
             <Route path="/" element={<Index />} />
+            <Route path="/index" element={<IndexRedirect />} />
             <Route path="/login" element={<LoginPage />} />
             <Route path="/cadastro" element={<RegisterPage />} />
             <Route path="/recuperar-acesso" element={<RecoverAccessPage />} />
