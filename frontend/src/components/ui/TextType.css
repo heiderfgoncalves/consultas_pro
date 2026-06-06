@@ -1,0 +1,22 @@
+.text-type {
+  display: inline-block;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.text-type__content {
+  transition: color 0.3s ease;
+}
+
+.text-type__cursor {
+  margin-left: 0.15rem;
+  display: inline-block;
+  opacity: 1;
+  font-weight: 300;
+  color: var(--brand); /* Nosso acento de status dinâmico do tema */
+  text-shadow: 0 0 6px var(--brand-glow);
+}
+
+.text-type__cursor--hidden {
+  display: none;
+}

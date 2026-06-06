@@ -1,0 +1,9 @@
+.particles-container {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  
+  /* Otimização de performance: pausar a renderização da animação quando fora da tela */
+  content-visibility: auto;
+  contain-intrinsic-size: auto none auto 500px;
+}

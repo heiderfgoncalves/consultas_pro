@@ -3,6 +3,8 @@ import AppSidebar from './AppSidebar';
 import TopBar from './TopBar';
 import RechargeModal from '@/components/finance/RechargeModal';
 import { useAuthStore } from '@/stores/authStore';
+import { useSubTheme } from '@/hooks/use-subtheme';
+import { PageTransition } from '@/components/layout/PageTransition';
 
 function isFullScreenPath(pathname: string) {
   return pathname === '/documentacao/api' || 
@@ -35,21 +37,22 @@ export default function AuthenticatedLayout() {
   }
 
   return (
-    <div className="flex h-screen overflow-hidden bg-background">
+    <div className="flex h-screen overflow-hidden bg-background relative font-sans text-foreground isolate">
+
       <RechargeModal />
       <AppSidebar />
-      <div className="flex-1 flex flex-col overflow-hidden relative min-w-0">
+      <div className="flex-1 flex flex-col overflow-hidden relative min-w-0 bg-transparent">
         {!hideTopBar && <TopBar />}
         {hideTopBar ? (
           <main className={isTemplatesDrawer ? "flex-1 min-h-0" : "flex-1 min-h-0 overflow-y-auto scrollbar-thin"}>
             <div className={isTemplatesDrawer ? "h-full w-full relative overflow-hidden" : "p-3 lg:p-4"}>
-              <Outlet />
+              <PageTransition key={pathname}><Outlet /></PageTransition>
             </div>
           </main>
         ) : (
           <main className="flex-1 overflow-y-auto scrollbar-thin">
-            <div className="p-4 lg:p-6">
-              <Outlet />
+            <div className="p-4 lg:p-5">
+              <PageTransition key={pathname}><Outlet /></PageTransition>
             </div>
           </main>
         )}

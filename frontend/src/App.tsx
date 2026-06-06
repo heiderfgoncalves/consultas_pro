@@ -24,7 +24,10 @@ import IntegrationsPage from "@/pages/IntegrationsPage";
 import ApiDocsPage from "@/pages/ApiDocsPage";
 import TemplatesDrawerPage from "@/pages/TemplatesDrawerPage";
 import NotFound from "@/pages/NotFound";
+import Index from "@/pages/Index";
 import { openRechargeModal } from "@/stores/rechargeModalStore";
+import { ThemeRouteObserver } from "@/components/layout/ThemeRouteObserver";
+import { SplashScreen } from "@/components/layout/SplashScreen";
 
 function RechargeRouteRedirect() {
   const access = useAuthStore.getState().user?.accessLevel ?? 2;
@@ -70,8 +73,10 @@ const App = () => (
             v7_relativeSplatPath: true,
           }}
         >
+          <ThemeRouteObserver />
+          <SplashScreen />
           <Routes>
-            <Route path="/" element={<Navigate to="/login" replace />} />
+            <Route path="/" element={<Index />} />
             <Route path="/login" element={<LoginPage />} />
             <Route path="/cadastro" element={<RegisterPage />} />
             <Route path="/recuperar-acesso" element={<RecoverAccessPage />} />
