@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Navigate, useNavigate } from "react-router-dom";
+import { Navigate, useNavigate, useSearchParams } from "react-router-dom";
 import { useAuthStore } from "@/stores/authStore";
 import { Nav } from "@/components/landing/Nav";
 import { Hero } from "@/components/landing/Hero";
@@ -259,7 +259,11 @@ export default function Index() {
 
   // ROTEAMENTO DINÂMICO:
   // Se o usuário estiver autenticado, redireciona imediatamente para o dashboard
-  if (isAuthenticated) {
+  // (a menos que o parâmetro ?bypass=true ou ?landing=true esteja presente na URL)
+  const [searchParams] = useSearchParams();
+  const forceLanding = searchParams.get("bypass") === "true" || searchParams.get("landing") === "true";
+
+  if (isAuthenticated && !forceLanding) {
     return <Navigate to="/dashboard" replace />;
   }
 

@@ -266,6 +266,15 @@ export default function LoginPage() {
                 Falar com vendas
               </Link>
             </p>
+
+            <div className="mt-4 text-center">
+              <Link 
+                to="/?bypass=true" 
+                className="text-[11px] font-mono tracking-wider text-muted-foreground hover:text-brand transition-colors uppercase hover:underline cursor-target"
+              >
+                ← Voltar para a Landing Page
+              </Link>
+            </div>
           </div>
         </PageTransition>
       </div>
