@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import Editor from "@monaco-editor/react";
+import { SafeEditor as Editor } from "./SafeEditor";
 import { useEditorStore, useEvaluationContext } from "../store/editor.store";
 import { renderTemplateToHtml } from "../engine/renderTemplateToHtml";
 import { parseTemplateXml, serializeTemplateXml } from "../engine/xml";
@@ -38,23 +38,26 @@ export function HtmlInspectorPanel() {
   }, [selectedIds.length, setHtmlInspectorOpen]);
 
   const code = useMemo(() => {
-    if (scope === "template") {
-      if (format === "xml") return serializeTemplateXml(template);
-      if (format === "json") return JSON.stringify(template, null, 2);
-      const frame =
-        template.frames.find((f) => f.id === activeFrameId) ?? template.frames[0];
-      if (!frame) return "";
-      return renderTemplateToHtml(template, frame.id, data).html;
+    try {
+      if (scope === "template") {
+        if (format === "xml") return serializeTemplateXml(template);
+        if (format === "json") return JSON.stringify(template, null, 2);
+        const frame =
+          template.frames.find((f) => f.id === activeFrameId) ?? template.frames[0];
+        if (!frame) return "<!-- Nenhum frame encontrado para renderizar -->";
+        return renderTemplateToHtml(template, frame.id, data).html;
+      }
+      const selected = template.elements.filter((e) => selectedIds.includes(e.id));
+      if (selected.length === 0) return "// Selecione um ou mais elementos no canvas.";
+      if (format === "json") return JSON.stringify(selected, null, 2);
+      if (format === "xml") {
+        const sub: ReportTemplate = { ...template, elements: selected };
+        return serializeTemplateXml(sub);
+      }
+      return renderSelectionHtml(template, selected, data);
+    } catch (err: any) {
+      return `<!-- Erro ao gerar o código: ${err?.message || err} -->`;
     }
-    const selected = template.elements.filter((e) => selectedIds.includes(e.id));
-    if (selected.length === 0) return "// Selecione um ou mais elementos no canvas.";
-    if (format === "json") return JSON.stringify(selected, null, 2);
-    if (format === "xml") {
-      const sub: ReportTemplate = { ...template, elements: selected };
-      return serializeTemplateXml(sub);
-    }
-    // html: render a virtual frame around selection bounding box
-    return renderSelectionHtml(template, selected, data);
   }, [scope, format, template, data, selectedIds, activeFrameId]);
 
   useEffect(() => {
@@ -73,7 +76,6 @@ export function HtmlInspectorPanel() {
           replaceTemplate(t);
         }
       } else {
-        // Selection mode
         if (format === "xml") {
           const parsedTemplate = parseTemplateXml(draftText);
           parsedTemplate.elements.forEach((el) => {
@@ -172,10 +174,6 @@ export function HtmlInspectorPanel() {
             minimap: { enabled: false },
             fontSize: 12,
             wordWrap: "on",
-            scrollbar: {
-              vertical: "visible",
-              horizontal: "visible"
-            }
           }}
         />
       </div>
@@ -188,7 +186,6 @@ function renderSelectionHtml(
   selected: TemplateElement[],
   data: unknown,
 ): string {
-  // Render each selected element relative to a synthetic frame at (0,0).
   const minX = Math.min(...selected.map((e) => e.x));
   const minY = Math.min(...selected.map((e) => e.y));
   const maxX = Math.max(...selected.map((e) => e.x + e.width));

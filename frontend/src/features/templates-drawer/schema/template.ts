@@ -62,6 +62,8 @@ export type TemplateElement = {
   binding?: BindingConfig;
   /** Group identifier for grouping elements together */
   groupId?: string;
+  componentId?: string;
+  arguments?: Record<string, string>;
   /** Free-form data for type-specific config (e.g. text content, image src, table columns) */
   data?: Record<string, unknown>;
 };
@@ -71,6 +73,7 @@ export type CalculatedMeasure = {
   name: string;
   expression: string;
   description?: string;
+  dataType?: "currency" | "percent" | "integer" | "decimal" | "text";
 };
 
 export type ReportTemplate = {
@@ -90,6 +93,7 @@ export type ReusableComponent = {
   category: "card" | "header" | "footer" | "table" | "block" | "custom";
   thumbnail?: string;
   elementTree: TemplateElement[];
+  variables?: string[];
   createdAt: string;
   updatedAt: string;
 };

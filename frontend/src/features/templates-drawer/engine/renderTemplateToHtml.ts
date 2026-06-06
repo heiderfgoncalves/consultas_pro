@@ -4,7 +4,7 @@ import type {
   ReportTemplate,
   TemplateElement,
 } from "../schema/template";
-import { interpolate, type BindingLog } from "./interpolate";
+import { interpolate, evaluateExpressionRaw, type BindingLog } from "./interpolate";
 import { resolveExpression } from "./resolveExpression";
 import { formatValue } from "./formatters";
 
@@ -190,10 +190,28 @@ export function renderTemplateToHtml(
 
   const body = elements
     .sort((a, b) => a.zIndex - b.zIndex)
-    .map(
-      (el) =>
-        `<div style="${styleToCss(el, frame)}">${elementBody(el, data, logs, mode)}</div>`,
-    )
+    .map((el) => {
+      let localData = data;
+      if (el.arguments && Object.keys(el.arguments).length > 0) {
+        const params: Record<string, unknown> = {};
+        for (const [key, expr] of Object.entries(el.arguments)) {
+          params[key] = evaluateExpressionRaw(expr, data);
+        }
+        if (data && typeof data === "object") {
+          localData = {
+            ...data,
+            ...params,
+            $params: params,
+          };
+        } else {
+          localData = {
+            $params: params,
+            ...params,
+          };
+        }
+      }
+      return `<div style="${styleToCss(el, frame)}">${elementBody(el, localData, logs, mode)}</div>`;
+    })
     .join("\n");
 
   const html = `<div style="position:relative;width:${frame.width}px;height:${frame.height}px;background:#fff;font-family:Inter,sans-serif;color:#0f172a">\n${body}\n</div>`;

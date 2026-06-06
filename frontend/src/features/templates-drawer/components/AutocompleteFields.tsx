@@ -50,6 +50,10 @@ export function AutocompleteTextarea({
   };
 
   const handleKeyUpAndClick = (e: React.SyntheticEvent<HTMLTextAreaElement>) => {
+    const navigationKeys = ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Enter", "Escape", "Tab", "Shift", "Control", "Alt"];
+    if (e.type === "keyup" && navigationKeys.includes((e as any).key)) {
+      return;
+    }
     const textarea = e.currentTarget;
     const cursor = textarea.selectionStart || 0;
     updateAutocomplete(textarea.value, cursor);
@@ -214,6 +218,10 @@ export function AutocompleteInput({
   };
 
   const handleKeyUpAndClick = (e: React.SyntheticEvent<HTMLInputElement>) => {
+    const navigationKeys = ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Enter", "Escape", "Tab", "Shift", "Control", "Alt"];
+    if (e.type === "keyup" && navigationKeys.includes((e as any).key)) {
+      return;
+    }
     const input = e.currentTarget;
     const cursor = input.selectionStart || 0;
     updateAutocomplete(input.value, cursor);

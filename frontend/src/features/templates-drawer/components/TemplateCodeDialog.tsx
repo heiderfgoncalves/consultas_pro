@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import Editor from "@monaco-editor/react";
+import { SafeEditor as Editor } from "./SafeEditor";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { useEditorStore, useEvaluationContext } from "../store/editor.store";
 import { parseTemplateXml, serializeTemplateXml } from "../engine/xml";
@@ -45,10 +45,14 @@ export function TemplateCodeDialog() {
   }, []);
 
   const html = useMemo(() => {
-    const frame =
-      template.frames.find((f) => f.id === activeFrameId) ?? template.frames[0];
-    if (!frame) return "";
-    return renderTemplateToHtml(template, frame.id, data).html;
+    try {
+      const frame =
+        template.frames.find((f) => f.id === activeFrameId) ?? template.frames[0];
+      if (!frame) return "<!-- Nenhum frame encontrado para renderizar -->";
+      return renderTemplateToHtml(template, frame.id, data).html;
+    } catch (err: any) {
+      return `<!-- Erro ao renderizar HTML: ${err?.message || err} -->`;
+    }
   }, [template, data, activeFrameId]);
 
   function applyXml() {

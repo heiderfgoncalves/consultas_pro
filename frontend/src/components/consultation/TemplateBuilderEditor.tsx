@@ -55,6 +55,7 @@ type LayoutBlockItem = {
   icon: LucideIcon;
   kind: 'card-kpi' | 'container' | 'free-text';
   template?: string;
+  variables?: string[];
 };
 
 const LAYOUT_BLOCKS: LayoutBlockItem[] = [
@@ -288,7 +289,8 @@ export default function TemplateBuilderEditor({
   });
 
   const createCustomBlockMutation = useMutation({
-    mutationFn: (draft: CustomBlockDraft) => createCustomBlockApi(accessToken, { name: draft.name, description: draft.description, category: draft.category, template: draft.template, skeleton: draft.template }),
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    mutationFn: (draft: CustomBlockDraft) => createCustomBlockApi(accessToken, { name: draft.name, description: draft.description, category: draft.category, template: draft.template, skeleton: draft.template, variables: draft.variables } as any),
     onSuccess: () => { void customBlocksQuery.refetch(); toast.success('Bloco salvo'); },
     onError: (error: Error) => toast.error(error.message || 'Falha ao salvar bloco'),
   });
@@ -302,7 +304,8 @@ export default function TemplateBuilderEditor({
 
   useEffect(() => {
     if ((customBlocksQuery.data ?? []).length > 0) {
-      setCustomBlocks(customBlocksQuery.data!.map((b) => ({ id: b.id, name: b.name, description: b.description ?? '', category: b.category, template: b.template, isSystem: b.isSystem })));
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      setCustomBlocks(customBlocksQuery.data!.map((b) => ({ id: b.id, name: b.name, description: b.description ?? '', category: b.category, template: b.template, isSystem: b.isSystem, variables: (b as any).variables })));
     }
   }, [customBlocksQuery.data]);
 
@@ -336,8 +339,28 @@ export default function TemplateBuilderEditor({
     if (activeId.startsWith('layout-')) {
       const data = active.data.current;
       if (data?.block && (String(over.id) === 'layout-dropzone' || String(over.id).startsWith('section-'))) {
-        if (data.block.template) setTemplateSections((prev) => [...prev, xmlToSection(data.block.template, createSection(data.block.name, xmlToFields(data.block.template), { kind: 'custom', source: 'custom' }))]);
-        else addLayoutBlock(data.block.kind);
+        if (data.block.template) {
+          const hasVariables = data.block.variables && data.block.variables.length > 0;
+          if (hasVariables) {
+            const initialArgs: Record<string, string> = {};
+            for (const v of data.block.variables) {
+              initialArgs[v] = '';
+            }
+            const newSec = createSection(data.block.name, [], {
+              kind: 'custom',
+              source: 'custom',
+            });
+            newSec.xml = data.block.template;
+            newSec.customBlockId = data.block.id;
+            newSec.variables = data.block.variables;
+            newSec.arguments = initialArgs;
+            setTemplateSections((prev) => [...prev, newSec]);
+          } else {
+            setTemplateSections((prev) => [...prev, xmlToSection(data.block.template, createSection(data.block.name, xmlToFields(data.block.template), { kind: 'custom', source: 'custom' }))]);
+          }
+        } else {
+          addLayoutBlock(data.block.kind);
+        }
       }
       return;
     }
@@ -349,6 +372,10 @@ export default function TemplateBuilderEditor({
         setTemplateSections((prev) => arrayMove(prev, oldIdx, newIdx));
       }
     }
+  };
+
+  const handleSectionArgumentsChange = (sectionId: string, args: Record<string, string>) => {
+    setTemplateSections((prev) => prev.map((s) => s.id !== sectionId ? s : { ...s, arguments: args }));
   };
 
   const handleFieldExpressionChange = (sectionId: string, fieldId: string, value: string) => {
@@ -582,6 +609,7 @@ export default function TemplateBuilderEditor({
                         onFieldSelect={setSelectedFieldId}
                         onCanvasDeselect={() => setSelectedFieldId(null)}
                         onRemoveSection={(sectionId) => setTemplateSections((prev) => prev.filter((s) => s.id !== sectionId))}
+                        onSectionArgumentsChange={handleSectionArgumentsChange}
                         renderFieldOptionTrigger={(sectionId, field) => (
                           <Popover>
                             <PopoverTrigger asChild>

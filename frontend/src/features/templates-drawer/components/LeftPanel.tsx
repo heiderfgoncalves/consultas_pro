@@ -8,7 +8,7 @@ import {
   Trash2, Download, Upload, List, Star, Plus, Copy, ArrowUp, ArrowDown,
   ChevronDown, Heading, User, Coins, Gauge, ShieldAlert, AlertTriangle, Building2, Gavel, AlignJustify, LayoutTemplate,
   Database, RefreshCcw, FileText, Play, Save, Sliders, Loader2, Check, Search, ChevronRight, HelpCircle,
-  Calendar, Key, Hash, CheckSquare, Braces, FolderOpen, ListCollapse, Calculator, Edit3, Sparkles, X
+  Calendar, Key, Hash, CheckSquare, Braces, FolderOpen, ListCollapse, Calculator, Edit3, Sparkles, X, Code2
 } from "lucide-react";
 import { LEGACY_BLOCKS } from "../utils/legacy-blocks";
 import { FrameInspectorPopover } from "./RightInspector";
@@ -66,6 +66,7 @@ import type {
 import { resolveExpression } from "../engine/resolveExpression";
 import { buildTypeLinkedConsultationMappedPreview } from "@/lib/consultationMappedPreview";
 import { buildTypeKeyedDataForDrawer } from "@/lib/buildTypeKeyedDataForDrawer";
+import { buildByTypeWithGlobalDedupRemoved } from "@/lib/providerResponseMapping";
 
 type Tab = "elements" | "blocks" | "pages" | "pipeline";
 
@@ -289,64 +290,90 @@ export function LeftPanel() {
   const availableVariables = useEditorStore((s) => s.availableVariables || []);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [editingMeasure, setEditingMeasure] = useState<{ id?: string; name: string; expression: string; description?: string } | null>(null);
+  const [editingMeasure, setEditingMeasure] = useState<{
+    id?: string;
+    name: string;
+    expression: string;
+    description?: string;
+    dataType?: "currency" | "percent" | "integer" | "decimal" | "text";
+  } | null>(null);
 
-  const [isWizardOpen, setIsWizardOpen] = useState(false);
-  const [wizardTemplate, setWizardTemplate] = useState<string>("risk_classification");
-  const [wizardName, setWizardName] = useState<string>("");
-  const [wizardDesc, setWizardDesc] = useState<string>("");
-  const [wizardVar1, setWizardVar1] = useState<string>("");
-  const [wizardVar2, setWizardVar2] = useState<string>("");
-  const [wizardValTrue, setWizardValTrue] = useState<string>("Excelente");
-  const [wizardValFalse, setWizardValFalse] = useState<string>("Crítico");
+  // Assistente de agregação reativo por cliques (BI Quick Builder)
+  const [assistantFunc, setAssistantFunc] = useState<string>("sum");
+  const [assistantPath, setAssistantPath] = useState<string>("");
+
+  const aggregatePaths = useMemo(() => {
+    const aggs = new Set<string>();
+    for (const path of availableVariables) {
+      if (path.includes("[0].")) {
+        // Ex: DIVIDAS_SPC[0].valor -> DIVIDAS_SPC[*].valor
+        const specific = path.replace(/\[\d+\]\./g, "[*].");
+        aggs.add(specific);
+        
+        // Ex: [0].valor -> [*].valor
+        const firstBracket = path.indexOf("[");
+        if (firstBracket !== -1) {
+          const sub = path.substring(firstBracket).replace(/\[\d+\]\./g, "[*].");
+          aggs.add(sub);
+        }
+      } else if (!path.includes("[")) {
+        aggs.add(path);
+      }
+    }
+    return Array.from(aggs).sort();
+  }, [availableVariables]);
+
+  useEffect(() => {
+    if (!assistantPath && aggregatePaths.length > 0) {
+      setAssistantPath(aggregatePaths[0]);
+    }
+  }, [aggregatePaths, assistantPath]);
 
   const handleOpenNew = () => {
-    setEditingMeasure({ name: "", expression: "", description: "" });
+    setEditingMeasure({ name: "", expression: "", description: "", dataType: "currency" });
     setIsModalOpen(true);
   };
 
   const handleOpenEdit = (m: any, e: React.MouseEvent) => {
     e.stopPropagation();
-    setEditingMeasure({ id: m.id, name: m.name, expression: m.expression, description: m.description });
+    setEditingMeasure({
+      id: m.id,
+      name: m.name,
+      expression: m.expression,
+      description: m.description,
+      dataType: m.dataType || "currency"
+    });
     setIsModalOpen(true);
   };
 
-  const handleOpenWizard = () => {
-    const scoreVars = availableVariables.filter(v => v.toLowerCase().includes("score") || v.toLowerCase().includes("pontuacao") || v.toLowerCase().includes("valor") || v.toLowerCase().includes("limite"));
-    const defVar1 = scoreVars[0] || availableVariables[0] || "score.pontuacao";
-    const defVar2 = scoreVars[1] || availableVariables[1] || "cliente.limite";
-
-    setWizardTemplate("risk_classification");
-    setWizardName("classificacao_score");
-    setWizardVar1(defVar1);
-    setWizardVar2(defVar2);
-    setWizardValTrue("Excelente");
-    setWizardValFalse("Crítico");
-    setWizardDesc("Medida analítica gerada automaticamente pelo assistente de BI.");
-    setIsWizardOpen(true);
-  };
-
-  const getGeneratedFormula = () => {
-    switch (wizardTemplate) {
-      case "risk_classification":
-        return `IF($${wizardVar1} >= 700, "${wizardValTrue}", "${wizardValFalse}")`;
-      case "spc_serasa_sum":
-        return `sum($scpc[*].valor) + sum($serasaPremium[*].valor)`;
-      case "percent_diff":
-        return `calc (100 * ($${wizardVar1} - $${wizardVar2}) / $${wizardVar2})`;
-      case "safe_divide":
-        return `DIVIDE($${wizardVar1}, $${wizardVar2}, 0)`;
-      case "format_currency":
-        return `formatCurrency($${wizardVar1})`;
-      default:
-        return "";
+  const handleGenerateAssistantFormula = () => {
+    if (!assistantPath) {
+      toast.error("Selecione um campo de origem!");
+      return;
+    }
+    
+    let generated = "";
+    if (assistantFunc === "none") {
+      generated = `$${assistantPath}`;
+    } else {
+      generated = `${assistantFunc}($${assistantPath})`;
+    }
+    
+    if (editingMeasure) {
+      const currentExpr = editingMeasure.expression;
+      const separator = currentExpr && !currentExpr.endsWith(" ") ? " " : "";
+      setEditingMeasure({
+        ...editingMeasure,
+        expression: currentExpr + separator + generated
+      });
+      toast.success("Fórmula injetada no editor com sucesso!");
     }
   };
 
   const handleSave = () => {
     if (!editingMeasure) return;
     
-    const { id, name, expression, description } = editingMeasure;
+    const { id, name, expression, description, dataType } = editingMeasure;
     
     const cleanName = name.trim().replace(/\s+/g, "_").toLowerCase();
     if (!cleanName) {
@@ -366,38 +393,25 @@ export function LeftPanel() {
     }
 
     if (id) {
-      updateMeasure(id, { name: cleanName, expression: expression.trim(), description: description?.trim() });
+      updateMeasure(id, {
+        name: cleanName,
+        expression: expression.trim(),
+        description: description?.trim(),
+        dataType
+      });
       toast.success(`Medida "${cleanName}" atualizada!`);
     } else {
-      addMeasure({ name: cleanName, expression: expression.trim(), description: description?.trim() });
+      addMeasure({
+        name: cleanName,
+        expression: expression.trim(),
+        description: description?.trim(),
+        dataType
+      });
       toast.success(`Medida "${cleanName}" criada com sucesso!`);
     }
 
     setIsModalOpen(false);
     setEditingMeasure(null);
-  };
-
-  const handleSaveWizard = () => {
-    const cleanName = wizardName.trim().replace(/\s+/g, "_").toLowerCase();
-    if (!cleanName) {
-      toast.error("Nome da medida é obrigatório!");
-      return;
-    }
-
-    const exists = measures.some((m) => m.name.toLowerCase() === cleanName);
-    if (exists) {
-      toast.error(`Já existe uma medida calculada com o nome "${cleanName}"!`);
-      return;
-    }
-
-    addMeasure({
-      name: cleanName,
-      expression: getGeneratedFormula(),
-      description: wizardDesc.trim() || "Criada via Assistente BI Quick Measures"
-    });
-
-    toast.success(`Medida calculada "medida.${cleanName}" gerada e salva com sucesso!`);
-    setIsWizardOpen(false);
   };
 
   // 1. Query de Provedores e Consultas (Produtos de Provedor)
@@ -470,10 +484,11 @@ export function LeftPanel() {
   }, [selectedConsultaIds, consultations]);
 
   const dynamicFieldTypes = useMemo(() => {
+
     // Filtra fieldTypes para manter apenas os que estão em activeFieldTypeKeys
     const activeFieldTypes = fieldTypes.filter((ft) => activeFieldTypeKeys.has(ft.key));
 
-    return activeFieldTypes.map((ft) => {
+    const realTypesMapped = activeFieldTypes.map((ft) => {
       const dataKey = dataJson ? Object.keys(dataJson).find(k => k.toLowerCase() === ft.key.toLowerCase()) : null;
       const value = dataKey ? dataJson[dataKey] : undefined;
       
@@ -503,12 +518,20 @@ export function LeftPanel() {
           if (typeItemConfig && Array.isArray(typeItemConfig.computedFields)) {
             for (const comp of typeItemConfig.computedFields) {
               if (comp.key && !calculatedFields.some((f) => f.key === comp.key)) {
-                calculatedFields.push({
-                  id: `${ft.key}.${comp.key}`,
-                  key: comp.key,
-                  expression: `{$${ft.key}.${comp.key}}`,
-                  label: comp.label || comp.key,
+                const isGlobal = selectedConsultaIds.some((sId) => {
+                  const c = consultations.find((x) => x.id === sId);
+                  return c?.typeItemFilters?.['default']?.computedFields?.some(
+                    (dm) => dm.key?.toLowerCase() === comp.key.toLowerCase()
+                  );
                 });
+                if (!isGlobal) {
+                  calculatedFields.push({
+                    id: `${ft.key}.${comp.key}`,
+                    key: comp.key,
+                    expression: `{$${ft.key}.${comp.key}}`,
+                    label: comp.label || comp.key,
+                  });
+                }
               }
             }
           }
@@ -562,6 +585,8 @@ export function LeftPanel() {
         return ft.hasConfiguredFields || ft.fields.length > 0;
       }
     });
+
+    return realTypesMapped;
   }, [fieldTypes, dataJson, showAllFields, activeFieldTypeKeys, selectedConsultaIds, consultations]);
 
   const systemVariables = useMemo(() => [
@@ -623,13 +648,31 @@ export function LeftPanel() {
   const mergeAndApplyPayloads = (ids: string[], scenarios: Record<string, string>) => {
     const mergedPayload: Record<string, any> = {};
 
+    function helperParse(v: any) {
+      if (v === null || v === undefined) return 0;
+      if (typeof v === 'number') return v;
+      const cleaned = String(v)
+        .replace(/[R$\s%]/g, "")
+        .replace(/\./g, "")
+        .replace(/,/g, ".");
+      const parsed = parseFloat(cleaned);
+      return isNaN(parsed) ? 0 : parsed;
+    }
+
     for (const consultaId of ids) {
       const scenarioId = scenarios[consultaId];
-      if (!scenarioId) continue;
-      const poolItem = poolQuery.data?.find((p) => p.id === scenarioId);
+      const poolItem = scenarioId && scenarioId !== "__none__" ? poolQuery.data?.find((p) => p.id === scenarioId) : undefined;
       const consultation = consultations.find((c) => c.id === consultaId);
       
-      const rawPayload = (poolItem && poolItem.payload) ? poolItem.payload : consultation?.sampleResponse;
+      const draftResponse = useEditorStore.getState().draftSampleResponses?.[consultaId];
+      const isDraftModified = draftResponse && draftResponse !== consultation?.sampleResponse;
+
+      // 1. Rascunho em edição ativa
+      // 2. Cenário explicitamente selecionado
+      // 3. Payload salvo na consulta
+      let rawPayload = isDraftModified 
+        ? draftResponse 
+        : (poolItem?.payload || consultation?.sampleResponse);
       if (rawPayload) {
         try {
           const payloadObj = typeof rawPayload === "string"
@@ -666,10 +709,7 @@ export function LeftPanel() {
                 } else {
                   // Se o processamento retornar nulo (por falta de mapeamento de-para de campos),
                   // inicializamos uma estrutura limpa padrão para evitar erros, conforme alinhamento.
-                  mergedPayload[ft.key] = {
-                    linhas: [],
-                    totaisCalculados: {},
-                  };
+                  mergedPayload[ft.key] = [];
                 }
               }
             }
@@ -719,6 +759,73 @@ export function LeftPanel() {
       }
     }
 
+    // 2.5. Executar Deduplicação Global/Cross-Type se houver múltiplos tipos de dívidas
+    const activeDebtTypes = ["DIVIDAS_SPC", "DIVIDAS_SERASA", "DIVIDAS_BOA_VISTA"].filter(
+      (key) => mergedPayload[key] && Array.isArray(mergedPayload[key]) && mergedPayload[key].length > 0
+    );
+
+    if (activeDebtTypes.length > 1) {
+      const rowInfo = new Map<string, {
+        rows: Record<string, unknown>[];
+        dedupKeys: string[];
+        dedupSummary?: Record<string, unknown>;
+        dedupKeyToCanonical?: Map<string, string>;
+      }>();
+
+      const typeKeysInOrder = activeDebtTypes;
+
+      for (const ftKey of activeDebtTypes) {
+        const typeData = mergedPayload[ftKey];
+        let dedupKeys: string[] = [];
+        const dedupKeyToCanonical = new Map<string, string>();
+
+        for (const id of ids) {
+          const consultation = consultations.find((c) => c.id === id);
+          const filterConfig = consultation?.typeItemFilters?.[ftKey];
+          if (filterConfig && Array.isArray(filterConfig.dedupFieldIds) && filterConfig.dedupFieldIds.length > 0) {
+            const dedupFieldIdSet = new Set(filterConfig.dedupFieldIds);
+            
+            if (Array.isArray(filterConfig.fieldMappings)) {
+              for (const mapping of filterConfig.fieldMappings) {
+                if (dedupFieldIdSet.has(mapping.reportFieldId)) {
+                  const fieldDef = fieldTypes
+                    .find((f) => f.key === ftKey)
+                    ?.reportFieldConfig?.fields?.find((f) => f.id === mapping.reportFieldId);
+                  
+                  if (fieldDef?.key) {
+                    dedupKeys.push(fieldDef.key);
+                    dedupKeyToCanonical.set(fieldDef.key, fieldDef.key);
+                  }
+                }
+              }
+            }
+          }
+        }
+
+        if (dedupKeys.length > 0) {
+          dedupKeys = [...new Set(dedupKeys)];
+          rowInfo.set(ftKey, {
+            rows: typeData,
+            dedupKeys,
+            dedupKeyToCanonical,
+          });
+        }
+      }
+
+      const byTypeObj: Record<string, any> = {};
+      for (const ftKey of activeDebtTypes) {
+        byTypeObj[ftKey] = mergedPayload[ftKey];
+      }
+
+      const cleaned = buildByTypeWithGlobalDedupRemoved(byTypeObj, typeKeysInOrder, rowInfo);
+
+      for (const ftKey of activeDebtTypes) {
+        if (cleaned[ftKey]) {
+          mergedPayload[ftKey] = cleaned[ftKey];
+        }
+      }
+    }
+
     const payloadStr = JSON.stringify(mergedPayload, null, 2);
     useEditorStore.getState().setDataJsonText(payloadStr);
   };
@@ -733,22 +840,30 @@ export function LeftPanel() {
     toast.success(`Expressão "${expression}" copiada e inserida!`);
   };
 
-  // Efeito reativo para pré-carregar todas as consultas por padrão se nenhuma selecionada
+  // Sincronização automática em tempo real e Cérebro Centralizador de Dados
   useEffect(() => {
-    if (consultations.length > 0 && selectedConsultaIds.length === 0 && poolQuery.data && poolQuery.data.length > 0) {
-      const initialIds = consultations.map((c) => c.id);
-      const initialScenarios: Record<string, string> = {};
-      for (const id of initialIds) {
-        const productScenarios = poolByProduct[id] || [];
-        if (productScenarios.length > 0) {
-          initialScenarios[id] = productScenarios[0].id;
+    if (consultations.length > 0 && poolQuery.data && poolQuery.data.length > 0) {
+      if (selectedConsultaIds.length === 0) {
+        // Inicialização de fallback: se o usuário não tem nenhuma consulta ativa selecionada na store
+        const initialIds = consultations.map((c) => c.id);
+        const initialScenarios: Record<string, string> = {};
+        for (const id of initialIds) {
+          const productScenarios = poolByProduct[id] || [];
+          if (productScenarios.length > 0) {
+            // inicializar como Vazio (Rascunho) por padrão em vez de forçar o primeiro cenário
+            initialScenarios[id] = "__none__";
+          }
         }
+        setSelectedConsultaIds(initialIds);
+        setSelectedScenarios(initialScenarios);
+        mergeAndApplyPayloads(initialIds, initialScenarios);
+      } else {
+        // Sincronização ativa em tempo real: se o usuário já tem consultas selecionadas na store (reidratadas ou ativas),
+        // nós processamos os dados simulados síncronamente usando as configurações mais recentes das consultas do banco de dados!
+        mergeAndApplyPayloads(selectedConsultaIds, selectedScenarios);
       }
-      setSelectedConsultaIds(initialIds);
-      setSelectedScenarios(initialScenarios);
-      mergeAndApplyPayloads(initialIds, initialScenarios);
     }
-  }, [consultations, poolQuery.data]);
+  }, [consultations, poolQuery.data, selectedConsultaIds, selectedScenarios]);
 
   // Efeito reativo para sincronizar as variáveis canônicas e dinâmicas na store global do editor
   useEffect(() => {
@@ -1403,16 +1518,12 @@ export function LeftPanel() {
                                 let nextScenarios = { ...selectedScenarios };
                                 if (e.target.checked) {
                                   nextIds.push(c.id);
-                                  if (scenarios.length > 0 && !activeScenarioId) {
-                                    nextScenarios[c.id] = scenarios[0].id;
-                                  }
                                 } else {
                                   nextIds = nextIds.filter((id) => id !== c.id);
                                   delete nextScenarios[c.id];
                                 }
                                 setSelectedConsultaIds(nextIds);
                                 setSelectedScenarios(nextScenarios);
-                                mergeAndApplyPayloads(nextIds, nextScenarios);
                               }}
                               className="rounded border-slate-300 dark:border-slate-700 text-indigo-650 dark:text-indigo-500 focus:ring-indigo-500 size-3 cursor-pointer"
                             />
@@ -1437,7 +1548,6 @@ export function LeftPanel() {
                                 onValueChange={(val) => {
                                   const nextScenarios = { ...selectedScenarios, [c.id]: val };
                                   setSelectedScenarios(nextScenarios);
-                                  mergeAndApplyPayloads(selectedConsultaIds, nextScenarios);
                                   toast.success("Cenário de simulação atualizado e mesclado!");
                                 }}
                               >
@@ -1494,7 +1604,6 @@ export function LeftPanel() {
                         <CalculatedMeasuresPanel
                           searchQuery={searchQuery}
                           onOpenNew={handleOpenNew}
-                          onOpenWizard={handleOpenWizard}
                           onOpenEdit={handleOpenEdit}
                         />
                       </PopoverContent>
@@ -1522,7 +1631,7 @@ export function LeftPanel() {
         </div>
       </div>
 
-      {/* MODAL PADRÃO DE NOVA / EDITA MEDIDA (REMODELADO NO PADRÃO CORPORATIVO DE DUAS COLUNAS) */}
+      {/* MODAL UNIFICADO AVANÇADO DE GESTÃO DE MEDIDAS E BI (ESTILO POWER BI / MAPEAMENTO DE CAMPOS - 2 COLUNAS PREMIUM) */}
       <Dialog 
         open={isModalOpen && !!editingMeasure} 
         onOpenChange={(open) => {
@@ -1532,99 +1641,124 @@ export function LeftPanel() {
           }
         }}
       >
-        <DialogContent className="max-w-4xl w-[820px] bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-0 shadow-2xl overflow-hidden text-slate-800 dark:text-slate-200 flex flex-col">
+        <DialogContent className="max-w-4xl w-[850px] bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-0 shadow-2xl overflow-hidden text-slate-800 dark:text-slate-200 flex flex-col">
           
-          {/* Cabeçalho cinza platina suave */}
+          {/* Cabeçalho cinza platina elegante */}
           <div className="bg-white dark:bg-slate-950 border-b border-slate-200 dark:border-slate-800 p-4 px-5 flex items-center justify-between">
             <DialogHeader className="p-0 flex-1">
               <DialogTitle className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-2">
                 <Calculator className="size-4 text-indigo-500" />
-                <span>{editingMeasure?.id ? "Editar Medida Calculada" : "Nova Medida Calculada"}</span>
+                <span>Painel Analítico de Medidas & Business Intelligence (BI)</span>
               </DialogTitle>
               <DialogDescription className="hidden">
-                Gerencie sua medida e expressões de dados.
+                Crie fórmulas, agregações e lógicas de BI em tempo real para o seu relatório.
               </DialogDescription>
             </DialogHeader>
             <button
               onClick={() => { setIsModalOpen(false); setEditingMeasure(null); }}
-              className="text-slate-450 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 transition-colors cursor-pointer"
+              className="text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 transition-colors cursor-pointer"
             >
               <X className="size-4" />
             </button>
           </div>
 
           {/* Grid de Conteúdo - Duas Colunas */}
-          <div className="grid grid-cols-5 divide-x divide-slate-250 dark:divide-slate-800/80 flex-1 min-h-[350px]">
-            {/* Coluna Esquerda: Identificação e Metadados (col-span-2) */}
-            <div className="col-span-2 p-5 space-y-4 bg-slate-50/50 dark:bg-slate-900/40">
-              <div className="space-y-1.5">
-                <label className="font-bold text-[10px] uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
-                  <Type className="size-3.5 text-slate-400" />
-                  <span>Nome da Medida</span>
-                </label>
-                <input
-                  type="text"
-                  placeholder="ex: saldo_total, taxa_media"
-                  value={editingMeasure?.name || ""}
-                  onChange={(e) => setEditingMeasure(editingMeasure ? { ...editingMeasure, name: e.target.value } : null)}
-                  className="w-full px-3 py-2 border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 text-slate-800 dark:text-slate-100 rounded-md outline-none focus:border-indigo-500 dark:focus:border-indigo-400 transition-colors shadow-xs text-xs"
-                />
-                <span className="text-[10px] text-slate-450 dark:text-slate-500 italic block leading-relaxed">
-                  Disponível como <code className="font-mono text-indigo-600 dark:text-indigo-400 bg-indigo-50/50 dark:bg-indigo-950/30 px-1 rounded">medida.nome</code> (letras minúsculas, sem espaços ou acentos)
-                </span>
-              </div>
+          <div className="grid grid-cols-12 divide-x divide-slate-200 dark:divide-slate-800/80 flex-1 min-h-[420px]">
+            
+            {/* Coluna Esquerda: Configuração Base & Formatação de Saída (col-span-5) */}
+            <div className="col-span-5 p-5 space-y-4 bg-slate-50/50 dark:bg-slate-900/40 flex flex-col justify-between">
+              <div className="space-y-4">
+                {/* Nome da Medida */}
+                <div className="space-y-1.5">
+                  <label className="font-bold text-[10px] uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+                    <Type className="size-3.5 text-slate-400" />
+                    <span>Nome Único da Medida</span>
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="ex: total_apontado, media_score"
+                    value={editingMeasure?.name || ""}
+                    onChange={(e) => setEditingMeasure(editingMeasure ? { ...editingMeasure, name: e.target.value } : null)}
+                    className="w-full px-3 py-2 border border-slate-250 dark:border-slate-800 bg-white dark:bg-slate-950 text-slate-800 dark:text-slate-100 rounded-md outline-none focus:border-indigo-500 dark:focus:border-indigo-400 transition-colors shadow-xs text-xs font-semibold"
+                  />
+                  <span className="text-[10px] text-slate-450 dark:text-slate-500 italic block leading-relaxed">
+                    Disponível no canvas como <code className="font-mono text-indigo-600 dark:text-indigo-400 bg-indigo-50/50 dark:bg-indigo-950/30 px-1 rounded">medida.{editingMeasure?.name || "nome"}</code>
+                  </span>
+                </div>
 
-              <div className="space-y-1.5">
-                <label className="font-bold text-[10px] uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
-                  <FileText className="size-3.5 text-slate-400" />
-                  <span>Descrição (opcional)</span>
-                </label>
-                <textarea
-                  placeholder="Finalidade desta medida analítica..."
-                  value={editingMeasure?.description || ""}
-                  onChange={(e) => setEditingMeasure(editingMeasure ? { ...editingMeasure, description: e.target.value } : null)}
-                  rows={3}
-                  className="w-full px-3 py-2 border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 text-slate-800 dark:text-slate-100 rounded-md outline-none focus:border-indigo-500 dark:focus:border-indigo-400 transition-colors shadow-xs text-xs resize-none"
-                />
+                {/* Descrição Opcional */}
+                <div className="space-y-1.5">
+                  <label className="font-bold text-[10px] uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+                    <FileText className="size-3.5 text-slate-400" />
+                    <span>Descrição / Propósito Analítico</span>
+                  </label>
+                  <textarea
+                    placeholder="Comente o objetivo de negócio desta medida..."
+                    value={editingMeasure?.description || ""}
+                    onChange={(e) => setEditingMeasure(editingMeasure ? { ...editingMeasure, description: e.target.value } : null)}
+                    rows={2}
+                    className="w-full px-3 py-2 border border-slate-250 dark:border-slate-800 bg-white dark:bg-slate-950 text-slate-800 dark:text-slate-100 rounded-md outline-none focus:border-indigo-500 dark:focus:border-indigo-400 transition-colors shadow-xs text-xs resize-none"
+                  />
+                </div>
+
+                {/* Tipo de Dado de Saída ( dataType ) */}
+                <div className="space-y-1.5">
+                  <label className="font-bold text-[10px] uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+                    <Sparkles className="size-3.5 text-indigo-500" />
+                    <span>Formatação Visual de Saída</span>
+                  </label>
+                  <select
+                    value={editingMeasure?.dataType || "currency"}
+                    onChange={(e) => setEditingMeasure(editingMeasure ? { ...editingMeasure, dataType: e.target.value as any } : null)}
+                    className="w-full px-3 py-2 border border-slate-250 dark:border-slate-800 bg-white dark:bg-slate-950 text-slate-800 dark:text-slate-100 rounded-md outline-none focus:border-indigo-500 dark:focus:border-indigo-400 transition-colors cursor-pointer shadow-xs text-xs font-medium"
+                  >
+                    <option value="currency">Moeda BRL (R$ 29.754,70)</option>
+                    <option value="percent">Percentual (10,5%)</option>
+                    <option value="integer">Número Inteiro (1.234)</option>
+                    <option value="decimal">Número Decimal (1.234,56)</option>
+                    <option value="text">Texto Livre / Geral (Sem formatação)</option>
+                  </select>
+                  <span className="text-[10px] text-slate-450 dark:text-slate-500 block leading-tight">
+                    O canvas formatará o valor calculado automaticamente de acordo com o tipo escolhido.
+                  </span>
+                </div>
               </div>
 
               {/* Dicas de Expressão estilo Microsoft PBI */}
-              <div className="p-3.5 bg-indigo-50/30 dark:bg-indigo-950/10 rounded-lg border border-indigo-100/50 dark:border-indigo-900/40 space-y-2">
-                <div className="flex items-center gap-1.5 text-[10px] font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider">
-                  <Sparkles className="size-3.5" />
-                  <span>Dicas de Sintaxe</span>
+              <div className="p-3 bg-indigo-50/30 dark:bg-indigo-950/10 rounded-lg border border-indigo-100/50 dark:border-indigo-900/30 space-y-1.5 mt-auto">
+                <div className="flex items-center gap-1.5 text-[9px] font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider">
+                  <Code2 className="size-3.5" />
+                  <span>Exemplos de Sintaxe</span>
                 </div>
-                <p className="text-[10.5px] text-slate-500 dark:text-slate-400 leading-relaxed">
-                  As medidas permitem criar lógicas e consolidações customizadas. É possível usar expressões JavaScript, operadores matemáticos simples, condicionais e funções de helpers.
-                </p>
-                <div className="space-y-1 font-mono text-[9.5px] text-slate-455 dark:text-slate-500 leading-tight">
-                  <div>• <code className="text-slate-650 dark:text-slate-350">sum($scpc[*].valor)</code></div>
-                  <div>• <code className="text-slate-650 dark:text-slate-350">IF($score &gt;= 700, "Bom", "Ruim")</code></div>
-                  <div>• <code className="text-slate-650 dark:text-slate-350">formatCurrency($cliente.limite)</code></div>
+                <div className="space-y-1 font-mono text-[9px] text-slate-500 dark:text-slate-400 leading-tight">
+                  <div>• <code className="text-indigo-650 dark:text-indigo-300">sum($dividas_spc[*].valor)</code></div>
+                  <div>• <code className="text-indigo-650 dark:text-indigo-300">IF($score &gt;= 700, "Aprovado", "Análise")</code></div>
+                  <div>• <code className="text-indigo-650 dark:text-indigo-300">sum($[*].totalapontado)</code></div>
                 </div>
               </div>
             </div>
 
-            {/* Coluna Direita: Editor de Código Monospace (col-span-3) */}
-            <div className="col-span-3 p-5 flex flex-col space-y-4 bg-white dark:bg-slate-950">
-              <div className="space-y-1.5 flex-1 flex flex-col">
+            {/* Coluna Direita: Editor Monospace + BI Quick Builder (col-span-7) */}
+            <div className="col-span-7 p-5 flex flex-col space-y-4 bg-white dark:bg-slate-950">
+              {/* Seção 1: Editor de Fórmula Monospace */}
+              <div className="space-y-1.5 flex-1 flex flex-col min-h-[160px]">
                 <div className="flex items-center justify-between">
                   <label className="font-bold text-[10px] uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
                     <span className="font-sans font-bold text-[11px] text-indigo-500">fx</span>
-                    <span>Fórmula de Expressão</span>
+                    <span>Editor de Fórmula</span>
                   </label>
                   <span className="text-[9px] font-semibold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/40 px-2 py-0.5 rounded-full border border-indigo-100 dark:border-indigo-900/30 select-none">
-                    Modo Fórmula
+                    Expressão DAX-JS
                   </span>
                 </div>
-                <div className="flex-1 border border-slate-250 dark:border-slate-800 rounded-lg overflow-hidden flex flex-col shadow-xs bg-slate-50 dark:bg-slate-900/10">
-                  {/* Barra de Fórmulas de Alta Precisão */}
-                  <div className="bg-slate-100/80 dark:bg-slate-900/80 px-3 py-2 border-b border-slate-200 dark:border-slate-800 flex items-center gap-1 select-none">
-                    {/* Botões de Ação da Fórmula */}
+                
+                <div className="flex-1 border border-slate-200 dark:border-slate-800 rounded-lg overflow-hidden flex flex-col shadow-xs bg-slate-50 dark:bg-slate-900/10">
+                  {/* Barra de Fórmulas estilo MS Excel / Power BI */}
+                  <div className="bg-slate-100/80 dark:bg-slate-900/80 px-3 py-1.5 border-b border-slate-200 dark:border-slate-800 flex items-center gap-1 select-none">
                     <button
                       type="button"
                       onClick={() => setEditingMeasure(editingMeasure ? { ...editingMeasure, expression: "" } : null)}
-                      className="p-1 rounded-md text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 hover:text-red-600 transition-all cursor-pointer flex items-center justify-center"
+                      className="p-1 rounded text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 hover:text-red-600 transition-all cursor-pointer flex items-center justify-center"
                       title="Limpar expressão (✗)"
                     >
                       <X className="size-3.5" />
@@ -1632,41 +1766,95 @@ export function LeftPanel() {
                     <button
                       type="button"
                       onClick={handleSave}
-                      className="p-1 rounded-md text-emerald-650 dark:text-emerald-500 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 hover:text-emerald-700 dark:hover:text-emerald-400 transition-all cursor-pointer flex items-center justify-center mr-1"
-                      title="Confirmar/Salvar medida (✓)"
+                      className="p-1 rounded text-emerald-600 dark:text-emerald-500 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 hover:text-emerald-750 transition-all cursor-pointer flex items-center justify-center mr-1"
+                      title="Confirmar medida (✓)"
                     >
                       <Check className="size-3.5 stroke-[2.5]" />
                     </button>
                     
-                    {/* Divisor vertical */}
+                    <div className="w-px h-4 bg-slate-250 dark:bg-slate-750 mx-1" />
+                    <span className="font-serif italic font-extrabold text-[12px] text-slate-500 px-1">fx</span>
                     <div className="w-px h-4 bg-slate-250 dark:bg-slate-750 mx-1" />
                     
-                    {/* Símbolo f(x) de fórmula */}
-                    <span className="font-serif italic font-extrabold text-[13px] text-slate-500 dark:text-slate-450 px-1.5 select-none" style={{ fontFamily: "Georgia, serif" }}>
-                      fx
-                    </span>
-
-                    {/* Divisor vertical */}
-                    <div className="w-px h-4 bg-slate-250 dark:bg-slate-750 mx-1" />
-                    
-                    <span className="text-[10px] font-mono font-medium text-slate-450 dark:text-slate-500 ml-1">
-                      {editingMeasure?.name ? `[${editingMeasure.name}]` : "[nova_medida]"} =
+                    <span className="text-[10px] font-mono font-medium text-slate-400 dark:text-slate-500 ml-1">
+                      {editingMeasure?.name ? `[${editingMeasure.name.trim().toLowerCase().replace(/\s+/g, "_")}]` : "[nova_medida]"} =
                     </span>
                   </div>
+                  
                   <textarea
-                    placeholder="// Digite aqui a expressão calculada...&#10;// Exemplo:&#10;IF($cliente.score.pontuacao >= 700, 'Crédito Aprovado', 'Análise Manual')"
+                    placeholder="// Escreva sua expressão livre ou use o assistente de BI abaixo...&#10;// Ex: sum($dividas_spc[*].valor)"
                     value={editingMeasure?.expression || ""}
                     onChange={(e) => setEditingMeasure(editingMeasure ? { ...editingMeasure, expression: e.target.value } : null)}
-                    className="flex-1 w-full font-mono text-[12px] p-4 bg-white dark:bg-slate-950 text-slate-800 dark:text-slate-100 outline-none border-none resize-none leading-relaxed placeholder:text-slate-400 dark:placeholder:text-slate-650 focus:ring-0 focus:outline-none"
-                    style={{ minHeight: "220px" }}
+                    className="flex-1 w-full font-mono text-[12px] p-3.5 bg-white dark:bg-slate-950 text-slate-800 dark:text-slate-100 outline-none border-none resize-none leading-relaxed placeholder:text-slate-400 dark:placeholder:text-slate-650"
                   />
                 </div>
               </div>
+
+              {/* Seção 2: BI Quick Builder (Assistente Reativo por Cliques) */}
+              <div className="border-t border-slate-200 dark:border-slate-800 pt-3.5 space-y-2.5">
+                <div className="flex items-center gap-1.5">
+                  <Sparkles className="size-3.5 text-violet-500 animate-pulse shrink-0" />
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                    BI Quick Builder (Assistente de Fórmulas)
+                  </span>
+                </div>
+                
+                <div className="p-3.5 bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-850 rounded-lg space-y-3 shadow-2xs">
+                  <div className="grid grid-cols-2 gap-3">
+                    {/* Seleção de Função de Agregação */}
+                    <div className="space-y-1">
+                      <label className="text-[9.5px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">Agregador (f)</label>
+                      <select
+                        value={assistantFunc}
+                        onChange={(e) => setAssistantFunc(e.target.value)}
+                        className="w-full px-2.5 py-1.5 border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 text-slate-800 dark:text-slate-100 rounded-md outline-none text-xs font-semibold cursor-pointer"
+                      >
+                        <option value="sum">Soma (sum)</option>
+                        <option value="avg">Média (avg)</option>
+                        <option value="count">Contagem (count)</option>
+                        <option value="min">Mínimo (min)</option>
+                        <option value="max">Máximo (max)</option>
+                        <option value="none">Nenhum (Apenas Campo)</option>
+                      </select>
+                    </div>
+
+                    {/* Seleção da Chave do JSON */}
+                    <div className="space-y-1">
+                      <label className="text-[9.5px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 font-mono">Campo de Origem (JSON)</label>
+                      <select
+                        value={assistantPath}
+                        onChange={(e) => setAssistantPath(e.target.value)}
+                        className="w-full px-2.5 py-1.5 border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 text-slate-850 dark:text-slate-150 rounded-md outline-none text-xs font-mono cursor-pointer"
+                      >
+                        {aggregatePaths.map((path) => (
+                          <option key={path} value={path}>
+                            {path}
+                          </option>
+                        ))}
+                        {aggregatePaths.length === 0 && (
+                          <option value="">Nenhum campo disponível</option>
+                        )}
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Botão para injetar */}
+                  <button
+                    type="button"
+                    onClick={handleGenerateAssistantFormula}
+                    className="w-full py-1.5 bg-indigo-50 hover:bg-indigo-100/80 dark:bg-indigo-950/40 dark:hover:bg-indigo-900/50 text-indigo-600 dark:text-indigo-400 border border-indigo-200/50 dark:border-indigo-900/40 rounded-md text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 shadow-3xs"
+                  >
+                    <Plus className="size-3.5 stroke-[2.5]" />
+                    <span>Injetar na Fórmula</span>
+                  </button>
+                </div>
+              </div>
+
             </div>
           </div>
 
           {/* Rodapé cinza platina sutil */}
-          <div className="bg-slate-50 dark:bg-slate-950/40 border-t border-slate-200 dark:border-slate-800 p-4 px-5 flex items-center justify-end gap-2 text-xs">
+          <div className="bg-slate-50 dark:bg-slate-950 border-t border-slate-200 dark:border-slate-800 p-4 px-5 flex items-center justify-end gap-2 text-xs">
             <button
               onClick={() => { setIsModalOpen(false); setEditingMeasure(null); }}
               className="px-4 py-2 border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-900 rounded-md font-medium transition-colors cursor-pointer"
@@ -1675,238 +1863,12 @@ export function LeftPanel() {
             </button>
             <button
               onClick={handleSave}
-              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-md font-semibold transition-colors cursor-pointer shadow-sm"
+              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-md font-semibold transition-colors cursor-pointer shadow-sm shadow-indigo-500/10"
             >
               Salvar Medida
             </button>
           </div>
 
-        </DialogContent>
-      </Dialog>
-
-      {/* ASSISTENTE DE MEDIDAS RÁPIDAS (QUICK MEASURES WIZARD) MODAL REMODELADO COM DIALOG */}
-      <Dialog open={isWizardOpen} onOpenChange={setIsWizardOpen}>
-        <DialogContent className="max-w-4xl w-[820px] bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-0 shadow-2xl overflow-hidden text-slate-800 dark:text-slate-200 select-none flex flex-col">
-          
-          {/* Cabeçalho cinza platina sutil */}
-          <div className="bg-white dark:bg-slate-950 border-b border-slate-200 dark:border-slate-800 p-4 px-5 flex items-center justify-between">
-            <DialogHeader className="p-0 flex-1">
-              <DialogTitle className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-2">
-                <Sparkles className="size-4 text-violet-500 animate-pulse" />
-                <span>Assistente de Medidas & Fórmulas Rápidas</span>
-              </DialogTitle>
-              <DialogDescription className="hidden">
-                Gere expressões complexas e medidas calculadas rapidamente utilizando nossos modelos prontos de lógica de negócios.
-              </DialogDescription>
-            </DialogHeader>
-            <button
-              onClick={() => setIsWizardOpen(false)}
-              className="text-slate-450 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 transition-colors cursor-pointer"
-            >
-              <X className="size-4" />
-            </button>
-          </div>
-
-          {/* Grid de Conteúdo - Duas Colunas */}
-          <div className="grid grid-cols-5 divide-x divide-slate-250 dark:divide-slate-800/80 flex-1 min-h-[380px]">
-            {/* Coluna Esquerda: Modelo & Parâmetros do Assistente (col-span-2) */}
-            <div className="col-span-2 p-5 space-y-4 bg-slate-50/50 dark:bg-slate-900/40 flex flex-col justify-between">
-              <div className="space-y-4">
-                <div className="space-y-1.5">
-                  <label className="font-bold text-[10px] uppercase tracking-wider text-slate-500 dark:text-slate-400">Modelo de Cálculo / Lógica</label>
-                  <select
-                    value={wizardTemplate}
-                    onChange={(e) => {
-                      const temp = e.target.value;
-                      setWizardTemplate(temp);
-                      if (temp === "risk_classification") setWizardName("classificacao_score");
-                      if (temp === "spc_serasa_sum") setWizardName("total_debitos_consolidados");
-                      if (temp === "percent_diff") setWizardName("variacao_proporcional");
-                      if (temp === "safe_divide") setWizardName("divisao_segura");
-                      if (temp === "format_currency") setWizardName("valor_formatado");
-                    }}
-                    className="w-full px-3 py-2 border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 text-slate-800 dark:text-slate-100 rounded-md outline-none focus:border-indigo-500 transition-colors cursor-pointer shadow-xs text-xs font-medium"
-                  >
-                    <option value="risk_classification">Classificação de Score (IF)</option>
-                    <option value="spc_serasa_sum">Soma Consolidada SPC + SERASA</option>
-                    <option value="percent_diff">Variação Percentual (% Diff)</option>
-                    <option value="safe_divide">Divisão Segura (DIVIDE)</option>
-                    <option value="format_currency">Formatação BRL (Currency)</option>
-                  </select>
-                </div>
-
-                {/* OPÇÕES ADICIONAIS CONTEXTUAIS BASEADAS NO TEMPLATE */}
-                <div className="p-4 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-850 rounded-lg space-y-3.5 shadow-xs flex-1">
-                  <h4 className="text-[10px] font-bold text-slate-455 dark:text-slate-500 uppercase tracking-wider border-b border-slate-100 dark:border-slate-900 pb-1.5 flex items-center gap-1">
-                    <Sliders className="size-3.5 text-slate-400" />
-                    <span>Parâmetros do Modelo</span>
-                  </h4>
-
-                  {wizardTemplate === "risk_classification" && (
-                    <div className="space-y-3">
-                      <div className="space-y-1.5">
-                        <label className="font-semibold text-slate-500 dark:text-slate-400 text-[11px]">Campo de Score (Numérico)</label>
-                        <select
-                          value={wizardVar1}
-                          onChange={(e) => setWizardVar1(e.target.value)}
-                          className="w-full px-2.5 py-1.5 border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-200 rounded-md focus:border-indigo-500 cursor-pointer text-xs"
-                        >
-                          {availableVariables.map(v => <option key={v} value={v}>{v}</option>)}
-                        </select>
-                      </div>
-                      <div className="grid grid-cols-1 gap-2.5">
-                        <div className="space-y-1">
-                          <label className="font-semibold text-slate-500 dark:text-slate-400 text-[10px] uppercase tracking-wider">Se Excelente (&gt;= 700)</label>
-                          <input
-                            type="text"
-                            value={wizardValTrue}
-                            onChange={(e) => setWizardValTrue(e.target.value)}
-                            className="w-full px-2.5 py-1.5 border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 rounded-md focus:border-indigo-500 text-xs text-slate-800 dark:text-slate-100"
-                          />
-                        </div>
-                        <div className="space-y-1">
-                          <label className="font-semibold text-slate-500 dark:text-slate-400 text-[10px] uppercase tracking-wider">Se Crítico (&lt; 700)</label>
-                          <input
-                            type="text"
-                            value={wizardValFalse}
-                            onChange={(e) => setWizardValFalse(e.target.value)}
-                            className="w-full px-2.5 py-1.5 border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 rounded-md focus:border-indigo-500 text-xs text-slate-800 dark:text-slate-100"
-                          />
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  {wizardTemplate === "spc_serasa_sum" && (
-                    <p className="text-[10px] text-slate-450 dark:text-slate-500 leading-relaxed italic">
-                      Este modelo consolida dinamicamente os históricos e arrays SCPC e Serasa de forma automática, aplicando uma agregação segura das dívidas ativas para retornar o valor total consolidado.
-                    </p>
-                  )}
-
-                  {(wizardTemplate === "percent_diff" || wizardTemplate === "safe_divide") && (
-                    <div className="space-y-3">
-                      <div className="space-y-1.5">
-                        <label className="font-semibold text-slate-500 dark:text-slate-400 text-[11px]">
-                          {wizardTemplate === "percent_diff" ? "Campo Base A" : "Numerador (Dividendo)"}
-                        </label>
-                        <select
-                          value={wizardVar1}
-                          onChange={(e) => setWizardVar1(e.target.value)}
-                          className="w-full px-2.5 py-1.5 border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-200 rounded-md focus:border-indigo-500 cursor-pointer text-xs"
-                        >
-                          {availableVariables.map(v => <option key={v} value={v}>{v}</option>)}
-                        </select>
-                      </div>
-                      <div className="space-y-1.5">
-                        <label className="font-semibold text-slate-500 dark:text-slate-400 text-[11px]">
-                          {wizardTemplate === "percent_diff" ? "Campo Comparador B" : "Denominador (Divisor)"}
-                        </label>
-                        <select
-                          value={wizardVar2}
-                          onChange={(e) => setWizardVar2(e.target.value)}
-                          className="w-full px-2.5 py-1.5 border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-200 rounded-md focus:border-indigo-500 cursor-pointer text-xs"
-                        >
-                          {availableVariables.map(v => <option key={v} value={v}>{v}</option>)}
-                        </select>
-                      </div>
-                    </div>
-                  )}
-
-                  {wizardTemplate === "format_currency" && (
-                    <div className="space-y-1.5">
-                      <label className="font-semibold text-slate-500 dark:text-slate-400 text-[11px]">Campo Monetário a Formatar</label>
-                      <select
-                        value={wizardVar1}
-                        onChange={(e) => setWizardVar1(e.target.value)}
-                        className="w-full px-2.5 py-1.5 border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-200 text-xs rounded-md focus:border-indigo-500 cursor-pointer"
-                      >
-                        {availableVariables.map(v => <option key={v} value={v}>{v}</option>)}
-                      </select>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            {/* Coluna Direita: Identificação Geral & Visualizador de Fórmulas Gerada (col-span-3) */}
-            <div className="col-span-3 p-5 flex flex-col space-y-4 bg-white dark:bg-slate-950">
-              <div className="grid grid-cols-1 gap-3.5">
-                <div className="space-y-1.5">
-                  <label className="font-bold text-[10px] uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
-                    <Type className="size-3.5 text-slate-400" />
-                    <span>Nome da Medida Gerada</span>
-                  </label>
-                  <input
-                    type="text"
-                    value={wizardName}
-                    onChange={(e) => setWizardName(e.target.value)}
-                    placeholder="ex: classificacao_score"
-                    className="w-full px-3 py-2 border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/60 text-slate-800 dark:text-slate-100 rounded-md outline-none focus:border-indigo-500 transition-colors shadow-xs text-xs"
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <label className="font-bold text-[10px] uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
-                    <FileText className="size-3.5 text-slate-400" />
-                    <span>Descrição da Medida</span>
-                  </label>
-                  <textarea
-                    value={wizardDesc}
-                    onChange={(e) => setWizardDesc(e.target.value)}
-                    placeholder="Finalidade desta medida gerada..."
-                    rows={2}
-                    className="w-full px-3 py-2 border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/60 text-slate-800 dark:text-slate-100 rounded-md outline-none focus:border-indigo-500 transition-colors shadow-xs text-xs resize-none"
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-2 flex-1 flex flex-col">
-                <div className="flex items-center justify-between">
-                  <label className="font-bold text-[10px] uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
-                    <span className="font-sans font-bold text-[11px] text-violet-500">fx</span>
-                    <span>Fórmula de Expressão Gerada</span>
-                  </label>
-                  <span className="text-[9px] font-semibold text-violet-600 dark:text-violet-400 bg-violet-50 dark:bg-violet-950/40 px-2 py-0.5 rounded-full border border-violet-100 dark:border-violet-900/30 select-none">
-                    Auto Gerado
-                  </span>
-                </div>
-                <div className="flex-1 border border-slate-250 dark:border-slate-800 rounded-lg overflow-hidden flex flex-col shadow-xs bg-slate-50 dark:bg-slate-900/10">
-                  {/* Barra de Fórmulas de Alta Precisão */}
-                  <div className="bg-slate-100/80 dark:bg-slate-900/80 px-3 py-2 border-b border-slate-200 dark:border-slate-800 flex items-center gap-1 select-none">
-                    {/* Símbolo f(x) de fórmula */}
-                    <span className="font-serif italic font-extrabold text-[13px] text-slate-500 dark:text-slate-450 px-1.5 select-none" style={{ fontFamily: "Georgia, serif" }}>
-                      fx
-                    </span>
-
-                    {/* Divisor vertical */}
-                    <div className="w-px h-4 bg-slate-250 dark:bg-slate-750 mx-1" />
-                    
-                    <span className="text-[10px] font-mono font-medium text-slate-450 dark:text-slate-500 ml-1">
-                      {wizardName ? `[${wizardName}]` : "[medida_rapida]"} =
-                    </span>
-                  </div>
-                  <div className="flex-1 p-4 font-mono text-[12px] bg-white dark:bg-slate-950 text-indigo-600 dark:text-indigo-400 select-all break-all leading-relaxed whitespace-pre-wrap min-h-[140px]">
-                    {getGeneratedFormula()}
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Rodapé cinza platina sutil */}
-          <div className="bg-slate-50 dark:bg-slate-950/40 border-t border-slate-200 dark:border-slate-800 p-4 px-5 flex items-center justify-end gap-2 text-xs">
-            <button
-              onClick={() => setIsWizardOpen(false)}
-              className="px-4 py-2 border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-900 rounded-md font-medium transition-colors cursor-pointer"
-            >
-              Cancelar
-            </button>
-            <button
-              onClick={handleSaveWizard}
-              className="px-4 py-2 bg-violet-600 hover:bg-violet-700 text-white rounded-md font-bold transition-colors cursor-pointer shadow-sm shadow-violet-500/10"
-            >
-              Criar Medida Rápida
-            </button>
-          </div>
         </DialogContent>
       </Dialog>
     </div>
@@ -2316,11 +2278,10 @@ function JsonVariableTree({ searchQuery }: JsonVariableTreeProps) {
 interface CalculatedMeasuresPanelProps {
   searchQuery?: string;
   onOpenNew: () => void;
-  onOpenWizard: () => void;
   onOpenEdit: (m: any, e: React.MouseEvent) => void;
 }
 
-function CalculatedMeasuresPanel({ searchQuery, onOpenNew, onOpenWizard, onOpenEdit }: CalculatedMeasuresPanelProps) {
+function CalculatedMeasuresPanel({ searchQuery, onOpenNew, onOpenEdit }: CalculatedMeasuresPanelProps) {
   const template = useEditorStore((s) => s.template);
   const removeMeasure = useEditorStore((s) => s.removeMeasure);
 
@@ -2374,13 +2335,6 @@ function CalculatedMeasuresPanel({ searchQuery, onOpenNew, onOpenWizard, onOpenE
           <span>Medidas Calculadas & Fórmulas</span>
         </span>
         <div className="flex items-center gap-2">
-          <button
-            onClick={onOpenWizard}
-            className="text-[9px] text-violet-600 dark:text-violet-400 font-bold flex items-center gap-0.5 hover:underline cursor-pointer bg-violet-50 dark:bg-violet-950/40 px-1.5 py-0.5 rounded border border-violet-100 dark:border-violet-900/50"
-          >
-            <Sparkles className="size-3" />
-            <span>Assistente de Fórmulas</span>
-          </button>
           <button
             onClick={onOpenNew}
             className="text-[9px] text-indigo-600 dark:text-indigo-400 font-semibold flex items-center gap-0.5 hover:underline cursor-pointer"

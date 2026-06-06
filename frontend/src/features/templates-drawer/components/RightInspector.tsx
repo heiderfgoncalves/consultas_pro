@@ -1,10 +1,10 @@
 import { useState } from "react";
 import { useEditorStore, useEvaluationContext } from "../store/editor.store";
 import { useIsolatedEditorStore } from "../store/isolated-editor.store";
-import type { BindingFormat, TemplateElement } from "../schema/template";
+import type { BindingFormat, TemplateElement, ReusableComponent } from "../schema/template";
 import { cn } from "@/lib/utils";
 import { ColorPickerPopover } from "./ColorPickerPopover";
-import Editor from "@monaco-editor/react";
+import { SafeEditor as Editor } from "./SafeEditor";
 import { renderTemplateToHtml } from "../engine/renderTemplateToHtml";
 import { interpolate } from "../engine/interpolate";
 import { toast } from "sonner";
@@ -13,7 +13,7 @@ import { useTheme } from "next-themes";
 import { X } from "lucide-react";
 
 
-type Tab = "layout" | "style" | "html" | "binding" | "data";
+type Tab = "layout" | "style" | "html" | "binding" | "data" | "parameters";
 
 function NumberField({
   label,
@@ -101,7 +101,7 @@ function ElementInspector({ element, isIsolated }: { element: TemplateElement; i
   const storeSetTab = useEditorStore((s) => s.setActiveRightTab);
   const [localTab, setLocalTab] = useState<Tab>("layout");
 
-  const tab = isIsolated ? localTab : storeTab;
+  const tab = (isIsolated ? localTab : storeTab) as Tab;
   const setTab = isIsolated ? setLocalTab : storeSetTab;
   
   const storeUpdate = useEditorStore((s) => s.updateElement);
@@ -119,6 +119,19 @@ function ElementInspector({ element, isIsolated }: { element: TemplateElement; i
   const { resolvedTheme } = useTheme();
   const editorTheme = resolvedTheme === "dark" ? "vs-dark" : "light";
 
+  const reusableComponents = useEditorStore((s) => s.reusableComponents);
+  const matchedComponent = element.componentId
+    ? reusableComponents.find((c) => c.id === element.componentId)
+    : null;
+  const hasParameters = !!(matchedComponent && matchedComponent.variables && matchedComponent.variables.length > 0);
+
+  // Redireciona para layout se a aba for parâmetros mas o componente não os possuir
+  useState(() => {
+    if (tab === "parameters" && !hasParameters) {
+      setTab("layout");
+    }
+  });
+
   return (
     <>
       <div className="flex border-b border-border text-xs bg-slate-100/70 dark:bg-slate-900/50">
@@ -129,6 +142,7 @@ function ElementInspector({ element, isIsolated }: { element: TemplateElement; i
             { id: "html", label: "HTML" },
             { id: "binding", label: "Binding" },
             { id: "data", label: "Dados" },
+            ...(hasParameters ? [{ id: "parameters" as Tab, label: "Parâmetros" }] : []),
           ] as { id: Tab; label: string }[]
         ).map((t) => (
           <button
@@ -228,7 +242,7 @@ function ElementInspector({ element, isIsolated }: { element: TemplateElement; i
             <div className="text-[11px] text-slate-550 dark:text-slate-450 leading-normal">
               Código HTML customizado (substitui a renderização visual padrão se preenchido):
             </div>
-            <div className="flex-1 border border-slate-200 dark:border-slate-800 rounded overflow-hidden bg-slate-50 dark:bg-slate-950">
+            <div className="flex-1 border border-slate-200 dark:border-slate-800 rounded overflow-hidden bg-slate-50 dark:bg-slate-950 relative">
               <Editor
                 height="100%"
                 language="html"
@@ -313,6 +327,13 @@ function ElementInspector({ element, isIsolated }: { element: TemplateElement; i
 
         {tab === "data" && (
           <ElementDataEditor element={element} updateData={updateData} />
+        )}
+
+        {tab === "parameters" && hasParameters && matchedComponent && (
+          <ComponentParametersEditor
+            element={element}
+            component={matchedComponent}
+          />
         )}
       </div>
     </>
@@ -491,6 +512,58 @@ function ElementDataEditor({
   }
 }
 
+function ComponentParametersEditor({
+  element,
+  component,
+}: {
+  element: TemplateElement;
+  component: ReusableComponent;
+}) {
+  const updateGroupArgs = useEditorStore((s) => s.updateGroupArguments);
+  const args = element.arguments ?? {};
+
+  return (
+    <div className="space-y-4 text-xs pt-1">
+      <div className="p-3 rounded-lg bg-indigo-50/25 dark:bg-indigo-950/20 border border-indigo-100/50 dark:border-indigo-900/40">
+        <div className="text-[10px] font-bold text-indigo-500 dark:text-indigo-400 uppercase tracking-wider mb-0.5">
+          Bloco Customizado Parametrizado
+        </div>
+        <div className="font-semibold text-slate-800 dark:text-slate-200">
+          {component.name}
+        </div>
+        <p className="text-[10px] text-muted-foreground mt-1.5 leading-normal">
+          Forneça as expressões de dados que serão injetadas em cada variável deste componente para resolver seu conteúdo dinâmico.
+        </p>
+      </div>
+
+      <div className="space-y-3">
+        {component.variables.map((v: string) => (
+          <div key={v} className="space-y-1">
+            <label className="text-[11px] font-semibold text-slate-600 dark:text-slate-300 flex items-center gap-1.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 shrink-0"></span>
+              <span>Parâmetro: <code className="text-indigo-600 dark:text-indigo-400 font-mono font-bold">{v}</code></span>
+            </label>
+            <AutocompleteInput
+              value={args[v] ?? ""}
+              onChange={(val) => {
+                if (element.groupId) {
+                  updateGroupArgs(element.groupId, { [v]: val });
+                }
+              }}
+              placeholder="Ex: cliente.nome ou 'Valor Fixo'"
+              className="text-xs h-8 font-mono border-slate-200 dark:border-slate-800"
+            />
+          </div>
+        ))}
+      </div>
+
+      <div className="text-[10px] leading-relaxed text-muted-foreground pt-2.5 border-t border-slate-100 dark:border-slate-850">
+        💡 <span className="font-semibold">Dica de uso:</span> No design deste bloco personalizado, os elementos internos devem referenciar estas variáveis como <code className="text-indigo-500 dark:text-indigo-400 font-mono font-medium">{"{$params." + (component.variables[0] || "variavel") + "}"}</code> para renderizar dinamicamente os valores fornecidos aqui.
+      </div>
+    </div>
+  );
+}
+
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Sliders } from "lucide-react";
 
@@ -586,7 +659,7 @@ export function FrameInspector({ frameId }: { frameId?: string }) {
                 Copiar
               </button>
             </div>
-            <div className="flex-1 border border-slate-200 dark:border-slate-800 rounded overflow-hidden bg-slate-50 dark:bg-slate-950">
+            <div className="flex-1 border border-slate-200 dark:border-slate-800 rounded overflow-hidden bg-slate-50 dark:bg-slate-950 relative">
               <Editor
                 height="100%"
                 language="html"
@@ -609,7 +682,7 @@ export function FrameInspector({ frameId }: { frameId?: string }) {
             <div className="text-[11px] text-slate-550 dark:text-slate-450 leading-normal">
               Código HTML Customizado (substitui os elementos visuais padrão da página para modularização total):
             </div>
-            <div className="flex-1 border border-slate-200 dark:border-slate-800 rounded overflow-hidden bg-slate-50 dark:bg-slate-950">
+            <div className="flex-1 border border-slate-200 dark:border-slate-800 rounded overflow-hidden bg-slate-50 dark:bg-slate-950 relative">
               <Editor
                 height="100%"
                 language="html"

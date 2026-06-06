@@ -385,45 +385,61 @@ export function InfiniteCanvas({ isIsolated }: { isIsolated?: boolean }) {
     const isEditingTarget = !!target.closest("[contenteditable]") || target.isContentEditable;
     if (isEditingTarget) return;
 
+    const isMoveableControl = !!target.closest(".moveable-control");
     const isMoveableClick = !!target.closest('[class*="moveable-"]');
-    const elDom = target.closest("[data-element-id]");
+    let elDom = target.closest("[data-element-id]");
+
+    // Se o clique foi no moveable (mas não em um controle de redimensionamento/rotação),
+    // tentamos encontrar o elemento real sob o cursor
+    if (!elDom && isMoveableClick && !isMoveableControl) {
+      const elementsAtPoint = document.elementsFromPoint(e.clientX, e.clientY);
+      const foundEl = elementsAtPoint.find(
+        (el) => el.hasAttribute("data-element-id") || el.closest("[data-element-id]")
+      );
+      if (foundEl) {
+        elDom = foundEl.hasAttribute("data-element-id") ? foundEl : foundEl.closest("[data-element-id]");
+      }
+    }
+
+    // Se tiver agrupando com shift, alternamos a seleção (toggle) e retornamos imediatamente
+    if (elDom && e.shiftKey && e.button === 0) {
+      const id = elDom.getAttribute("data-element-id")!;
+      toggleSelected(id, true);
+      return;
+    }
 
     // Drag inteligente no primeiro clique se clicado com botão esquerdo sobre um elemento
-    if (elDom && !isMoveableClick && e.button === 0) {
+    if (elDom && !isMoveableControl && e.button === 0) {
       const id = elDom.getAttribute("data-element-id")!;
       const isAlreadySelected = selectedIds.includes(id);
 
-      if (e.shiftKey) {
-        toggleSelected(id, true);
-      } else {
-        if (!isAlreadySelected) {
-          setSelected([id]);
-        }
-      }
+      if (!isAlreadySelected) {
+        setSelected([id]);
 
-      const startX = e.clientX;
-      const startY = e.clientY;
-      let dragStarted = false;
+        const startX = e.clientX;
+        const startY = e.clientY;
+        let dragStarted = false;
 
-      const onMouseMove = (moveEv: MouseEvent) => {
-        const dx = moveEv.clientX - startX;
-        const dy = moveEv.clientY - startY;
-        if (!dragStarted && (Math.abs(dx) > 3 || Math.abs(dy) > 3)) {
-          dragStarted = true;
-          if (moveableRef.current) {
-            moveableRef.current.dragStart(moveEv);
+        const onMouseMove = (moveEv: MouseEvent) => {
+          const dx = moveEv.clientX - startX;
+          const dy = moveEv.clientY - startY;
+          if (!dragStarted && (Math.abs(dx) > 3 || Math.abs(dy) > 3)) {
+            dragStarted = true;
+            if (moveableRef.current) {
+              moveableRef.current.dragStart(moveEv);
+            }
           }
-        }
-      };
+        };
 
-      const onMouseUp = () => {
-        window.removeEventListener("mousemove", onMouseMove);
-        window.removeEventListener("mouseup", onMouseUp);
-      };
+        const onMouseUp = () => {
+          window.removeEventListener("mousemove", onMouseMove);
+          window.removeEventListener("mouseup", onMouseUp);
+        };
 
-      window.addEventListener("mousemove", onMouseMove);
-      window.addEventListener("mouseup", onMouseUp);
-      return;
+        window.addEventListener("mousemove", onMouseMove);
+        window.addEventListener("mouseup", onMouseUp);
+        return;
+      }
     }
 
     // click on empty canvas (anywhere not inside an element or moveable controls) = clear selection
@@ -686,10 +702,7 @@ export function InfiniteCanvas({ isIsolated }: { isIsolated?: boolean }) {
               element={el}
               selected={selectedIds.includes(el.id)}
               isIsolated={isIsolated}
-              onSelect={(id, additive) => {
-                if (additive) toggleSelected(id, true);
-                else setSelected([id]);
-              }}
+              onSelect={() => {}}
             />
           ))}
 

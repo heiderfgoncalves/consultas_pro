@@ -96,6 +96,7 @@ type EditorState = {
   leftPanelTab: LeftPanelTab;
   selectedConsultaIds: string[];
   selectedScenarios: Record<string, string>;
+  draftSampleResponses: Record<string, string>;
 
   setActiveTemplateId: (id: string | null) => void;
   setActiveProductId: (id: string | null) => void;
@@ -105,6 +106,7 @@ type EditorState = {
   setLeftPanelTab: (tab: LeftPanelTab) => void;
   setSelectedConsultaIds: (ids: string[]) => void;
   setSelectedScenarios: (scenarios: Record<string, string>) => void;
+  setDraftSampleResponse: (id: string, response: string) => void;
 
   // selection
   setSelected: (ids: string[]) => void;
@@ -181,10 +183,18 @@ type EditorState = {
 
   // components
   saveSelectionAsComponent: (name: string) => void;
-  saveSelectionAsComponentWithMeta: (name: string, category?: string) => void;
+  saveSelectionAsComponentWithMeta: (
+    name: string,
+    category?: string,
+    variables?: string[],
+  ) => void;
   insertComponent: (
     componentId: string,
     pos: { x: number; y: number },
+  ) => void;
+  updateGroupArguments: (
+    groupId: string,
+    args: Record<string, string>,
   ) => void;
   removeComponent: (id: string) => void;
   importComponents: (items: ReusableComponent[]) => void;
@@ -304,6 +314,7 @@ export const useEditorStore = create<EditorState>()(
       leftPanelTab: "elements",
       selectedConsultaIds: [],
       selectedScenarios: {},
+      draftSampleResponses: {},
 
       setActiveTemplateId: (id) => set({ activeTemplateId: id }),
       setActiveProductId: (id) => set({ activeProductId: id }),
@@ -313,6 +324,9 @@ export const useEditorStore = create<EditorState>()(
       setLeftPanelTab: (tab) => set({ leftPanelTab: tab }),
       setSelectedConsultaIds: (ids) => set({ selectedConsultaIds: ids }),
       setSelectedScenarios: (scenarios) => set({ selectedScenarios: scenarios }),
+      setDraftSampleResponse: (id, response) => set((state) => ({ 
+        draftSampleResponses: { ...state.draftSampleResponses, [id]: response } 
+      })),
 
       setSelected: (ids) => {
         const { template } = get();
@@ -845,7 +859,7 @@ export const useEditorStore = create<EditorState>()(
           reusableComponents: [...s.reusableComponents, comp],
         }));
       },
-      saveSelectionAsComponentWithMeta: (name, category) => {
+      saveSelectionAsComponentWithMeta: (name, category, variables) => {
         const { selectedIds, template } = get();
         const tree = template.elements.filter((e) =>
           selectedIds.includes(e.id),
@@ -864,6 +878,7 @@ export const useEditorStore = create<EditorState>()(
           name: name || "Componente sem nome",
           category: (category as ReusableComponent["category"]) || "custom",
           elementTree: normalized,
+          variables: variables || [],
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
         };
@@ -878,12 +893,16 @@ export const useEditorStore = create<EditorState>()(
         get().pushHistory();
         set((s) => {
           let z = nextZ(s.template);
+          const gId = newId("group_comp");
           const copies = comp.elementTree.map((e) => ({
             ...structuredClone(e),
             id: newId(e.type),
             x: e.x + pos.x,
             y: e.y + pos.y,
             zIndex: z++,
+            groupId: gId,
+            componentId: comp.id,
+            arguments: {},
           }));
           return {
             template: {
@@ -891,6 +910,29 @@ export const useEditorStore = create<EditorState>()(
               elements: [...s.template.elements, ...copies],
             },
             selectedIds: copies.map((c) => c.id),
+          };
+        });
+      },
+      updateGroupArguments: (groupId, args) => {
+        get().pushHistory();
+        set((s) => {
+          const elements = s.template.elements.map((el) => {
+            if (el.groupId === groupId) {
+              return {
+                ...el,
+                arguments: {
+                  ...(el.arguments ?? {}),
+                  ...args,
+                },
+              };
+            }
+            return el;
+          });
+          return {
+            template: {
+              ...s.template,
+              elements,
+            },
           };
         });
       },

@@ -1,5 +1,5 @@
 import { useMemo, useEffect, useRef, useState } from "react";
-import Editor from "@monaco-editor/react";
+import { SafeEditor as Editor } from "./SafeEditor";
 import { useTheme } from "next-themes";
 import {
   ResizableHandle,
@@ -178,7 +178,7 @@ export function BottomConsole() {
             minSize={15}
           >
             <div className="h-full flex flex-col bg-white dark:bg-slate-950 text-slate-800 dark:text-slate-200 min-h-0">
-              <div className="flex-1 min-h-0">
+              <div className="flex-1 min-h-0 h-full w-full relative">
                 <BrowserConsole />
               </div>
             </div>
@@ -190,7 +190,7 @@ export function BottomConsole() {
             minSize={15}
           >
             <div className="h-full flex flex-col bg-white dark:bg-slate-950 text-slate-800 dark:text-slate-200 min-h-0">
-              <div className="flex-1 min-h-0">
+              <div className="flex-1 min-h-0 h-full w-full relative">
                 <ViewBody view={layout.rightView} mode={rightEffectiveMode} />
               </div>
             </div>
@@ -532,9 +532,13 @@ function evaluateConsoleExpression(inputExpr: string, data: any, template: any):
   const expr = inputExpr.trim();
   if (!expr) return undefined;
 
-  const consoleHelpers = ["sum", "avg", "min", "max", "count", "formatCurrency", "formatBacenCurrency", "formatCpfCnpj", "json"];
+  const consoleHelpers = [
+    "sum", "avg", "min", "max", "count", 
+    "formatCurrency", "formatBacenCurrency", "formatCpfCnpj", "json",
+    "toNumber", "asNumber", "toPercent", "asPercent", "toCurrency", "asCurrency", "toDate", "asDate", "toText", "asText"
+  ];
 
-  const varRegex = /\$[a-zA-Z0-9_]+(?:(?:\.[a-zA-Z0-9_]+)|(?:\[\d+\])|(?:\[\*\]))*/g;
+  const varRegex = /\$(?:\[\*\]|[a-zA-Z0-9_]+)(?:(?:\.[a-zA-Z0-9_]+)|(?:\[\d+\])|(?:\[\*\]))*/g;
   const matches = (expr.match(varRegex) || []).filter(v => {
     const name = v.substring(1);
     return !consoleHelpers.includes(name);
@@ -562,48 +566,164 @@ function evaluateConsoleExpression(inputExpr: string, data: any, template: any):
     compiledExpr = compiledExpr.replace(new RegExp(escapedV, 'g'), varName);
   });
 
-  const sum = (arr: any) => {
-    if (!Array.isArray(arr)) return 0;
-    return arr.reduce((acc, v) => acc + (Number(v) || 0), 0);
+  const parseNumber = (value: any): number => {
+    if (value == null) return 0;
+    if (typeof value === "number") return value;
+    if (value instanceof Date) return value.getTime();
+
+    let s = String(value).trim();
+    if (!s) return 0;
+
+    // 1. Verificar se é percentual (ex: "15%", "0.15%")
+    if (s.endsWith("%")) {
+      const cleanPercent = s.replace(/%/g, "").trim();
+      return parseNumber(cleanPercent) / 100;
+    }
+
+    // 2. Verificar se é data
+    // Formato brasileiro: DD/MM/YYYY ou DD/MM/YYYY HH:mm:ss
+    const brDateMatch = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:\s+(\d{1,2}):(\d{1,2}):(\d{1,2}))?$/);
+    if (brDateMatch) {
+      const day = Number(brDateMatch[1]);
+      const month = Number(brDateMatch[2]) - 1; // 0-indexed
+      const year = Number(brDateMatch[3]);
+      const hour = brDateMatch[4] ? Number(brDateMatch[4]) : 0;
+      const min = brDateMatch[5] ? Number(brDateMatch[5]) : 0;
+      const sec = brDateMatch[6] ? Number(brDateMatch[6]) : 0;
+      const d = new Date(year, month, day, hour, min, sec);
+      if (!isNaN(d.getTime())) return d.getTime();
+    }
+
+    // Formato ISO: YYYY-MM-DD ou YYYY-MM-DDTHH:mm:ss...
+    const isoDateMatch = s.match(/^(\d{4})-(\d{2})-(\d{2})(?:T(\d{2}):(\d{2}):(\d{2})(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?)?$/);
+    if (isoDateMatch) {
+      const d = new Date(s);
+      if (!isNaN(d.getTime())) return d.getTime();
+    }
+
+    // 3. Remover símbolos monetários (R$, $, etc.)
+    s = s.replace(/[R$s$\s]/gi, "");
+
+    // 4. Analisar e converter pontuação de milhar e decimal
+    const lastComma = s.lastIndexOf(",");
+    const lastDot = s.lastIndexOf(".");
+    
+    if (lastComma > lastDot) {
+      // Padrão brasileiro (ex: 1.500,20). Remove pontos de milhar, substitui vírgula por ponto.
+      s = s.replace(/\./g, "").replace(",", ".");
+    } else if (lastDot > lastComma) {
+      // Padrão internacional (ex: 1,500.20). Remove vírgulas.
+      s = s.replace(/,/g, "");
+    } else if (lastComma !== -1) {
+      // Apenas vírgula existe (ex: 123,45)
+      s = s.replace(",", ".");
+    }
+
+    const num = Number(s);
+    return Number.isNaN(num) ? 0 : num;
   };
 
-  const avg = (arr: any) => {
-    if (!Array.isArray(arr) || arr.length === 0) return 0;
-    return sum(arr) / arr.length;
+  const getArrayItems = (arr: any, field?: string): number[] => {
+    const items: any[] = Array.isArray(arr) ? arr : (arr != null ? [arr] : []);
+    return items.map(item => {
+      if (item && typeof item === "object" && field) {
+        return parseNumber(resolveExpression(field, item));
+      }
+      return parseNumber(item);
+    });
   };
 
-  const min = (arr: any) => {
-    if (!Array.isArray(arr) || arr.length === 0) return 0;
-    const nums = arr.map(v => Number(v)).filter(v => !isNaN(v));
+  const sum = (arr: any, field?: string) => {
+    const nums = getArrayItems(arr, field);
+    return nums.reduce((acc, v) => acc + v, 0);
+  };
+
+  const avg = (arr: any, field?: string) => {
+    const nums = getArrayItems(arr, field);
+    if (nums.length === 0) return 0;
+    return sum(arr, field) / nums.length;
+  };
+
+  const min = (arr: any, field?: string) => {
+    const nums = getArrayItems(arr, field);
     return nums.length > 0 ? Math.min(...nums) : 0;
   };
 
-  const max = (arr: any) => {
-    if (!Array.isArray(arr) || arr.length === 0) return 0;
-    const nums = arr.map(v => Number(v)).filter(v => !isNaN(v));
+  const max = (arr: any, field?: string) => {
+    const nums = getArrayItems(arr, field);
     return nums.length > 0 ? Math.max(...nums) : 0;
   };
 
   const count = (arr: any) => {
-    return Array.isArray(arr) ? arr.length : 0;
+    if (arr == null) return 0;
+    return Array.isArray(arr) ? arr.length : 1;
   };
 
   const formatCurrency = (val: any) => {
-    const n = typeof val === "number" ? val : Number(val);
-    if (Number.isNaN(n)) return String(val);
+    const n = parseNumber(val);
     return n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
   };
   
   const formatBacenCurrency = (value: any) => {
-    if (value == null) return "0,00";
-    let s = String(value).trim();
-    if (!s) return "0,00";
-    if (s.includes(",") && !s.includes(".")) {
-      s = s.replace(",", ".");
+    const n = parseNumber(value);
+    return n.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  };
+
+  const toNumber = parseNumber;
+
+  const toPercent = (val: any): number => {
+    if (val == null) return 0;
+    if (typeof val === "number") {
+      return val > 1 ? val / 100 : val;
     }
-    const num = Number(s.replace(/[^0-9.-]/g, ""));
-    if (Number.isNaN(num)) return s;
-    return num.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    let s = String(val).trim();
+    if (s.endsWith("%")) {
+      return toNumber(s.slice(0, -1).trim()) / 100;
+    }
+    const num = toNumber(s);
+    return num > 1 ? num / 100 : num;
+  };
+
+  const toCurrency = (val: any): string => {
+    const num = toNumber(val);
+    return "R$ " + num.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  };
+
+  const toDate = (val: any): number => {
+    if (val instanceof Date) return val.getTime();
+    
+    let s = String(val).trim();
+    if (!s) return 0;
+
+    const brDateMatch = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:\s+(\d{1,2}):(\d{1,2}):(\d{1,2}))?$/);
+    if (brDateMatch) {
+      const day = Number(brDateMatch[1]);
+      const month = Number(brDateMatch[2]) - 1;
+      const year = Number(brDateMatch[3]);
+      const hour = brDateMatch[4] ? Number(brDateMatch[4]) : 0;
+      const min = brDateMatch[5] ? Number(brDateMatch[5]) : 0;
+      const sec = brDateMatch[6] ? Number(brDateMatch[6]) : 0;
+      const d = new Date(year, month, day, hour, min, sec);
+      if (!isNaN(d.getTime())) return d.getTime();
+    }
+
+    const isoDateMatch = s.match(/^(\d{4})-(\d{2})-(\d{2})(?:T(\d{2}):(\d{2}):(\d{2})(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?)?$/);
+    if (isoDateMatch) {
+      const d = new Date(s);
+      if (!isNaN(d.getTime())) return d.getTime();
+    }
+
+    const num = toNumber(s);
+    if (num > 1000000000) {
+      return num;
+    }
+    return 0;
+  };
+
+  const toText = (val: any): string => {
+    if (val == null) return "";
+    if (typeof val === "object") return JSON.stringify(val);
+    return String(val);
   };
 
   const formatCpfCnpj = (value: any) => {
@@ -628,6 +748,8 @@ function evaluateConsoleExpression(inputExpr: string, data: any, template: any):
       "formatCurrency", "formatBacenCurrency", "formatCpfCnpj", "json",
       "$sum", "$avg", "$min", "$max", "$count", 
       "$formatCurrency", "$formatBacenCurrency", "$formatCpfCnpj", "$json",
+      "toNumber", "asNumber", "toPercent", "asPercent", "toCurrency", "asCurrency", "toDate", "asDate", "toText", "asText",
+      "$toNumber", "$asNumber", "$toPercent", "$asPercent", "$toCurrency", "$asCurrency", "$toDate", "$asDate", "$toText", "$asText",
       ...Object.keys(varMap)
     ];
     const args = [
@@ -635,6 +757,8 @@ function evaluateConsoleExpression(inputExpr: string, data: any, template: any):
       formatCurrency, formatBacenCurrency, formatCpfCnpj, json,
       sum, avg, min, max, count, 
       formatCurrency, formatBacenCurrency, formatCpfCnpj, json,
+      toNumber, toNumber, toPercent, toPercent, toCurrency, toCurrency, toDate, toDate, toText, toText,
+      toNumber, toNumber, toPercent, toPercent, toCurrency, toCurrency, toDate, toDate, toText, toText,
       ...Object.values(varMap)
     ];
     const runner = new Function(...keys, `return (${compiledExpr});`);
@@ -2028,7 +2152,7 @@ function performAudit(elements: any[], data: any, availableVars: string[]): Audi
   const checkExpression = (el: any, field: string, expr: string, rawText = "") => {
     if (!expr || !expr.trim()) return;
 
-    const varRegex = /\$([a-zA-Z0-9_]+(?:(?:\.[a-zA-Z0-9_]+)|(?:\[\d+\])|(?:\[\*\]))*)/g;
+    const varRegex = /\$((?:\[\*\]|[a-zA-Z0-9_]+)(?:(?:\.[a-zA-Z0-9_]+)|(?:\[\d+\])|(?:\[\*\]))*)/g;
     let match;
     const foundVars: string[] = [];
     while ((match = varRegex.exec(expr)) !== null) {

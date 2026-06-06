@@ -13,6 +13,31 @@ export function resolveExpression(path: string, data: unknown): unknown {
   if (cleanPath.startsWith("$")) {
     cleanPath = cleanPath.slice(1);
   }
+
+  // Se começar com ".", resolve a propriedade em todas as subchaves do objeto de dados
+  if (cleanPath.startsWith(".")) {
+    const subPath = cleanPath.slice(1);
+    if (!subPath) return undefined;
+    
+    if (data && typeof data === "object") {
+      const results: unknown[] = [];
+      for (const key of Object.keys(data)) {
+        if (key === "medida" || key === "medidas" || key === "template" || key === "this") {
+          continue;
+        }
+        const val = resolveExpression(subPath, (data as Record<string, unknown>)[key]);
+        if (val !== undefined) {
+          if (Array.isArray(val)) {
+            results.push(...val);
+          } else {
+            results.push(val);
+          }
+        }
+      }
+      return results.length > 0 ? results : undefined;
+    }
+    return undefined;
+  }
   
   // Se for exatamente "this", retorna o próprio contexto atual
   if (cleanPath === "this") {
@@ -65,11 +90,78 @@ export function resolveExpression(path: string, data: unknown): unknown {
   }
 
   let current: unknown = data;
-  for (const seg of segments) {
+  for (let idx = 0; idx < segments.length; idx++) {
     if (current == null || typeof current !== "object") return undefined;
-    const cleanSeg = seg.trim();
+    const cleanSeg = segments[idx].trim();
     if (!cleanSeg) continue;
     
+    // Se o elemento atual for um Array, e o segmento atual NÃO for numérico e nem '*'
+    // Mapeia o segmento restante para todos os itens do array de forma transparente
+    if (Array.isArray(current) && cleanSeg !== "*" && isNaN(Number(cleanSeg))) {
+      const remainingPath = segments.slice(idx).join(".");
+      const results: unknown[] = [];
+      for (const item of current) {
+        const val = resolveExpression(remainingPath, item);
+        if (val !== undefined) {
+          if (Array.isArray(val)) {
+            results.push(...val);
+          } else {
+            results.push(val);
+          }
+        }
+      }
+      return results.length > 0 ? results : undefined;
+    }
+    
+    if (cleanSeg === "*") {
+      const remainingPath = segments.slice(idx + 1).join(".");
+      
+      // Caso 1: current é um Array
+      if (Array.isArray(current)) {
+        if (!remainingPath) {
+          return current;
+        }
+        const results: unknown[] = [];
+        for (const item of current) {
+          const val = resolveExpression(remainingPath, item);
+          if (val !== undefined) {
+            if (Array.isArray(val)) {
+              results.push(...val);
+            } else {
+              results.push(val);
+            }
+          }
+        }
+        return results.length > 0 ? results : undefined;
+      }
+      
+      // Caso 2: current é um Objeto
+      if (current && typeof current === "object") {
+        const results: unknown[] = [];
+        for (const key of Object.keys(current)) {
+          if (key === "medida" || key === "medidas" || key === "template" || key === "this") {
+            continue;
+          }
+          const item = (current as Record<string, unknown>)[key];
+          if (!remainingPath) {
+            results.push(item);
+          } else {
+            const val = resolveExpression(remainingPath, item);
+            if (val !== undefined) {
+              if (Array.isArray(val)) {
+                results.push(...val);
+              } else {
+                results.push(val);
+              }
+            }
+          }
+        }
+        return results.length > 0 ? results : undefined;
+      }
+      
+      return undefined;
+    }
+
     let val = (current as Record<string, unknown>)[cleanSeg];
     if (val === undefined) {
       const matchingKey = Object.keys(current as object).find(
@@ -96,20 +188,25 @@ export function resolveExpression(path: string, data: unknown): unknown {
       // 2. Tentar encontrar dentro das linhas do array (linhas)
       if (val === undefined && Array.isArray(currentObj.linhas)) {
         const rows = currentObj.linhas as Record<string, unknown>[];
-        const mapped = rows
-          .map((row) => {
-            if (row && typeof row === "object") {
-              const matchingK = Object.keys(row).find(
-                (k) => k.toLowerCase() === cleanSeg.toLowerCase()
-              );
-              return matchingK ? row[matchingK] : undefined;
-            }
-            return undefined;
-          })
-          .filter((v) => v !== undefined);
-        
-        if (mapped.length > 0) {
-          val = mapped;
+        const index = parseInt(cleanSeg, 10);
+        if (!isNaN(index) && index >= 0 && index < rows.length) {
+          val = rows[index];
+        } else {
+          const mapped = rows
+            .map((row) => {
+              if (row && typeof row === "object") {
+                const matchingK = Object.keys(row).find(
+                  (k) => k.toLowerCase() === cleanSeg.toLowerCase()
+                );
+                return matchingK ? row[matchingK] : undefined;
+              }
+              return undefined;
+            })
+            .filter((v) => v !== undefined);
+          
+          if (mapped.length > 0) {
+            val = mapped;
+          }
         }
       }
     }

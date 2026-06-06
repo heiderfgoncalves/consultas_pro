@@ -300,6 +300,11 @@ export function FormulaBar() {
   };
 
   const handleInputKeyUpAndClick = (e: React.SyntheticEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    // Evita rodar autocomplete nas teclas de navegação para não resetar o índice ativo das sugestões
+    const navigationKeys = ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Enter", "Escape", "Tab", "Shift", "Control", "Alt"];
+    if (e.type === "keyup" && navigationKeys.includes((e as any).key)) {
+      return;
+    }
     const el = e.currentTarget;
     const cursor = el.selectionStart || 0;
     updateAutocompleteState(el.value, cursor);
@@ -355,7 +360,7 @@ export function FormulaBar() {
         setSuggestActiveIndex((prev) => (prev - 1 + suggestions.length) % suggestions.length);
         return;
       }
-      if (e.key === "Enter" || e.key === "Tab") {
+      if ((e.key === "Enter" && !e.shiftKey) || e.key === "Tab") {
         e.preventDefault();
         const activeSuggest = suggestions[suggestActiveIdx];
         if (activeSuggest) {
@@ -366,6 +371,29 @@ export function FormulaBar() {
       if (e.key === "Escape") {
         e.preventDefault();
         setIsSuggestOpen(false);
+        return;
+      }
+    }
+
+    // Se pressionar Shift + Enter no modo colapsado, expande a barra e insere quebra de linha
+    if (e.key === "Enter" && e.shiftKey) {
+      if (!isExpanded) {
+        e.preventDefault();
+        setIsExpanded(true);
+        const cursor = e.currentTarget.selectionStart || 0;
+        const val = e.currentTarget.value;
+        const newValue = val.slice(0, cursor) + "\n" + val.slice(cursor);
+        setInputValue(newValue);
+        if (selectedElement && activeProp) {
+          activeProp.setValue(selectedElement, newValue, updateElement, updateData);
+        }
+        setTimeout(() => {
+          if (inputRef.current) {
+            inputRef.current.focus();
+            const newCursor = cursor + 1;
+            inputRef.current.setSelectionRange(newCursor, newCursor);
+          }
+        }, 50);
         return;
       }
     }
@@ -446,7 +474,10 @@ export function FormulaBar() {
       className="flex flex-col border-b border-slate-200 dark:border-slate-800 bg-slate-50/95 dark:bg-slate-950/90 backdrop-blur-sm z-[30] shrink-0 transition-all duration-200 select-none"
       style={{ padding: "5px 12px" }}
     >
-      <div className="flex items-center gap-1.5 w-full min-h-[30px]">
+      <div className={cn(
+        "flex gap-1.5 w-full min-h-[30px]",
+        isExpanded ? "items-start pt-0.5" : "items-center"
+      )}>
         
         {/* 1. CAIXA DE NOME (NAME BOX) */}
         <div className="flex items-center">
@@ -666,7 +697,7 @@ export function FormulaBar() {
               <div 
                 className={cn(
                   "flex-1 bg-white dark:bg-slate-900 border border-slate-250 dark:border-slate-800 rounded-md flex transition-all shadow-xs focus-within:ring-1 focus-within:ring-blue-500 focus-within:border-blue-500",
-                  isExpanded ? "min-h-[80px]" : "h-7 items-center"
+                  isExpanded ? "h-auto items-start" : "h-7 items-center"
                 )}
               >
                 {isExpanded ? (
@@ -680,7 +711,7 @@ export function FormulaBar() {
                     onClick={handleInputKeyUpAndClick}
                     placeholder={selectedElement ? "Digite um texto ou uma expressão, ex: {{$cliente.nome}}" : "Selecione um elemento para editar suas expressões..."}
                     disabled={!selectedElement}
-                    className="w-full h-full px-2 py-1.5 text-xs font-mono text-slate-950 dark:text-slate-50 bg-transparent border-none outline-none resize-none scrollbar-thin focus:ring-0 focus:outline-none"
+                    className="w-full min-h-[80px] h-[80px] px-2 py-1.5 text-xs font-mono text-slate-950 dark:text-slate-55 bg-transparent border-none outline-none resize-y scrollbar-thin focus:ring-0 focus:outline-none"
                   />
                 ) : (
                   <input

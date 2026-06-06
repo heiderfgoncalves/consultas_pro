@@ -3,7 +3,7 @@ import { icons as LucideIcons } from "lucide-react";
 import type { TemplateElement } from "../../schema/template";
 import { useEditorStore, useEvaluationContext } from "../../store/editor.store";
 import { useIsolatedEditorStore } from "../../store/isolated-editor.store";
-import { interpolate } from "../../engine/interpolate";
+import { interpolate, evaluateExpressionRaw } from "../../engine/interpolate";
 import { resolveExpression } from "../../engine/resolveExpression";
 import { formatValue } from "../../engine/formatters";
 import type { BindingFormat } from "../../schema/template";
@@ -18,6 +18,27 @@ type Props = {
 function ElementViewImpl({ element, selected, onSelect, isIsolated = false }: Props) {
   const mode = useEditorStore((s) => s.mode);
   const data = useEvaluationContext();
+
+  let elementData = data;
+  if (element.arguments && Object.keys(element.arguments).length > 0) {
+    const params: Record<string, unknown> = {};
+    for (const [key, expr] of Object.entries(element.arguments)) {
+      params[key] = evaluateExpressionRaw(expr, data);
+    }
+    if (data && typeof data === "object") {
+      elementData = {
+        ...data,
+        ...params,
+        $params: params,
+      };
+    } else {
+      elementData = {
+        $params: params,
+        ...params,
+      };
+    }
+  }
+
   const updateData = isIsolated
     ? useIsolatedEditorStore((s) => s.updateElementData)
     : useEditorStore((s) => s.updateElementData);
@@ -102,7 +123,7 @@ function ElementViewImpl({ element, selected, onSelect, isIsolated = false }: Pr
     if (element.data?.customHtml) {
       const htmlText = element.data.customHtml as string;
       let shown = mode === "preview"
-        ? interpolate(htmlText, data, { fallback: element.binding?.fallback })
+        ? interpolate(htmlText, elementData, { fallback: element.binding?.fallback })
         : htmlText;
       // Garante substituição de fallback caso as chaves de score restem sem resolução no HTML/SVG
       shown = shown
@@ -148,9 +169,9 @@ function ElementViewImpl({ element, selected, onSelect, isIsolated = false }: Pr
             </div>
           );
         }
-        let shown =
+        const shown =
           mode === "preview"
-            ? interpolate(raw, data, { fallback: element.binding?.fallback })
+            ? interpolate(raw, elementData, { fallback: element.binding?.fallback })
             : raw;
         if (shown.startsWith("html:")) {
           let htmlContent = shown.substring(5);
@@ -172,9 +193,9 @@ function ElementViewImpl({ element, selected, onSelect, isIsolated = false }: Pr
         const title = (element.data?.title as string) ?? "";
         const body = (element.data?.body as string) ?? "";
         const t =
-          mode === "preview" ? interpolate(title, data) : title;
+          mode === "preview" ? interpolate(title, elementData) : title;
         const b =
-          mode === "preview" ? interpolate(body, data) : body;
+          mode === "preview" ? interpolate(body, elementData) : body;
         return (
           <div>
             <div style={{ fontWeight: 600, marginBottom: 6 }}>{t}</div>
@@ -227,7 +248,7 @@ function ElementViewImpl({ element, selected, onSelect, isIsolated = false }: Pr
           }>) ?? [];
         const rows =
           mode === "preview"
-            ? ((resolveExpression(path, data) as unknown[]) ?? [])
+            ? ((resolveExpression(path, elementData) as unknown[]) ?? [])
             : Array.from({ length: 2 }, () => null);
         return (
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
@@ -286,7 +307,7 @@ function ElementViewImpl({ element, selected, onSelect, isIsolated = false }: Pr
       }
       case "list": {
         const items = ((element.data?.items as string[]) ?? []).map((it) =>
-          mode === "preview" ? interpolate(it, data) : it,
+          mode === "preview" ? interpolate(it, elementData) : it,
         );
         const style = (element.data?.style as string) ?? "bullet";
         const Tag = (style === "number" ? "ol" : "ul") as "ol" | "ul";

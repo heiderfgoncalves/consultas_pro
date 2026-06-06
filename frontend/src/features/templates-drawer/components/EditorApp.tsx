@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import { useEditorStore } from "../store/editor.store";
 import { cn } from "@/lib/utils";
-import { SplashScreen } from "./SplashScreen";
 import { motion } from "framer-motion";
 import { TitleBar } from "./TitleBar";
 import { Ribbon } from "./Ribbon";
@@ -29,11 +28,8 @@ import {
   ResizablePanelGroup,
 } from "@/components/ui/resizable";
 
-let isSplashShownThisLoad = false;
-
 export function EditorApp() {
   const [hydrated, setHydrated] = useState(false);
-  const [splashComplete, setSplashComplete] = useState(isSplashShownThisLoad);
 
   useEffect(() => {
     useEditorStore.persist.rehydrate();
@@ -47,14 +43,11 @@ export function EditorApp() {
   const activeRightTab = useEditorStore((s) => s.activeRightTab);
   const setActiveRightTab = useEditorStore((s) => s.setActiveRightTab);
 
-  if (!hydrated || !splashComplete) {
+  if (!hydrated) {
     return (
-      <SplashScreen
-        onComplete={() => {
-          isSplashShownThisLoad = true;
-          setSplashComplete(true);
-        }}
-      />
+      <div className="flex h-screen items-center justify-center bg-background">
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-brand border-t-transparent" />
+      </div>
     );
   }
 
@@ -194,30 +187,30 @@ export function EditorApp() {
         animate={{ opacity: 1 }}
         transition={{ duration: 0.3, ease: "easeOut", delay: 0.08 }}
       >
-        {consoleOpen ? (
-          <ResizablePanelGroup
-            direction="vertical"
-            autoSaveId="templates-drawer-console-vertical"
+        <ResizablePanelGroup
+          direction="vertical"
+          autoSaveId="templates-drawer-console-vertical"
+        >
+          <ResizablePanel
+            id="main"
+            defaultSize={70}
+            minSize={20}
           >
-            <ResizablePanel
-              id="main"
-              defaultSize={70}
-              minSize={20}
-            >
-              {mainArea}
-            </ResizablePanel>
-            <ResizableHandle withHandle className="h-1.5 bg-slate-200/80 dark:bg-slate-800/80 hover:bg-indigo-500/40 active:bg-indigo-500 transition-colors duration-200" />
-            <ResizablePanel
-              id="console"
-              defaultSize={30}
-              minSize={10}
-            >
-              <BottomConsole />
-            </ResizablePanel>
-          </ResizablePanelGroup>
-        ) : (
-          mainArea
-        )}
+            {mainArea}
+          </ResizablePanel>
+          {consoleOpen && (
+            <>
+              <ResizableHandle withHandle className="h-1.5 bg-slate-200/80 dark:bg-slate-800/80 hover:bg-indigo-500/40 active:bg-indigo-500 transition-colors duration-200" />
+              <ResizablePanel
+                id="console"
+                defaultSize={30}
+                minSize={10}
+              >
+                <BottomConsole />
+              </ResizablePanel>
+            </>
+          )}
+        </ResizablePanelGroup>
       </motion.div>
       <KeyboardShortcutsDialog />
       <TemplateCodeDialog />

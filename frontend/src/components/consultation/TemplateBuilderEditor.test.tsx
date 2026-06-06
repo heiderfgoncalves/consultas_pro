@@ -55,7 +55,7 @@ describe('TemplateBuilderEditor modes', () => {
     expect(screen.queryByText('Variáveis dinâmicas')).not.toBeInTheDocument();
     expect(screen.queryByText('Console de Expressões')).not.toBeInTheDocument();
     expect(screen.queryByText('Esqueleto')).not.toBeInTheDocument();
-    expect(screen.getByText('Preview')).toBeInTheDocument();
+    expect(screen.getByText('JULIANO CAMPOS PEREIRA')).toBeInTheDocument();
   });
 
   it('modo admin exibe controles técnicos', () => {

@@ -29,6 +29,7 @@ type TemplateRendererProps = {
   selectedFieldId?: string | null;
   onRemoveSection?: (sectionId: string) => void;
   renderFieldOptionTrigger?: (sectionId: string, field: TemplateSection['fields'][number]) => React.ReactNode;
+  onSectionArgumentsChange?: (sectionId: string, args: Record<string, string>) => void;
 };
 
 function resolveBlocks(document: TemplateDocument, explicitBlocks: ConsultationBlock[] = []): ConsultationBlock[] {
@@ -78,13 +79,12 @@ export default function TemplateRenderer({
   selectedFieldId,
   onRemoveSection,
   renderFieldOptionTrigger,
+  onSectionArgumentsChange,
 }: TemplateRendererProps) {
   const sections = templateDocumentToSections(document);
   const runtimeBlocks = resolveBlocks(document, blocks);
 
-  if (mode === 'preview') {
-    if (!capabilities.showPreview) return null;
-
+  if (mode === 'preview' && capabilities.showPreview) {
     return (
       <ConsultationPreview
         blocks={runtimeBlocks}
@@ -116,6 +116,7 @@ export default function TemplateRenderer({
       renderFieldOptionTrigger={renderFieldOptionTrigger}
       mode={mode === 'editor' ? 'skeleton' : mode}
       expressionContext={context}
+      onSectionArgumentsChange={onSectionArgumentsChange}
     />
   );
 }

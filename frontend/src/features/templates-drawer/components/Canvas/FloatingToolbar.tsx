@@ -89,7 +89,24 @@ export function FloatingToolbar({ containerRef, isIsolated = false, staticLayout
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
 
   const [isPinned, setIsPinned] = useState(false);
-  const [pinnedPos, setPinnedPos] = useState<{ x: number; y: number } | null>(null);
+  const [pinnedPos, setPinnedPos] = useState<{ x: number; y: number; flipBelow: boolean } | null>(null);
+
+  const toolbarRef = useRef<HTMLDivElement | null>(null);
+  const [toolbarSize, setToolbarSize] = useState({ width: 0, height: 0 });
+
+  useEffect(() => {
+    if (!toolbarRef.current) return;
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        setToolbarSize({
+          width: entry.contentRect.width,
+          height: entry.contentRect.height,
+        });
+      }
+    });
+    observer.observe(toolbarRef.current);
+    return () => observer.disconnect();
+  }, [selectedIds]);
 
   const isPinnedRef = useRef(isPinned);
   isPinnedRef.current = isPinned;
@@ -120,7 +137,7 @@ export function FloatingToolbar({ containerRef, isIsolated = false, staticLayout
       if (isPinnedRef.current && pinnedPosRef.current && dragOffsetRef.current) {
         const finalX = pinnedPosRef.current.x + dragOffsetRef.current.x;
         const finalY = pinnedPosRef.current.y + dragOffsetRef.current.y;
-        setPinnedPos({ x: finalX, y: finalY });
+        setPinnedPos({ x: finalX, y: finalY, flipBelow: pinnedPosRef.current.flipBelow });
         setDragOffset(null);
       }
     };
@@ -149,7 +166,7 @@ export function FloatingToolbar({ containerRef, isIsolated = false, staticLayout
     setIsPinned((prev) => {
       const next = !prev;
       if (next) {
-        setPinnedPos({ x: posX, y: posY });
+        setPinnedPos({ x: posX, y: posY, flipBelow });
       } else {
         setPinnedPos(null);
         setDragOffset(null);
@@ -183,6 +200,7 @@ export function FloatingToolbar({ containerRef, isIsolated = false, staticLayout
     if (isPinned && pinnedPos) {
       posX = pinnedPos.x + (dragOffset?.x ?? 0);
       posY = pinnedPos.y + (dragOffset?.y ?? 0);
+      flipBelow = pinnedPos.flipBelow;
     } else {
       // Bounding box in world space using physical DOM elements style inside current container
       const domPositions = selected.map((e) => {
@@ -219,6 +237,40 @@ export function FloatingToolbar({ containerRef, isIsolated = false, staticLayout
             : screenY) + (dragOffset?.y ?? 0);
         }
       }
+    }
+
+    // Limitar posicionamento para não sair da tela (respeitando o recuo das bordas)
+    if (containerRef && containerRef.current && toolbarSize.width > 0) {
+      const rect = containerRef.current.getBoundingClientRect();
+      const containerWidth = rect.width;
+      const containerHeight = rect.height;
+      
+      const margin = 12; // Recuo da borda da tela
+      const halfWidth = toolbarSize.width / 2;
+      
+      // Limite horizontal
+      const minPosX = halfWidth + margin;
+      const maxPosX = containerWidth - halfWidth - margin;
+      if (toolbarSize.width + margin * 2 > containerWidth) {
+        posX = containerWidth / 2;
+      } else {
+        posX = Math.max(minPosX, Math.min(maxPosX, posX));
+      }
+      
+      // Limite vertical
+      const toolbarHeight = toolbarSize.height || 40;
+      let minPosY = margin;
+      let maxPosY = containerHeight - margin;
+      
+      if (flipBelow) {
+        minPosY = margin;
+        maxPosY = containerHeight - toolbarHeight - margin;
+      } else {
+        minPosY = toolbarHeight + margin;
+        maxPosY = containerHeight - margin;
+      }
+      
+      posY = Math.max(minPosY, Math.min(maxPosY, posY));
     }
   }
 
@@ -435,6 +487,7 @@ export function FloatingToolbar({ containerRef, isIsolated = false, staticLayout
 
   return (
     <div
+      ref={toolbarRef}
       className="absolute z-50 pointer-events-auto select-none"
       style={{
         left: posX,

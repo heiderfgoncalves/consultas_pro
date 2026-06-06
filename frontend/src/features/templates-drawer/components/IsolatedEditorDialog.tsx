@@ -5,7 +5,7 @@ import { useEditorStore } from "../store/editor.store";
 import { InfiniteCanvas } from "./Canvas/InfiniteCanvas";
 import { RightInspector } from "./RightInspector";
 import { ColorPickerPopover } from "./ColorPickerPopover";
-import Editor from "@monaco-editor/react";
+import { SafeEditor as Editor } from "./SafeEditor";
 import { useTheme } from "next-themes";
 import {
   Type,

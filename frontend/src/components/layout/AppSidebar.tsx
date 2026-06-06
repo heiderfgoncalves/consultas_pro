@@ -71,18 +71,22 @@ export default function AppSidebar() {
 
   const navLinkClass = (active: boolean) =>
     cn(
-      'group flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-[13px] font-medium transition-all duration-200 w-full',
+      'group flex items-center gap-2 px-2 py-1.5 rounded-md text-[11.5px] font-normal tracking-wide transition-all duration-150 w-full select-none',
       active
-        ? 'bg-sidebar-primary text-sidebar-primary-foreground shadow-glow'
-        : 'text-sidebar-muted hover:text-sidebar-foreground hover:bg-sidebar-accent',
+        ? 'bg-sidebar-primary text-sidebar-primary-foreground font-medium shadow-[0_2px_8px_rgba(var(--primary),0.15)] hover:translate-x-[1px]'
+        : 'text-sidebar-muted hover:text-sidebar-foreground hover:bg-sidebar-accent/45 hover:translate-x-[1px]',
     );
 
   const SidebarContent = ({ isMobile = false }: { isMobile?: boolean }) => (
     <div className="flex flex-col h-full">
       {!collapsed && (
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="px-3 py-3 border-b border-sidebar-border">
-          <p className="text-xs font-semibold text-sidebar-foreground truncate">{user?.name}</p>
-          <p className="text-[10px] text-sidebar-muted truncate">{accessLevelLabels[user?.accessLevel ?? 2]}</p>
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="px-3.5 py-3 border-b border-sidebar-border/30 bg-sidebar-accent/10">
+          <p className="text-[11px] font-semibold text-sidebar-foreground/90 truncate tracking-wide uppercase">{user?.name}</p>
+          <p className="text-[9px] font-mono text-sidebar-muted/75 truncate mt-0.5 tracking-wider uppercase">{accessLevelLabels[user?.accessLevel ?? 2]}</p>
+          <div className="mt-1.5 flex items-center gap-1.5 select-none" aria-hidden="true">
+            <span className="w-1 h-1 rounded-full bg-primary animate-pulse" />
+            <span className="font-mono text-[8px] tracking-[0.1em] text-primary/80 uppercase">AI Node Active</span>
+          </div>
         </motion.div>
       )}
 
@@ -96,7 +100,7 @@ export default function AppSidebar() {
               onClick={() => setMobileOpen(false)}
               className={navLinkClass(isActive)}
             >
-              <item.icon className={cn('w-4 h-4 flex-shrink-0 transition-transform duration-200', !isActive && 'group-hover:scale-110')} />
+              <item.icon className={cn('w-3.5 h-3.5 flex-shrink-0 transition-transform duration-200', !isActive && 'group-hover:scale-110')} />
               <AnimatePresence>
                 {(!collapsed || isMobile) && (
                   <motion.span
@@ -167,7 +171,7 @@ export default function AppSidebar() {
                         onClick={() => setMobileOpen(false)}
                         className={cn(navLinkClass(isActive), 'pl-6')}
                       >
-                        <sub.icon className={cn('w-4 h-4 flex-shrink-0', !isActive && 'group-hover:scale-110')} />
+                        <sub.icon className={cn('w-3.5 h-3.5 flex-shrink-0', !isActive && 'group-hover:scale-110')} />
                         <span className="overflow-hidden whitespace-nowrap">{sub.label}</span>
                       </Link>
                     );
