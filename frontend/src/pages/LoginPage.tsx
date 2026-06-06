@@ -269,7 +269,7 @@ export default function LoginPage() {
 
             <div className="mt-4 text-center">
               <Link 
-                to="/?bypass=true" 
+                to="/index?bypass=true" 
                 className="text-[11px] font-mono tracking-wider text-muted-foreground hover:text-brand transition-colors uppercase hover:underline cursor-target"
               >
                 ← Voltar para a Landing Page
