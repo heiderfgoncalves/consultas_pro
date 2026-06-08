@@ -53,11 +53,16 @@ export function PreviewWindow() {
       })
       .join("\n");
     return `<!doctype html><html><head><meta charset="utf-8"/><title>${escapeHtml(template.name)}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@100..900&family=Geist+Mono:wght@100..900&family=Inter:wght@100..900&family=JetBrains+Mono:wght@100..900&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/lucide@0.462.0/dist/umd/lucide.min.js"></script>
 <style>
   * { box-sizing: border-box; }
-  body { margin: 0; background: #e2e8f0; font-family: Inter, sans-serif; color: #0f172a; }
+  body { margin: 0; background: #e2e8f0; font-family: 'Geist', 'Inter', sans-serif; color: #0f172a; }
   .stage { display: flex; flex-direction: column; align-items: center; gap: 16px; padding: 24px; }
   .page { background: #fff; box-shadow: 0 8px 28px rgba(15,23,42,0.18); position: relative; overflow: hidden; }
+  i[data-lucide] svg, svg.lucide { width: 100%; height: 100%; }
   @media print {
     body { background: #fff; }
     .stage { padding: 0; gap: 0; }
@@ -65,7 +70,7 @@ export function PreviewWindow() {
     .page:last-child { page-break-after: auto; }
   }
   @page { margin: ${margin}; }
-</style></head><body><div class="stage">${pages}</div></body></html>`;
+</style></head><body><div class="stage">${pages}</div><script>if (typeof lucide !== "undefined") { lucide.createIcons(); }</script></body></html>`;
   }, [open, template, data, margin]);
 
   function doPrint() {

@@ -3,7 +3,7 @@
  * Examples: "cliente.nome", "dividas[0].credor"
  * Returns undefined when any segment is missing.
  */
-export function resolveExpression(path: string, data: unknown): unknown {
+export function resolveExpression(path: string, data: unknown, collectAllFallback: boolean = false): unknown {
   if (!path) return undefined;
   
   const trimmed = path.trim();
@@ -25,7 +25,7 @@ export function resolveExpression(path: string, data: unknown): unknown {
         if (key === "medida" || key === "medidas" || key === "template" || key === "this") {
           continue;
         }
-        const val = resolveExpression(subPath, (data as Record<string, unknown>)[key]);
+        const val = resolveExpression(subPath, (data as Record<string, unknown>)[key], collectAllFallback);
         if (val !== undefined) {
           if (Array.isArray(val)) {
             results.push(...val);
@@ -101,7 +101,7 @@ export function resolveExpression(path: string, data: unknown): unknown {
       const remainingPath = segments.slice(idx).join(".");
       const results: unknown[] = [];
       for (const item of current) {
-        const val = resolveExpression(remainingPath, item);
+        const val = resolveExpression(remainingPath, item, collectAllFallback);
         if (val !== undefined) {
           if (Array.isArray(val)) {
             results.push(...val);
@@ -123,7 +123,7 @@ export function resolveExpression(path: string, data: unknown): unknown {
         }
         const results: unknown[] = [];
         for (const item of current) {
-          const val = resolveExpression(remainingPath, item);
+          const val = resolveExpression(remainingPath, item, true);
           if (val !== undefined) {
             if (Array.isArray(val)) {
               results.push(...val);
@@ -146,7 +146,7 @@ export function resolveExpression(path: string, data: unknown): unknown {
           if (!remainingPath) {
             results.push(item);
           } else {
-            const val = resolveExpression(remainingPath, item);
+            const val = resolveExpression(remainingPath, item, true);
             if (val !== undefined) {
               if (Array.isArray(val)) {
                 results.push(...val);
@@ -175,6 +175,8 @@ export function resolveExpression(path: string, data: unknown): unknown {
     // Fallback para buscar dentro de totaisCalculados ou linhas se o segmento for indefinido
     if (val === undefined) {
       const currentObj = current as Record<string, unknown>;
+      const collected: unknown[] = [];
+
       // 1. Tentar encontrar dentro de totaisCalculados
       if (currentObj.totaisCalculados && typeof currentObj.totaisCalculados === "object") {
         const tc = currentObj.totaisCalculados as Record<string, unknown>;
@@ -182,15 +184,16 @@ export function resolveExpression(path: string, data: unknown): unknown {
           (k) => k.toLowerCase() === cleanSeg.toLowerCase()
         );
         if (matchingK) {
-          val = tc[matchingK];
+          collected.push(tc[matchingK]);
         }
       }
+
       // 2. Tentar encontrar dentro das linhas do array (linhas)
-      if (val === undefined && Array.isArray(currentObj.linhas)) {
+      if ((collectAllFallback || collected.length === 0) && Array.isArray(currentObj.linhas)) {
         const rows = currentObj.linhas as Record<string, unknown>[];
         const index = parseInt(cleanSeg, 10);
         if (!isNaN(index) && index >= 0 && index < rows.length) {
-          val = rows[index];
+          collected.push(rows[index]);
         } else {
           const mapped = rows
             .map((row) => {
@@ -205,7 +208,44 @@ export function resolveExpression(path: string, data: unknown): unknown {
             .filter((v) => v !== undefined);
           
           if (mapped.length > 0) {
-            val = mapped;
+            collected.push(...mapped);
+          }
+        }
+      }
+
+      if (collected.length > 0) {
+        if (collected.length === 1) {
+          val = collected[0];
+        } else {
+          val = collected;
+        }
+      }
+      // 3. Tentar encontrar por índice nos campos do objeto (aproximação por ordem das tabelas/chaves)
+      if (val === undefined && !Array.isArray(currentObj)) {
+        const index = parseInt(cleanSeg, 10);
+        if (!isNaN(index) && index >= 0) {
+          let keys = Object.keys(currentObj).filter((key) => {
+            if (["medida", "medidas", "template", "this", "cliente", "params"].includes(key.toLowerCase())) {
+              return false;
+            }
+            const v = currentObj[key];
+            if (v == null) return false;
+            if (Array.isArray(v)) {
+              return v.length === 0 || (typeof v[0] === "object" && v[0] !== null);
+            }
+            return typeof v === "object" && "linhas" in v && Array.isArray((v as any).linhas);
+          });
+
+          const nextSeg = segments[idx + 1]?.trim();
+          if (nextSeg) {
+            const filteredKeys = keys.filter((key) => hasPropertyCaseInsensitive(currentObj[key], nextSeg));
+            if (filteredKeys.length > 0) {
+              keys = filteredKeys;
+            }
+          }
+
+          if (index < keys.length) {
+            val = currentObj[keys[index]];
           }
         }
       }
@@ -220,4 +260,48 @@ export function resolveExpression(path: string, data: unknown): unknown {
   }
 
   return current;
+}
+
+function hasPropertyCaseInsensitive(obj: unknown, prop: string): boolean {
+  if (obj == null || typeof obj !== "object") return false;
+
+  const propLower = prop.toLowerCase();
+
+  // 1. Chave direta no objeto
+  const directKeys = Object.keys(obj);
+  const foundDirect = directKeys.find((k) => k.toLowerCase() === propLower);
+  if (foundDirect) return true;
+
+  // 2. Dentro de totaisCalculados
+  const objRecord = obj as Record<string, unknown>;
+  if (objRecord.totaisCalculados && typeof objRecord.totaisCalculados === "object") {
+    const tcKeys = Object.keys(objRecord.totaisCalculados);
+    if (tcKeys.find((k) => k.toLowerCase() === propLower)) {
+      return true;
+    }
+  }
+
+  // 3. Dentro de linhas do array
+  if (Array.isArray(objRecord.linhas)) {
+    const firstRow = objRecord.linhas[0];
+    if (firstRow && typeof firstRow === "object") {
+      const rowKeys = Object.keys(firstRow);
+      if (rowKeys.find((k) => k.toLowerCase() === propLower)) {
+        return true;
+      }
+    }
+  }
+
+  // 4. Se o próprio objeto for um Array
+  if (Array.isArray(obj)) {
+    const firstItem = obj[0];
+    if (firstItem && typeof firstItem === "object") {
+      const itemKeys = Object.keys(firstItem);
+      if (itemKeys.find((k) => k.toLowerCase() === propLower)) {
+        return true;
+      }
+    }
+  }
+
+  return false;
 }

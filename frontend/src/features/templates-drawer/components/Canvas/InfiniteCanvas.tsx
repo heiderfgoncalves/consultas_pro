@@ -223,6 +223,31 @@ export function InfiniteCanvas({ isIsolated }: { isIsolated?: boolean }) {
           useEditorStore.getState().toggleGrid();
         }
       }
+      if (
+        (e.key === "ArrowLeft" ||
+          e.key === "ArrowRight" ||
+          e.key === "ArrowUp" ||
+          e.key === "ArrowDown") &&
+        selectedIds.length > 0 &&
+        !isTyping
+      ) {
+        e.preventDefault();
+        pushHistory();
+        const step = e.shiftKey ? 10 : 1;
+        let dx = 0;
+        let dy = 0;
+        if (e.key === "ArrowLeft") dx = -step;
+        if (e.key === "ArrowRight") dx = step;
+        if (e.key === "ArrowUp") dy = -step;
+        if (e.key === "ArrowDown") dy = step;
+
+        selectedIds.forEach((id) => {
+          const el = elements.find((x) => x.id === id);
+          if (el) {
+            updateElement(id, { x: el.x + dx, y: el.y + dy });
+          }
+        });
+      }
     };
     const up = (e: KeyboardEvent) => {
       if (e.code === "Space") setSpaceHeld(false);
@@ -234,7 +259,7 @@ export function InfiniteCanvas({ isIsolated }: { isIsolated?: boolean }) {
       window.removeEventListener("keydown", down);
       window.removeEventListener("keyup", up);
     };
-  }, [selectedIds, setViewport, isIsolated, elements, setSelected, clearSelection, removeElements, duplicateElements, viewport.zoom]);
+  }, [selectedIds, setViewport, isIsolated, elements, setSelected, clearSelection, removeElements, duplicateElements, viewport.zoom, pushHistory, updateElement]);
 
   // Non-passive wheel listener so Ctrl+wheel doesn't trigger the browser's page zoom.
   useEffect(() => {
@@ -280,6 +305,15 @@ export function InfiniteCanvas({ isIsolated }: { isIsolated?: boolean }) {
       .filter((x): x is HTMLElement => !!x);
     setMoveableTargets(targets);
   }, [selectedIds, elements, editingElementId]);
+
+  // Força atualização da caixa de seleção do Moveable quando houver alterações nos elementos (movimentos via teclado)
+  useEffect(() => {
+    const handle = requestAnimationFrame(() => {
+      moveableRef.current?.updateRect();
+    });
+    return () => cancelAnimationFrame(handle);
+  }, [elements]);
+
 
   // Escuta o evento rd:focus-element do Auditor para centralizar o elemento focado no Canvas
   useEffect(() => {

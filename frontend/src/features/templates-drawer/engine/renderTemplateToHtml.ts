@@ -19,6 +19,7 @@ function styleToCss(el: TemplateElement, frame: Frame): string {
   if (el.rotation) parts.push(`transform:rotate(${el.rotation}deg)`);
   if (s.background) parts.push(`background:${s.background}`);
   if (s.color) parts.push(`color:${s.color}`);
+  if (s.opacity !== undefined) parts.push(`opacity:${s.opacity / 100}`);
   if (s.borderWidth)
     parts.push(
       `border:${s.borderWidth}px solid ${s.borderColor ?? "#cbd5e1"}`,
@@ -30,6 +31,11 @@ function styleToCss(el: TemplateElement, frame: Frame): string {
   if (s.lineHeight) parts.push(`line-height:${s.lineHeight}`);
   if (s.textAlign) parts.push(`text-align:${s.textAlign}`);
   if (s.padding != null) parts.push(`padding:${s.padding}px`);
+  if (el.type === "text") {
+    parts.push("white-space:pre-wrap");
+    parts.push("word-break:break-word");
+    parts.push("overflow-wrap:break-word");
+  }
   parts.push(`z-index:${el.zIndex}`);
   parts.push("box-sizing:border-box");
   parts.push("overflow:hidden");
@@ -105,7 +111,8 @@ function elementBody(
           { __skeleton: true, index: 2 },
         ];
       } else {
-        rows = (resolveExpression(path, data) as unknown[]) ?? [];
+        const resolved = resolveExpression(path, data);
+        rows = Array.isArray(resolved) ? resolved : [];
       }
 
       const head = columns
@@ -149,9 +156,11 @@ function elementBody(
     }
     case "icon": {
       const name = escapeHtml((el.data?.name as string) ?? "Star");
-      // Use a simple data-attribute placeholder; actual SVG render happens in canvas.
-      // For exported HTML, embed an inline label so layout doesn't break.
-      return `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center" data-icon="${name}"></div>`;
+      // Convert PascalCase to kebab-case for Lucide CDN/library (e.g. ArrowLeft -> arrow-left)
+      const kebabName = name
+        .replace(/([a-z0-9])([A-Z])/g, "$1-$2")
+        .toLowerCase();
+      return `<i data-lucide="${kebabName}" style="width:100%;height:100%;display:flex;align-items:center;justify-content:center" data-icon="${name}"></i>`;
     }
   }
   return "";
@@ -214,6 +223,6 @@ export function renderTemplateToHtml(
     })
     .join("\n");
 
-  const html = `<div style="position:relative;width:${frame.width}px;height:${frame.height}px;background:#fff;font-family:Inter,sans-serif;color:#0f172a">\n${body}\n</div>`;
+  const html = `<div style="position:relative;width:${frame.width}px;height:${frame.height}px;background:${frame.background ?? "#fff"};font-family:'Geist', 'Inter', sans-serif;color:#0f172a">\n${body}\n</div>`;
   return { html, logs };
 }

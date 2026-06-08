@@ -246,9 +246,11 @@ function ElementViewImpl({ element, selected, onSelect, isIsolated = false }: Pr
             path: string;
             format?: string;
           }>) ?? [];
-        const rows =
-          mode === "preview"
-            ? ((resolveExpression(path, elementData) as unknown[]) ?? [])
+        const resolved = mode === "preview" ? resolveExpression(path, elementData) : null;
+        const rows = Array.isArray(resolved)
+          ? resolved
+          : mode === "preview"
+            ? []
             : Array.from({ length: 2 }, () => null);
         return (
           <table style={{ width: "100%", borderCollapse: "collapse" }}>

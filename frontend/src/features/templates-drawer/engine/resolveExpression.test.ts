@@ -69,17 +69,12 @@ describe("resolveExpression - Core engine tests", () => {
   });
 
   it("deve realizar varredura global recursiva quando usar o curinga [*] na raiz", () => {
-    // $[*].valor deve varrer DIVIDAS_SPC e DIVIDAS_SERASA, ignorando chaves não-objetos ou sem 'valor'
-    // Como DIVIDAS_SPC e DIVIDAS_SERASA têm 'totaisCalculados.valor', elas caem no fallback de 'valor'
+    // $[*].valor deve varrer DIVIDAS_SPC e DIVIDAS_SERASA, retornando TODOS os valores encontrados (tanto totaisCalculados quanto linhas)
     const resultGlobais = resolveExpression("$[*].valor", mockData);
     
-    // DIVIDAS_SPC.valor resolve para 1500.50 (via totaisCalculados.valor)
-    // DIVIDAS_SERASA.valor resolve para 2400.00 (via totaisCalculados.valor)
-    // Então results deve conter esses valores ou as linhas se o fallback de linhas fosse priorizado.
-    // Como totaisCalculados.valor é avaliado primeiro no fallback:
-    expect(resultGlobais).toContain(1500.50);
-    expect(resultGlobais).toContain(2400.00);
-    expect(resultGlobais).toHaveLength(2);
+    // DIVIDAS_SPC.valor resolve para [1500.50, 500.50, 1000.00]
+    // DIVIDAS_SERASA.valor resolve para [2400.00, 2400.00]
+    expect(resultGlobais).toEqual([1500.50, 500.50, 1000.00, 2400.00, 2400.00]);
   });
 
   it("deve aplicar fallback inteligente para índices numéricos específicos em objetos estruturados", () => {
@@ -147,5 +142,26 @@ describe("resolveExpression - Core engine tests", () => {
     };
 
     console.log("STORE DATA [*].totaldeduzido:", resolveExpression("$[*].totaldeduzido", storeData));
+  });
+
+  it("deve permitir busca por aproximação/índice no objeto raiz de dados (ex: $[0].valor)", () => {
+    // $[0].valor deve resolver para DIVIDAS_SPC.valor (pois cliente é filtrado como metadado), retornando 1500.50
+    expect(resolveExpression("$[0].valor", mockData)).toBe(1500.50);
+    // $[1].valor deve resolver para DIVIDAS_SERASA.valor, retornando 2400.00
+    expect(resolveExpression("$[1].valor", mockData)).toBe(2400.00);
+
+    // Testar com dados onde SCORE_CREDITO (que NÃO tem valor) é colocado no início
+    const scrambledData = {
+      SCORE_CREDITO: {
+        totaisCalculados: { score: 100 },
+        linhas: [{ tipo_score: "A" }]
+      },
+      DIVIDAS_SERASA: {
+        totaisCalculados: { valor: 300 },
+        linhas: [{ valor: 300 }]
+      }
+    };
+    // $[0].valor deve pular SCORE_CREDITO e resolver para DIVIDAS_SERASA.valor (300)
+    expect(resolveExpression("$[0].valor", scrambledData)).toBe(300);
   });
 });

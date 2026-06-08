@@ -492,31 +492,7 @@ function splitExpressions(input: string): string[] {
   return result;
 }
 
-function resolveArrayPath(path: string, context: any): any[] {
-  const wildcardIdx = path.indexOf("[*]");
-  if (wildcardIdx === -1) {
-    return resolveExpression(path, context) as any[];
-  }
 
-  const prefix = path.substring(0, wildcardIdx);
-  const suffix = path.substring(wildcardIdx + 3);
-
-  const arrayVal = resolveExpression(prefix, context);
-  if (!Array.isArray(arrayVal)) {
-    return [];
-  }
-
-  if (!suffix || suffix === ".") {
-    return arrayVal;
-  }
-
-  const cleanSuffix = suffix.startsWith(".") ? suffix.substring(1) : suffix;
-
-  return arrayVal.map(item => {
-    if (item === null || item === undefined) return undefined;
-    return resolveExpression(cleanSuffix, item);
-  });
-}
 
 function evaluateConsoleExpression(inputExpr: string, data: any, template: any): any {
   const context = {
@@ -528,43 +504,6 @@ function evaluateConsoleExpression(inputExpr: string, data: any, template: any):
       ...template
     }
   };
-
-  const expr = inputExpr.trim();
-  if (!expr) return undefined;
-
-  const consoleHelpers = [
-    "sum", "avg", "min", "max", "count", 
-    "formatCurrency", "formatBacenCurrency", "formatCpfCnpj", "json",
-    "toNumber", "asNumber", "toPercent", "asPercent", "toCurrency", "asCurrency", "toDate", "asDate", "toText", "asText"
-  ];
-
-  const varRegex = /\$(?:\[\*\]|[a-zA-Z0-9_]+)(?:(?:\.[a-zA-Z0-9_]+)|(?:\[\d+\])|(?:\[\*\]))*/g;
-  const matches = (expr.match(varRegex) || []).filter(v => {
-    const name = v.substring(1);
-    return !consoleHelpers.includes(name);
-  });
-
-  const uniqueVars = Array.from(new Set(matches)).sort((a, b) => b.length - a.length);
-
-  const varMap: Record<string, any> = {};
-  let compiledExpr = expr;
-
-  uniqueVars.forEach((v, idx) => {
-    const varName = `_v${idx}`;
-    const path = v.substring(1); 
-    
-    let resolvedValue: any;
-    if (path.includes("[*]")) {
-      resolvedValue = resolveArrayPath(path, context);
-    } else {
-      resolvedValue = resolveExpression(path, context);
-    }
-
-    varMap[varName] = resolvedValue;
-
-    const escapedV = v.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
-    compiledExpr = compiledExpr.replace(new RegExp(escapedV, 'g'), varName);
-  });
 
   const parseNumber = (value: any): number => {
     if (value == null) return 0;
@@ -658,6 +597,113 @@ function evaluateConsoleExpression(inputExpr: string, data: any, template: any):
     if (arr == null) return 0;
     return Array.isArray(arr) ? arr.length : 1;
   };
+
+  let expr = inputExpr.trim();
+  if (!expr) return undefined;
+
+  // Preprocessamento do dedup, idêntico ao do engine de interpolação
+  expr = expr.replace(/\$?(dedup)\s*\(\s*(sum|avg|min|max|count)\s*\(\s*([^)]+?)\s*\)\s*,\s*(.+?)\s*\)/g, (match, fnName, aggFn, aggArgsStr, dedupKeysStr) => {
+    let baseArrayPath = "";
+    let aggField = "";
+    const commaIndex = aggArgsStr.indexOf(",");
+    if (commaIndex !== -1) {
+      baseArrayPath = aggArgsStr.substring(0, commaIndex).trim();
+      aggField = aggArgsStr.substring(commaIndex + 1).trim().replace(/['"]/g, '');
+    } else {
+      const lastDot = aggArgsStr.lastIndexOf(".");
+      if (lastDot !== -1 && !aggArgsStr.endsWith(']')) {
+        baseArrayPath = aggArgsStr.substring(0, lastDot).trim();
+        aggField = aggArgsStr.substring(lastDot + 1).trim();
+      } else {
+        baseArrayPath = aggArgsStr.trim();
+      }
+    }
+
+    const rawArray = resolveExpression(baseArrayPath, context);
+    let arr: any[] = [];
+    if (rawArray != null) {
+      if (Array.isArray(rawArray)) {
+        arr = rawArray;
+      } else if (typeof rawArray === "object" && "linhas" in rawArray && Array.isArray((rawArray as any).linhas)) {
+        arr = (rawArray as any).linhas;
+      } else {
+        arr = [rawArray];
+      }
+    }
+
+    const flatArr = arr.reduce((acc, val) => {
+      if (Array.isArray(val)) {
+        return acc.concat(val);
+      }
+      acc.push(val);
+      return acc;
+    }, []);
+
+    const keys = dedupKeysStr.split(',').map(k => k.trim().replace(/['"]/g, ''));
+    
+    const seen = new Set<string>();
+    const dedupedArr = [];
+    for (const item of flatArr) {
+      if (!item || typeof item !== 'object') {
+        dedupedArr.push(item);
+        continue;
+      }
+      const keyValues = keys.map(k => {
+        const val = resolveExpression(k, item);
+        return val === undefined ? '' : String(val);
+      });
+      
+      const hasValidKey = keyValues.some(v => v !== '');
+      if (!hasValidKey) {
+        dedupedArr.push(item);
+        continue;
+      }
+
+      const hash = keyValues.join('|~|');
+      if (!seen.has(hash)) {
+        seen.add(hash);
+        dedupedArr.push(item);
+      }
+    }
+
+    let total = 0;
+    if (aggFn === "sum") total = sum(dedupedArr, aggField);
+    else if (aggFn === "avg") total = avg(dedupedArr, aggField);
+    else if (aggFn === "min") total = min(dedupedArr, aggField);
+    else if (aggFn === "max") total = max(dedupedArr, aggField);
+    else if (aggFn === "count") total = count(dedupedArr);
+
+    return String(total);
+  });
+
+  const consoleHelpers = [
+    "sum", "avg", "min", "max", "count", "dedup",
+    "formatCurrency", "formatBacenCurrency", "formatCpfCnpj", "json",
+    "toNumber", "asNumber", "toPercent", "asPercent", "toCurrency", "asCurrency", "toDate", "asDate", "toText", "asText"
+  ];
+
+  const varRegex = /\$(?:\[\d+\]|\[\*\]|[a-zA-Z0-9_]+)(?:(?:\.[a-zA-Z0-9_]+)|(?:\[\d+\])|(?:\[\*\]))*/g;
+  const matches = (expr.match(varRegex) || []).filter(v => {
+    const name = v.substring(1);
+    return !consoleHelpers.includes(name);
+  });
+
+  const uniqueVars = Array.from(new Set(matches)).sort((a, b) => b.length - a.length);
+
+  const varMap: Record<string, any> = {};
+  let compiledExpr = expr;
+
+  uniqueVars.forEach((v, idx) => {
+    const varName = `_v${idx}`;
+    const path = v.substring(1); 
+    
+    const resolvedValue = resolveExpression(path, context);
+
+    varMap[varName] = resolvedValue;
+
+    const escapedV = v.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
+    compiledExpr = compiledExpr.replace(new RegExp(escapedV, 'g'), varName);
+  });
 
   const formatCurrency = (val: any) => {
     const n = parseNumber(val);

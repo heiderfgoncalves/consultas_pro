@@ -24,7 +24,7 @@ function extractPaths(obj: any, currentPath = ""): string[] {
 const FALLBACK_VARS = extractPaths(SAMPLE_DATA).sort();
 
 const MATH_FUNCTIONS = ["sum(", "count(", "avg(", "min(", "max("];
-const HELPERS = ["formatCurrency(", "formatBacenCurrency(", "formatCpfCnpj(", "math(", "calc("];
+const HELPERS = ["formatCurrency(", "formatBacenCurrency(", "formatCpfCnpj(", "math(", "calc(", "dedup("];
 const SYSTEM_VARS = ["template.protocol", "template.date", "template.company"];
 
 export type SuggestionResult = {

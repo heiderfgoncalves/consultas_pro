@@ -191,6 +191,9 @@ function renderAST(
 
 export function toNumber(value: unknown): number {
   if (value == null) return 0;
+  if (Array.isArray(value)) {
+    return value.reduce<number>((acc, v) => acc + toNumber(v), 0);
+  }
   if (typeof value === "number") return value;
   if (value instanceof Date) return value.getTime();
 
@@ -457,18 +460,46 @@ function preprocessExpression(expr: string, data: unknown): string {
     }
 
     const rawArray = resolveExpression(baseArrayPath, data);
-    const arr = Array.isArray(rawArray) ? rawArray : (rawArray != null ? [rawArray] : []);
+    let arr: any[] = [];
+    if (rawArray != null) {
+      if (Array.isArray(rawArray)) {
+        arr = rawArray;
+      } else if (typeof rawArray === "object" && "linhas" in rawArray && Array.isArray((rawArray as any).linhas)) {
+        arr = (rawArray as any).linhas;
+      } else {
+        arr = [rawArray];
+      }
+    }
+
+    const flatArr = arr.reduce((acc, val) => {
+      if (Array.isArray(val)) {
+        return acc.concat(val);
+      }
+      acc.push(val);
+      return acc;
+    }, []);
 
     const keys = dedupKeysStr.split(',').map(k => k.trim().replace(/['"]/g, ''));
     
     const seen = new Set<string>();
     const dedupedArr = [];
-    for (const item of arr) {
+    for (const item of flatArr) {
       if (!item || typeof item !== 'object') {
         dedupedArr.push(item);
         continue;
       }
-      const keyValues = keys.map(k => String(resolveExpression(k, item)));
+      
+      const keyValues = keys.map(k => {
+        const val = resolveExpression(k, item);
+        return val === undefined ? '' : String(val);
+      });
+      
+      const hasValidKey = keyValues.some(v => v !== '');
+      if (!hasValidKey) {
+        dedupedArr.push(item);
+        continue;
+      }
+
       const hash = keyValues.join('|~|');
       if (!seen.has(hash)) {
         seen.add(hash);
@@ -710,6 +741,163 @@ function parseMath(expr: string): number {
   }
 }
 
+function tokenizeLogic(expr: string): string[] {
+  const regex = /\s*(<=|>=|!=|==|>|<|\+|-|\*|\/|\(|\)|,|'[^']+'|"[^"]+"|[a-zA-Z_$][a-zA-Z0-9._$\[\]\*]*|\d+(?:\.\d+)?)\s*/g;
+  const tokens: string[] = [];
+  let match;
+  while ((match = regex.exec(expr)) !== null) {
+    if (match[1]) tokens.push(match[1]);
+  }
+  return tokens;
+}
+
+function parseLogicAST(tokens: string[]): any {
+  let pos = 0;
+  function peek() { return tokens[pos]; }
+  function consume() { return tokens[pos++]; }
+
+  function parseExpression(): any {
+    return parseComparison();
+  }
+
+  function parseComparison(): any {
+    let left = parseAddition();
+    while (pos < tokens.length) {
+      const op = peek();
+      if (['==', '!=', '>', '<', '>=', '<='].includes(op)) {
+        consume();
+        const right = parseAddition();
+        left = { type: 'binary', op, left, right };
+      } else {
+        break;
+      }
+    }
+    return left;
+  }
+
+  function parseAddition(): any {
+    let left = parseMultiplication();
+    while (pos < tokens.length) {
+      const op = peek();
+      if (['+', '-'].includes(op)) {
+        consume();
+        const right = parseMultiplication();
+        left = { type: 'binary', op, left, right };
+      } else {
+        break;
+      }
+    }
+    return left;
+  }
+
+  function parseMultiplication(): any {
+    let left = parsePrimary();
+    while (pos < tokens.length) {
+      const op = peek();
+      if (['*', '/'].includes(op)) {
+        consume();
+        const right = parsePrimary();
+        left = { type: 'binary', op, left, right };
+      } else {
+        break;
+      }
+    }
+    return left;
+  }
+
+  function parsePrimary(): any {
+    const token = consume();
+    if (!token) return null;
+
+    if (token === '(') {
+      const expr = parseExpression();
+      if (peek() === ')') consume();
+      return expr;
+    }
+
+    if (/^(if|and|or|sin|cos|tan|math|calc)$/i.test(token)) {
+      if (peek() === '(') {
+        consume();
+        const args = [];
+        while (peek() !== ')' && pos < tokens.length) {
+          args.push(parseExpression());
+          if (peek() === ',') consume();
+        }
+        if (peek() === ')') consume();
+        return { type: 'call', fn: token.toLowerCase(), args };
+      }
+    }
+
+    if (/^['"](.*)['"]$/.test(token)) {
+      return { type: 'literal', value: token.slice(1, -1) };
+    }
+
+    if (!isNaN(Number(token))) {
+      return { type: 'literal', value: Number(token) };
+    }
+
+    return { type: 'variable', name: token };
+  }
+
+  return parseExpression();
+}
+
+function evaluateLogicAST(node: any, data: unknown): any {
+  if (!node) return null;
+
+  if (node.type === 'literal') return node.value;
+  if (node.type === 'variable') {
+    return resolveExpression(node.name, data);
+  }
+
+  if (node.type === 'binary') {
+    const left = evaluateLogicAST(node.left, data);
+    const right = evaluateLogicAST(node.right, data);
+    switch (node.op) {
+      case '==': return String(left) === String(right);
+      case '!=': return String(left) !== String(right);
+      case '>': return Number(left) > Number(right);
+      case '<': return Number(left) < Number(right);
+      case '>=': return Number(left) >= Number(right);
+      case '<=': return Number(left) <= Number(right);
+      case '+': return Number(left) + Number(right);
+      case '-': return Number(left) - Number(right);
+      case '*': return Number(left) * Number(right);
+      case '/': return Number(left) / Number(right);
+    }
+  }
+
+  if (node.type === 'call') {
+    if (node.fn === 'if') {
+      const cond = evaluateLogicAST(node.args[0], data);
+      return cond ? evaluateLogicAST(node.args[1], data) : evaluateLogicAST(node.args[2], data);
+    }
+    if (node.fn === 'and') {
+      for (const arg of node.args) {
+        if (!evaluateLogicAST(arg, data)) return false;
+      }
+      return true;
+    }
+    if (node.fn === 'or') {
+      for (const arg of node.args) {
+        if (evaluateLogicAST(arg, data)) return true;
+      }
+      return false;
+    }
+    if (node.fn === 'sin') {
+      return Math.sin(Number(evaluateLogicAST(node.args[0], data)));
+    }
+    if (node.fn === 'cos') {
+      return Math.cos(Number(evaluateLogicAST(node.args[0], data)));
+    }
+    if (node.fn === 'math' || node.fn === 'calc') {
+      return evaluateLogicAST(node.args[0], data); // wrapper
+    }
+  }
+
+  return null;
+}
+
 function resolveVal(
   expression: string,
   data: unknown,
@@ -717,6 +905,13 @@ function resolveVal(
 ): string {
   const trimmed = expression.replace(/\s+/g, " ").trim();
   if (!trimmed) return "";
+
+  if (/^(if|and|or|math|calc|sin|cos|tan)\s*\(|^\d+\s*[-+*/]/i.test(trimmed)) {
+    const tokens = tokenizeLogic(trimmed);
+    const ast = parseLogicAST(tokens);
+    const result = evaluateLogicAST(ast, data);
+    return String(result !== null && result !== undefined ? result : opts.fallback ?? "");
+  }
   
   const helperRegex = /^\$?([a-zA-Z]+)\b/;
   const helperMatch = trimmed.match(helperRegex);
@@ -760,18 +955,45 @@ function resolveVal(
         }
 
         const rawArray = resolveExpression(baseArrayPath, data);
-        const arr = Array.isArray(rawArray) ? rawArray : (rawArray != null ? [rawArray] : []);
+        let arr: any[] = [];
+        if (rawArray != null) {
+          if (Array.isArray(rawArray)) {
+            arr = rawArray;
+          } else if (typeof rawArray === "object" && "linhas" in rawArray && Array.isArray((rawArray as any).linhas)) {
+            arr = (rawArray as any).linhas;
+          } else {
+            arr = [rawArray];
+          }
+        }
+
+        const flatArr = arr.reduce((acc, val) => {
+          if (Array.isArray(val)) {
+            return acc.concat(val);
+          }
+          acc.push(val);
+          return acc;
+        }, []);
 
         const keys = dedupKeysStr.split(',').map(k => k.trim().replace(/['"]/g, ''));
         
         const seen = new Set<string>();
         const dedupedArr = [];
-        for (const item of arr) {
+        for (const item of flatArr) {
           if (!item || typeof item !== 'object') {
             dedupedArr.push(item);
             continue;
           }
-          const keyValues = keys.map(k => String(resolveExpression(k, item)));
+          const keyValues = keys.map(k => {
+            const val = resolveExpression(k, item);
+            return val === undefined ? '' : String(val);
+          });
+          
+          const hasValidKey = keyValues.some(v => v !== '');
+          if (!hasValidKey) {
+            dedupedArr.push(item);
+            continue;
+          }
+
           const hash = keyValues.join('|~|');
           if (!seen.has(hash)) {
             seen.add(hash);
@@ -1003,9 +1225,16 @@ export function evaluateExpressionRaw(expression: string, data: unknown): unknow
   }
   const strResult = interpolate(textToEval, data);
   
-  // Tenta converter para número se parecer um número puro
+  const trimmedResult = strResult.trim();
+  
+  // Se a string já estiver no formato de um número float válido JS (ex: 20.3550),
+  // retorna direto como número, pois o regex com .replace(/\./g, "") removeria o ponto decimal.
+  if (/^-?\d+\.\d+$/.test(trimmedResult)) {
+    return Number(trimmedResult);
+  }
+
   // Remove pontos de milhar e substitui vírgulas por pontos antes de tentar o parse
-  const cleanStr = strResult.replace(/\./g, "").replace(",", ".").trim();
+  const cleanStr = trimmedResult.replace(/\./g, "").replace(",", ".");
   const num = Number(cleanStr);
   if (!Number.isNaN(num) && cleanStr !== "") {
     return num;
