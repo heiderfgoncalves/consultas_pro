@@ -13,6 +13,7 @@ interface ConsultationPreviewProps {
   clientName?: string;
   mode?: 'edit' | 'preview';
   realData?: Record<string, unknown>;
+  layout?: TemplateDocument;
 }
 
 // Constrói dinamicamente um TemplateDocument baseado nos blocos selecionados (Fase 5)
@@ -65,7 +66,7 @@ function buildDynamicDocument(blocks: ConsultationBlock[], name: string): Templa
         id: 'section-score',
         type: 'section',
         label: 'Score de Crédito',
-        kind: 'score',
+         kind: 'score',
         icon: 'Gauge',
         children: [
           { id: 'sc-title', type: 'field', tag: 'text', binding: { expression: 'Como o mercado enxerga seu CPF hoje (e o que está travando seu crédito)' } },
@@ -179,6 +180,7 @@ export default function ConsultationPreview({
   onLogoChange,
   clientName = 'JULIANO CAMPOS PEREIRA',
   realData,
+  layout,
 }: ConsultationPreviewProps) {
   // Constrói o contexto da expressão a partir de dados reais ou mocks
   const expressionContext = useMemo(() => {
@@ -201,10 +203,11 @@ export default function ConsultationPreview({
     return ctx;
   }, [clientName, docInput, realData]);
 
-  // Constrói o layout dinamicamente
+  // Constrói o layout dinamicamente ou usa o layout fornecido
   const templateDoc = useMemo(() => {
+    if (layout) return layout;
     return buildDynamicDocument(blocks, 'Consulta Preview');
-  }, [blocks]);
+  }, [blocks, layout]);
 
   return (
     <div className="bg-card rounded-xl shadow-xs overflow-hidden">

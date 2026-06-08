@@ -877,8 +877,10 @@ export default function TemplatesMvpTab({ accessToken, consultations }: Template
                         srcDoc={`
                           <!DOCTYPE html>
                           <html>
-                            <head>
-                              <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap">
+                              <link rel="preconnect" href="https://fonts.googleapis.com">
+                              <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+                              <link href="https://fonts.googleapis.com/css2?family=Geist:wght@100..900&family=Geist+Mono:wght@100..900&family=Inter:wght@100..900&family=JetBrains+Mono:wght@100..900&display=swap" rel="stylesheet">
+                              <script src="https://cdn.jsdelivr.net/npm/lucide@0.462.0/dist/umd/lucide.min.js"></script>
                               <style>
                                 body {
                                   margin: 0;
@@ -888,11 +890,15 @@ export default function TemplatesMvpTab({ accessToken, consultations }: Template
                                   justify-content: center;
                                   align-items: flex-start;
                                   min-height: 100vh;
-                                  font-family: 'Inter', sans-serif;
+                                  font-family: 'Geist', 'Inter', sans-serif;
                                   box-sizing: border-box;
                                 }
-                                /* Placeholder para render de Ícones Lucide */
-                                [data-icon]::after {
+                                i[data-lucide] svg, svg.lucide {
+                                  width: 100%;
+                                  height: 100%;
+                                }
+                                /* Placeholder para render de Ícones Lucide (fallback offline) */
+                                i[data-lucide]:empty::after {
                                   content: "✦";
                                   font-size: 16px;
                                   color: #6366f1;
@@ -904,6 +910,11 @@ export default function TemplatesMvpTab({ accessToken, consultations }: Template
                               <div style="zoom: 0.52; transform-origin: top center; box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1); border-radius: 8px;">
                                 ${compiledTemplateResult?.html || '<div style="background:#fff;padding:40px;text-align:center">Nenhum conteúdo compilado</div>'}
                               </div>
+                              <script>
+                                if (typeof lucide !== 'undefined') {
+                                  lucide.createIcons();
+                                }
+                              </script>
                             </body>
                           </html>
                         `}
