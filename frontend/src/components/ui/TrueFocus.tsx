@@ -92,7 +92,7 @@ const TrueFocus: React.FC<TrueFocusProps> = ({
 
   return (
     <div 
-      className={`focus-container ${className}`} 
+      className={`focus-container ${className} ${hoveredIndex !== null ? 'is-hovered' : ''}`} 
       ref={containerRef} 
       style={customStyle}
       onMouseLeave={handleContainerMouseLeave}

@@ -51,7 +51,7 @@ export function PipelineCard({ activeStepIndex, setActiveStepIndex }: PipelineCa
       {/* Header */}
       <div className="flex items-start justify-between">
         <div>
-          <div className="mono text-[11px] tracking-[0.18em] uppercase text-brand animate-glitch-hover cursor-pointer">
+          <div className="mono text-[11px] tracking-[0.18em] uppercase text-brand cursor-pointer">
             &gt;&gt; CONSULTAS.PIPELINE
           </div>
           <div className="mt-1 mono text-[11px] tracking-[0.18em] uppercase text-muted-foreground">

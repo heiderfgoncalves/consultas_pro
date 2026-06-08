@@ -39,6 +39,10 @@
   border: none;
 }
 
+.focus-container.is-hovered .focus-frame {
+  display: none !important;
+}
+
 .corner {
   position: absolute;
   width: 14px;

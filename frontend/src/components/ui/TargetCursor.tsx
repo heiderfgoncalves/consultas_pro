@@ -212,7 +212,10 @@ const TargetCursor: React.FC<TargetCursorProps> = ({
       const elementUnderMouse = document.elementFromPoint(mouseX, mouseY) as HTMLElement | null;
       const isStillOverTarget =
         elementUnderMouse &&
-        (elementUnderMouse === activeTarget || elementUnderMouse.closest(targetSelector) === activeTarget);
+        (elementUnderMouse === activeTarget ||
+          elementUnderMouse.closest(
+            `${targetSelector}, button, a, [role="button"], input:not([type="range"]), select, textarea, summary`
+          ) === activeTarget);
       if (!isStillOverTarget) {
         if (currentLeaveHandler) {
           currentLeaveHandler();
@@ -238,19 +241,12 @@ const TargetCursor: React.FC<TargetCursorProps> = ({
 
     const enterHandler = (e: MouseEvent) => {
       const directTarget = e.target as HTMLElement;
-      const allTargets: HTMLElement[] = [];
-      let current: HTMLElement | null = directTarget;
-      while (current && current !== document.body && current !== document.documentElement) {
-        if (current.matches) {
-          const style = window.getComputedStyle(current);
-          const isPointer = style.cursor === 'pointer' || style.cursor === 'grab';
-          if (isPointer || current.matches(targetSelector)) {
-            allTargets.push(current);
-          }
-        }
-        current = current.parentElement;
-      }
-      const target = allTargets[0] || null;
+      if (!directTarget || typeof directTarget.closest !== 'function') return;
+
+      const target = directTarget.closest(
+        `${targetSelector}, button, a, [role="button"], input:not([type="range"]), select, textarea, summary`
+      ) as HTMLElement | null;
+
       if (!target || !cursorRef.current || !cornersRef.current) return;
       if (activeTarget === target) return;
       if (activeTarget) {

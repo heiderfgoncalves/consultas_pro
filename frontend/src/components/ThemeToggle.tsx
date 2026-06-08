@@ -1,6 +1,6 @@
 import { Moon, Sun, Monitor, Palette, Check } from 'lucide-react';
 import { useTheme } from '@/hooks/use-theme';
-import { useSubTheme, SUB_THEMES } from '@/hooks/use-subtheme';
+import { useSubTheme, SUB_THEMES, type SubTheme } from '@/hooks/use-subtheme';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -11,27 +11,133 @@ import {
   DropdownMenuGroup,
 } from '@/components/ui/dropdown-menu';
 import { cn } from '@/lib/utils';
+import { useEffect, useState } from 'react';
 
-export default function ThemeToggle() {
+type ThemeToggleProps = {
+  triggerClassName?: string;
+  contentSide?: 'top' | 'right' | 'bottom' | 'left';
+  contentAlign?: 'start' | 'center' | 'end';
+  onSubThemeSelect?: (theme: SubTheme) => void;
+};
+
+const hslToRgb = (h: number, s: number, l: number) => {
+  s /= 100;
+  l /= 100;
+  const k = (n: number) => (n + h / 30) % 12;
+  const a = s * Math.min(l, 1 - l);
+  const f = (n: number) =>
+    l - a * Math.max(-1, Math.min(k(n) - 3, Math.min(9 - k(n), 1)));
+  return {
+    r: Math.round(255 * f(0)),
+    g: Math.round(255 * f(8)),
+    b: Math.round(255 * f(4)),
+  };
+};
+
+export default function ThemeToggle({
+  triggerClassName,
+  contentSide = 'right',
+  contentAlign = 'end',
+  onSubThemeSelect,
+}: ThemeToggleProps) {
   const { theme, setTheme } = useTheme();
   const { subTheme, setSubTheme } = useSubTheme();
   const activeMode = theme ?? 'dark';
 
   const ModeIcon = activeMode === 'dark' ? Moon : activeMode === 'light' ? Sun : Monitor;
 
+  const [hue, setHue] = useState<number>(() => {
+    const saved = localStorage.getItem('custom-hue');
+    if (saved) return parseInt(saved);
+    const themeHues: Record<string, number> = {
+      classic: 212,
+      cyberpunk: 32,
+      oceanic: 174,
+      emerald: 142,
+      minimal: 240,
+    };
+    return themeHues[subTheme] ?? 212;
+  });
+
+  useEffect(() => {
+    const saved = localStorage.getItem('custom-hue');
+    if (!saved) {
+      const themeHues: Record<string, number> = {
+        classic: 212,
+        cyberpunk: 32,
+        oceanic: 174,
+        emerald: 142,
+        minimal: 240,
+      };
+      setHue(themeHues[subTheme] ?? 212);
+    }
+  }, [subTheme]);
+
+  const handleHueChange = (newHue: number) => {
+    setHue(newHue);
+    localStorage.setItem('custom-hue', newHue.toString());
+
+    // Aplica as cores no documentElement
+    const rgb = hslToRgb(newHue, 95, 48);
+    const themeColor = `rgb(${rgb.r}, ${rgb.g}, ${rgb.b})`;
+    document.documentElement.style.setProperty('--brand', themeColor);
+    document.documentElement.style.setProperty('--brand-glow', `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.85)`);
+    document.documentElement.style.setProperty('--scroll-rgb', `${rgb.r}, ${rgb.g}, ${rgb.b}`);
+
+    // Atualiza as cores de parada do gradiente para o scrollbar
+    const sequence = [newHue, (newHue + 290) % 360, (newHue + 150) % 360];
+    const stopColors = sequence.map((h) => {
+      const stopRgb = hslToRgb(h, 95, 48);
+      return `rgb(${stopRgb.r}, ${stopRgb.g}, ${stopRgb.b})`;
+    });
+    document.documentElement.style.setProperty("--rgb-stop-a", stopColors[0]);
+    document.documentElement.style.setProperty("--rgb-stop-b", stopColors[1]);
+    document.documentElement.style.setProperty("--rgb-stop-c", stopColors[2]);
+
+    // Dispara evento para outros componentes que precisem ouvir a mudança
+    window.dispatchEvent(new CustomEvent('custom-hue-change', { detail: newHue }));
+  };
+
+  const handleSubThemeSelect = (themeId: SubTheme) => {
+    localStorage.removeItem('custom-hue');
+    setSubTheme(themeId);
+
+    // Limpa os estilos inline do documentElement
+    document.documentElement.style.removeProperty('--brand');
+    document.documentElement.style.removeProperty('--brand-glow');
+    document.documentElement.style.removeProperty('--scroll-rgb');
+    document.documentElement.style.removeProperty('--rgb-stop-a');
+    document.documentElement.style.removeProperty('--rgb-stop-b');
+    document.documentElement.style.removeProperty('--rgb-stop-c');
+
+    const themeHues: Record<string, number> = {
+      classic: 212,
+      cyberpunk: 32,
+      oceanic: 174,
+      emerald: 142,
+      minimal: 240,
+    };
+    setHue(themeHues[themeId] ?? 212);
+    onSubThemeSelect?.(themeId);
+  };
+
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <button
-          className="p-2 rounded-lg hover:bg-accent transition-all duration-200 group flex items-center justify-center relative active:scale-95"
+          className={cn(
+            "p-2 rounded-lg hover:bg-accent transition-all duration-200 group flex items-center justify-center relative active:scale-95",
+            triggerClassName,
+          )}
           title="Aparência & Temas"
+          aria-label="Abrir troca de tema e cor"
         >
           <ModeIcon className="w-[17px] h-[18px] text-muted-foreground group-hover:text-foreground transition-colors" />
           <span className="absolute bottom-1 right-1 w-1.5 h-1.5 rounded-full border border-background bg-primary shadow-sm" />
         </button>
       </DropdownMenuTrigger>
       
-      <DropdownMenuContent side="right" align="end" className="w-56 bg-card/95 backdrop-blur-md border border-border/40 p-1.5 shadow-xl rounded-xl">
+      <DropdownMenuContent side={contentSide} align={contentAlign} className="w-56 bg-card/95 backdrop-blur-md border border-border/40 p-1.5 shadow-xl rounded-xl">
         <DropdownMenuLabel className="font-mono text-[9px] tracking-wider text-muted-foreground uppercase px-2 py-1 select-none">
           Aparência do App
         </DropdownMenuLabel>
@@ -67,11 +173,11 @@ export default function ThemeToggle() {
         
         <DropdownMenuGroup className="space-y-0.5">
           {SUB_THEMES.map((themeItem) => {
-            const isActive = subTheme === themeItem.id;
+            const isActive = subTheme === themeItem.id && !localStorage.getItem('custom-hue');
             return (
               <DropdownMenuItem
                 key={themeItem.id}
-                onClick={() => setSubTheme(themeItem.id)}
+                onClick={() => handleSubThemeSelect(themeItem.id)}
                 className={cn(
                   "flex items-center gap-2.5 px-2 py-1.5 rounded-lg text-xs cursor-pointer select-none transition-all duration-150",
                   isActive 
@@ -86,6 +192,32 @@ export default function ThemeToggle() {
             );
           })}
         </DropdownMenuGroup>
+
+        <DropdownMenuSeparator className="bg-border/30 my-1" />
+        
+        <DropdownMenuLabel className="font-mono text-[9px] tracking-wider text-muted-foreground uppercase px-2 py-1 select-none flex items-center gap-1.5">
+          <Palette className="w-3 h-3" /> Matriz Personalizada
+        </DropdownMenuLabel>
+
+        <div className="px-2.5 py-2 space-y-1.5 select-none">
+          <div className="relative flex items-center h-5 group/slider select-none">
+            <input
+              type="range"
+              min="0"
+              max="360"
+              value={hue}
+              onChange={(e) => handleHueChange(parseInt(e.target.value))}
+              style={{
+                background: 'linear-gradient(to right, #ff0000 0%, #ffff00 17%, #00ff00 33%, #00ffff 50%, #0000ff 67%, #ff00ff 83%, #ff0000 100%)'
+              }}
+              className="w-full h-2 rounded-full appearance-none cursor-pointer border border-white/5 shadow-inner focus:outline-none spectral-slider"
+            />
+          </div>
+          <div className="flex justify-between items-center text-[8.5px] font-mono text-muted-foreground">
+            <span>Tonalidade:</span>
+            <span className="text-foreground font-bold">{hue}°</span>
+          </div>
+        </div>
       </DropdownMenuContent>
     </DropdownMenu>
   );
