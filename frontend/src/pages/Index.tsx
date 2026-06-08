@@ -51,6 +51,7 @@ const themeHues: Record<string, number> = {
 export default function Index() {
   const { isAuthenticated, hydrated, hydrate } = useAuthStore();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { subTheme } = useSubTheme();
   const { theme, setTheme } = useTheme();
   const activeMode = theme ?? "dark";
@@ -260,7 +261,6 @@ export default function Index() {
   // ROTEAMENTO DINÂMICO:
   // Se o usuário estiver autenticado, redireciona imediatamente para o dashboard
   // (a menos que o parâmetro ?bypass=true ou ?landing=true esteja presente na URL)
-  const [searchParams] = useSearchParams();
   const forceLanding = searchParams.get("bypass") === "true" || searchParams.get("landing") === "true";
 
   if (isAuthenticated && !forceLanding) {

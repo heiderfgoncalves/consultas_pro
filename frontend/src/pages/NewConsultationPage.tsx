@@ -24,6 +24,8 @@ import {
   type ApiTemplate
 } from '@/api/admin-integrations';
 import { toast } from 'sonner';
+import { migrateTemplateLayout, templateDocumentToSections } from '@/lib/templateDocument';
+
 
 // Mapeador dinâmico de template do backend para o formato SavedTemplate do frontend
 const mapApiTemplateToSavedTemplate = (apiTpl: ApiTemplate): SavedTemplate & {
@@ -48,6 +50,7 @@ const mapApiTemplateToSavedTemplate = (apiTpl: ApiTemplate): SavedTemplate & {
   });
 
   const totalPrice = blocks.reduce((sum, b) => sum + b.price, 0);
+  const normalizedLayout = apiTpl.layout ? migrateTemplateLayout(apiTpl.layout) : null;
 
   return {
     id: apiTpl.id,
@@ -58,7 +61,7 @@ const mapApiTemplateToSavedTemplate = (apiTpl: ApiTemplate): SavedTemplate & {
     createdAt: new Date(apiTpl.createdAt).toLocaleDateString('pt-BR'),
     updatedAt: new Date(apiTpl.updatedAt).toLocaleDateString('pt-BR'),
     visibility: apiTpl.visibility,
-    layout: apiTpl.layout,
+    layout: normalizedLayout,
     logo: apiTpl.logo,
     rawItems: apiTpl.items,
   };
@@ -144,6 +147,7 @@ function TemplatePreviewModal({ template, open, onClose }: { template: any; open
               logo={template.logo}
               realData={activeSim.realData}
               mode="preview"
+              layout={template.layout}
             />
           </div>
         </div>
@@ -373,23 +377,14 @@ export default function NewConsultationPage() {
   // Varrer o layout estrutural do template para identificar inputs dinâmicos
   const templateFields = useMemo(() => {
     if (!selectedTemplate || !selectedTemplate.layout) return [];
-    const layout = selectedTemplate.layout as any;
+    const layout = selectedTemplate.layout;
     const fieldsList: any[] = [];
 
-    const collectFromNode = (node: any) => {
-      if (!node) return;
-      if (node.type === 'field' || node.kind === 'field') {
-        fieldsList.push(node);
-      }
-      if (node.children && Array.isArray(node.children)) {
-        node.children.forEach(collectFromNode);
-      }
-    };
-
-    if (layout.sections && Array.isArray(layout.sections)) {
-      layout.sections.forEach((sec: any) => {
+    try {
+      const sections = templateDocumentToSections(layout);
+      sections.forEach((sec) => {
         if (sec.fields && Array.isArray(sec.fields)) {
-          sec.fields.forEach((f: any) => {
+          sec.fields.forEach((f) => {
             fieldsList.push({
               ...f,
               sectionTitle: sec.title
@@ -397,9 +392,8 @@ export default function NewConsultationPage() {
           });
         }
       });
-    } else if (layout.nodes && typeof layout.nodes === 'object') {
-      // Formato v2 nodes de layout do editor canvas
-      Object.values(layout.nodes).forEach((n: any) => collectFromNode(n));
+    } catch (error) {
+      console.error('Erro ao processar campos do template:', error);
     }
     return fieldsList;
   }, [selectedTemplate]);
@@ -956,6 +950,7 @@ export default function NewConsultationPage() {
                       logo={reportLogo}
                       realData={currentSimulatedRealData}
                       mode="preview"
+                      layout={selectedTemplate?.layout}
                     />
                   </div>
                 </div>
@@ -976,7 +971,11 @@ export default function NewConsultationPage() {
           }}
           initialBlocks={editingTemplate?.blocks}
           templateName={editingTemplate?.name}
-          initialSections={editingTemplate?.layout?.sections}
+          initialSections={
+            editingTemplate?.layout
+              ? templateDocumentToSections(editingTemplate.layout)
+              : undefined
+          }
           initialLogo={editingTemplate?.logo}
           accessToken={accessToken}
           onSave={handleSaveTemplateBuilder}
