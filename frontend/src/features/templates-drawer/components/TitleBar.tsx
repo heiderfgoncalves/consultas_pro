@@ -44,6 +44,7 @@ export function TitleBar() {
 
   const [isEditingName, setIsEditingName] = useState(false);
   const [tempName, setTempName] = useState(name);
+  const [hasSyncedFromServer, setHasSyncedFromServer] = useState(false);
 
   // Replicando a query de templates para usar cache do React Query
   const templatesQuery = useQuery({
@@ -91,7 +92,7 @@ export function TitleBar() {
   };
 
   const saveLayoutMutation = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (vars?: { isAutosave?: boolean }) => {
       let targetId = activeTemplateId;
 
       // Se não há um ID ativo, estamos salvando um rascunho local pela primeira vez!
@@ -100,7 +101,9 @@ export function TitleBar() {
           throw new Error("Nenhum produto de consulta ativo encontrado no banco para vinculação padrão. Cadastre um produto de consulta primeiro.");
         }
 
-        toast.info("Criando novo template de relatório no servidor...");
+        if (!vars?.isAutosave) {
+          toast.info("Criando novo template de relatório no servidor...");
+        }
         const createdTpl = await createTemplateApi(accessToken, {
           name: template.name,
           visibility: "PRIVATE",
@@ -115,17 +118,21 @@ export function TitleBar() {
       }
 
       // Com o ID real do banco (seja existente ou recém-criado), salva o layout
-      return patchTemplateLayoutApi(accessToken, targetId, {
+      const res = await patchTemplateLayoutApi(accessToken, targetId, {
         name: template.name,
         layout: template,
       });
+
+      return { res, isAutosave: vars?.isAutosave };
     },
     onSuccess: (data) => {
-      toast.success("Layout e nome do template salvos no servidor com sucesso!");
-      
+      if (!data.isAutosave) {
+        toast.success("Layout e nome do template salvos no servidor com sucesso!");
+      }
+
       // Se era um template novo, precisamos atualizar o ID ativo no estado global
-      if (!activeTemplateId && data?.id) {
-        setActiveTemplateId(data.id);
+      if (!activeTemplateId && data.res?.id) {
+        setActiveTemplateId(data.res.id);
       }
 
       queryClient.invalidateQueries({ queryKey: ['production-templates-integration'] });
@@ -141,12 +148,42 @@ export function TitleBar() {
     return () => clearInterval(id);
   }, []);
 
-  // Autosave is via zustand persist; just stamp every 30s if dirty.
+  // Autosave debounced para o servidor (apenas se houver template ativo)
   useEffect(() => {
-    if (!dirty) return;
-    const id = setTimeout(() => markSaved(), 1500);
+    if (!dirty || !activeTemplateId) return;
+
+    const id = setTimeout(() => {
+      saveLayoutMutation.mutate({ isAutosave: true });
+    }, 3000); // 3 segundos de inatividade
+
     return () => clearTimeout(id);
-  }, [dirty, template, markSaved]);
+  }, [dirty, template, activeTemplateId]);
+
+  // Resetar a flag de sincronização se o template ativo mudar
+  useEffect(() => {
+    setHasSyncedFromServer(false);
+  }, [activeTemplateId]);
+
+  // Sincroniza o layout do banco de dados na inicialização ou troca de template
+  useEffect(() => {
+    if (!templatesQuery.data || !activeTemplateId) return;
+    if (hasSyncedFromServer || dirty) return;
+
+    const t = templatesQuery.data.find((x) => x.id === activeTemplateId);
+    if (t && t.layout) {
+      try {
+        const parsed = typeof t.layout === "string" ? JSON.parse(t.layout) : t.layout;
+        if (parsed && typeof parsed === "object" && Array.isArray(parsed.frames)) {
+          load(parsed);
+          setHasSyncedFromServer(true);
+          markSaved();
+          toast.success(`Layout do template "${t.name}" sincronizado com o servidor.`);
+        }
+      } catch (e) {
+        console.error("Erro ao sincronizar template do servidor:", e);
+      }
+    }
+  }, [templatesQuery.data, activeTemplateId, hasSyncedFromServer, dirty, load, markSaved]);
 
   const savedLabel = lastSavedAt
     ? formatRelative(now - lastSavedAt)
@@ -209,6 +246,7 @@ export function TitleBar() {
     if (targetId === null) {
       setActiveTemplateId(null);
       newTpl();
+      setHasSyncedFromServer(true);
       toast.info("Você está editando um novo template em branco.");
     } else {
       setActiveTemplateId(targetId);
@@ -218,22 +256,48 @@ export function TitleBar() {
           const parsed = typeof t.layout === "string" ? JSON.parse(t.layout) : t.layout;
           if (parsed && typeof parsed === "object" && Array.isArray(parsed.frames)) {
             load(parsed);
+            setHasSyncedFromServer(true);
             toast.success(`Layout do template "${t.name}" importado.`);
           } else {
             toast.warning(`O template "${t.name}" não possui um layout visual v2 válido.`);
             newTpl();
+            setHasSyncedFromServer(true);
           }
         } catch {
           toast.error("Erro ao analisar o layout JSON do template.");
           newTpl();
+          setHasSyncedFromServer(true);
         }
       } else {
         toast.info("Este template está sem layout. Comece a desenhá-lo na tela limpa.");
         newTpl();
+        setHasSyncedFromServer(true);
       }
     }
     return true;
   };
+
+  let statusText = "";
+  let statusIcon = null;
+  let statusTooltip = "";
+
+  if (!activeTemplateId) {
+    statusText = "Rascunho local";
+    statusIcon = <CircleDot className="size-2.5 text-amber-300" />;
+    statusTooltip = "Este template existe apenas no seu navegador. Clique em 'Salvar' para salvá-lo no banco de dados.";
+  } else if (saveLayoutMutation.isPending) {
+    statusText = "Salvando...";
+    statusIcon = <Loader2 className="size-2.5 animate-spin text-white" />;
+    statusTooltip = "Salvando alterações no banco de dados...";
+  } else if (dirty) {
+    statusText = "Alterações pendentes...";
+    statusIcon = <CircleDot className="size-2.5 text-amber-300 animate-pulse" />;
+    statusTooltip = "Você fez alterações locais que serão salvas automaticamente no servidor em instantes.";
+  } else {
+    statusText = lastSavedAt ? `Salvo no servidor (${savedLabel})` : "Sincronizado";
+    statusIcon = <CheckCircle2 className="size-2.5 text-emerald-300" />;
+    statusTooltip = "Todas as alterações estão salvas no banco de dados.";
+  }
 
   return (
     <div
@@ -308,16 +372,12 @@ export function TitleBar() {
           </button>
         </div>
       )}
-      <span className="flex items-center gap-1 text-[10px] text-white/80 font-medium ml-1 bg-white/10 rounded-full px-2 py-0.5">
-        {dirty ? (
-          <>
-            <CircleDot className="size-2.5 text-amber-300 animate-pulse" /> rascunho
-          </>
-        ) : (
-          <>
-            <CheckCircle2 className="size-2.5 text-emerald-300" /> {savedLabel}
-          </>
-        )}
+      <span 
+        className="flex items-center gap-1 text-[10px] text-white/80 font-medium ml-1 bg-white/10 rounded-full px-2 py-0.5 cursor-help"
+        title={statusTooltip}
+      >
+        {statusIcon}
+        {statusText}
       </span>
       <div className="ml-auto flex items-center gap-1">
         <Button

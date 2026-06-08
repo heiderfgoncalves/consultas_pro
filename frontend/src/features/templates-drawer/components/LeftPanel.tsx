@@ -945,23 +945,6 @@ export function LeftPanel() {
     };
   }, [availableVariables]);
 
-  // Mutações para salvar layout do editor
-  const saveLayoutMutation = useMutation({
-    mutationFn: async () => {
-      if (!activeTemplateId) throw new Error('Selecione um template de produção primeiro');
-      return patchTemplateLayoutApi(accessToken, activeTemplateId, {
-        layout: currentLayoutJson,
-      });
-    },
-    onSuccess: () => {
-      toast.success('Layout do template salvo no backend com sucesso!');
-      useEditorStore.getState().markSaved();
-    },
-    onError: (err: any) => {
-      toast.error(err.message || 'Erro ao salvar layout');
-    },
-  });
-
   function exportComponents() {
     const blob = new Blob([JSON.stringify(components, null, 2)], {
       type: "application/json",
