@@ -262,17 +262,6 @@ export function WorkflowSplit() {
                             }`}
                           />
 
-                          {/* Scanner de fundo individual sutil com delay dinâmico */}
-                          <div className="absolute inset-0 rounded-lg overflow-hidden pointer-events-none -z-10">
-                            <div
-                              className="absolute left-0 right-0 h-[40%] bg-gradient-to-b from-transparent via-brand/10 to-transparent transition-opacity duration-300"
-                              style={{
-                                animation: "scan-down 4s linear infinite",
-                                animationDelay: `${idx * 0.4}s`,
-                              }}
-                            />
-                          </div>
-
                           {/* Bloco numérico estruturado cyberpunk */}
                           <div
                             className={`w-10 h-10 flex items-center justify-center shrink-0 border relative overflow-hidden transition-all duration-550 rounded-sm ml-2 z-10 ${
@@ -281,13 +270,6 @@ export function WorkflowSplit() {
                                 : "border-stone-800 dark:border-stone-800/80 bg-stone-950 text-stone-500 group-hover/step:border-stone-500 group-hover/step:text-stone-300"
                             }`}
                           >
-                            {isActive && (
-                              <>
-                                <div className="absolute inset-0 bg-brand/10 animate-pulse" />
-                                <div className="absolute top-0 left-0 w-full h-[1px] bg-brand/50" />
-                                <div className="absolute bottom-0 right-0 w-full h-[1px] bg-brand/50" />
-                              </>
-                            )}
                             {isActive ? (
                               <Loader2 className="h-4.5 w-4.5 animate-spin relative z-10" />
                             ) : (
@@ -306,7 +288,6 @@ export function WorkflowSplit() {
                             <span className="text-[11.5px] md:text-[12px] text-muted-foreground mt-0.5 group-hover/step:text-stone-400">
                               {s.desc}
                             </span>
-                            <div className="flow-process-bar workflow-process-bar" aria-hidden><span /></div>
                           </div>
                         </Reorder.Item>
                       );

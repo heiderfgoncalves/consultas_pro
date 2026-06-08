@@ -68,6 +68,14 @@ const scrollHueSequences: Record<string, number[]> = {
   minimal: [0, 142, 212],
 };
 
+const subThemePresetRGB = {
+  classic: hslToRgb(212, 95, 48),
+  cyberpunk: hslToRgb(32, 95, 48),
+  oceanic: hslToRgb(174, 95, 42),
+  emerald: hslToRgb(142, 88, 42),
+  minimal: { r: 210, g: 214, b: 220 },
+};
+
 const interpolate = (a: number, b: number, t: number) => a + (b - a) * t;
 
 const rgbFromProgress = (progress: number, sequence: number[]) => {
@@ -82,6 +90,26 @@ const rgbFromProgress = (progress: number, sequence: number[]) => {
 
 const rgbString = ({ r, g, b }: { r: number; g: number; b: number }) =>
   `rgb(${r}, ${g}, ${b})`;
+
+const applyBrandCssVars = (
+  rgb: { r: number; g: number; b: number },
+  progress: number,
+  sequence: number[],
+  locked: boolean,
+) => {
+  const root = document.documentElement;
+  const themeColor = rgbString(rgb);
+  root.style.setProperty("--brand", themeColor);
+  root.style.setProperty("--brand-glow", `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.85)`);
+  root.style.setProperty("--scroll-rgb", `${rgb.r}, ${rgb.g}, ${rgb.b}`);
+  root.style.setProperty("--scroll-progress", `${progress}`);
+
+  const stopColors = sequence.map((hue) => rgbString(hslToRgb(hue, 95, 48)));
+  root.style.setProperty("--rgb-stop-a", stopColors[0] ?? themeColor);
+  root.style.setProperty("--rgb-stop-b", stopColors[1] ?? themeColor);
+  root.style.setProperty("--rgb-stop-c", stopColors[2] ?? themeColor);
+  root.classList.toggle("rgb-color-locked", locked);
+};
 
 const sectionIds = [
   "top",
@@ -110,6 +138,8 @@ export default function App() {
   const [scrollProgress, setScrollProgress] = useState(0);
   const scrollProgressRef = useRef(0);
   const [rgbLocked, setRgbLocked] = useState(false);
+  const rgbLockedRef = useRef(false);
+  const activeHueSequenceRef = useRef(scrollHueSequences.classic);
 
   useEffect(() => {
     const handleHoverStart = () => setIsHoveredHeroPipeline(true);
@@ -175,10 +205,13 @@ export default function App() {
     [subTheme],
   );
 
-  const liveScrollRGB = useMemo(
-    () => rgbFromProgress(scrollProgress, activeHueSequence),
-    [activeHueSequence, scrollProgress],
-  );
+  useEffect(() => {
+    activeHueSequenceRef.current = activeHueSequence;
+  }, [activeHueSequence]);
+
+  useEffect(() => {
+    rgbLockedRef.current = rgbLocked;
+  }, [rgbLocked]);
 
   useEffect(() => {
     let frame = 0;
@@ -190,9 +223,16 @@ export default function App() {
         document.documentElement.scrollHeight - window.innerHeight,
       );
       const nextProgress = Math.min(1, Math.max(0, window.scrollY / maxScroll));
-      if (Math.abs(nextProgress - scrollProgressRef.current) < 0.004) return;
       scrollProgressRef.current = nextProgress;
-      setScrollProgress(nextProgress);
+      setScrollProgress((current) =>
+        Math.abs(nextProgress - current) > 0.0015 ? nextProgress : current,
+      );
+
+      if (!rgbLockedRef.current) {
+        const nextRgb = rgbFromProgress(nextProgress, activeHueSequenceRef.current);
+        setCustomRGB(nextRgb);
+        applyBrandCssVars(nextRgb, nextProgress, activeHueSequenceRef.current, false);
+      }
     };
 
     const requestUpdate = () => {
@@ -211,39 +251,35 @@ export default function App() {
     };
   }, []);
 
-  useEffect(() => {
-    if (!rgbLocked) {
-      setCustomRGB(liveScrollRGB);
-    }
-  }, [liveScrollRGB, rgbLocked]);
-
   const toggleRgbLock = useCallback(() => {
+    const progress = scrollProgressRef.current;
+    const liveRgb = rgbFromProgress(progress, activeHueSequenceRef.current);
     setRgbLocked((locked) => {
-      setCustomRGB(liveScrollRGB);
-      return !locked;
+      const nextLocked = !locked;
+      setCustomRGB(liveRgb);
+      applyBrandCssVars(liveRgb, progress, activeHueSequenceRef.current, nextLocked);
+      return nextLocked;
     });
-  }, [liveScrollRGB]);
+  }, []);
+
+  useEffect(() => {
+    const handlePresetColor = (event: Event) => {
+      const nextSubTheme = (event as CustomEvent<keyof typeof subThemePresetRGB>).detail;
+      const presetRgb = subThemePresetRGB[nextSubTheme] ?? subThemePresetRGB.classic;
+      const sequence = scrollHueSequences[nextSubTheme] ?? scrollHueSequences.classic;
+      setRgbLocked(true);
+      setCustomRGB(presetRgb);
+      applyBrandCssVars(presetRgb, scrollProgressRef.current, sequence, true);
+    };
+
+    window.addEventListener("sub-theme-change", handlePresetColor);
+    return () => window.removeEventListener("sub-theme-change", handlePresetColor);
+  }, []);
 
   const themeColor = rgbString(customRGB);
 
   useEffect(() => {
-    const root = document.documentElement;
-    root.style.setProperty("--brand", themeColor);
-    root.style.setProperty(
-      "--brand-glow",
-      `rgba(${customRGB.r}, ${customRGB.g}, ${customRGB.b}, 0.85)`,
-    );
-    root.style.setProperty(
-      "--scroll-rgb",
-      `${customRGB.r}, ${customRGB.g}, ${customRGB.b}`,
-    );
-    root.style.setProperty("--scroll-progress", `${scrollProgress}`);
-
-    const stopColors = activeHueSequence.map((hue) => rgbString(hslToRgb(hue, 95, 48)));
-    root.style.setProperty("--rgb-stop-a", stopColors[0] ?? themeColor);
-    root.style.setProperty("--rgb-stop-b", stopColors[1] ?? themeColor);
-    root.style.setProperty("--rgb-stop-c", stopColors[2] ?? themeColor);
-    root.classList.toggle("rgb-color-locked", rgbLocked);
+    applyBrandCssVars(customRGB, scrollProgress, activeHueSequence, rgbLocked);
   }, [activeHueSequence, customRGB, rgbLocked, scrollProgress, themeColor]);
 
   const gradientColors = useMemo(() => {

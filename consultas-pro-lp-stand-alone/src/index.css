@@ -1842,3 +1842,90 @@ html.rgb-color-locked .rgb-scroll-fill {
   position: relative;
   z-index: 1;
 }
+
+/* ==========================================
+   Refinamento: scan flow somente entre cards
+   ========================================== */
+.pipeline-flow-grid {
+  position: relative;
+  isolation: isolate;
+}
+
+.pipeline-flow-grid::before {
+  content: "";
+  position: absolute;
+  left: var(--pipeline-flow-padding);
+  right: var(--pipeline-flow-padding);
+  top: 50px;
+  height: 2px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--brand) 18%, transparent), transparent);
+  z-index: 0;
+  pointer-events: none;
+}
+
+.pipeline-flow-grid::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 25px;
+  width: calc(100% / var(--pipeline-flow-count));
+  height: 50px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, transparent, rgba(var(--scroll-rgb), 0.16), rgba(var(--scroll-rgb), 0.44), transparent);
+  filter: blur(3px);
+  transform: translate3d(var(--pipeline-flow-offset), 0, 0);
+  transition: transform 620ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  z-index: 0;
+  pointer-events: none;
+}
+
+.pipeline-flow-grid > * {
+  position: relative;
+  z-index: 1;
+}
+
+.flow-process-bar,
+.scan-grid-process,
+.workflow-process-bar,
+.mobile-stage-process {
+  display: none !important;
+}
+
+.flow-card.is-active,
+.scan-grid-card.is-active,
+.mobile-feature-card.is-active,
+.mobile-stage-card.is-active,
+.workflow-flow-card.is-active {
+  background: color-mix(in srgb, hsl(var(--background)) 90%, var(--brand) 10%) !important;
+  box-shadow: 0 12px 36px rgba(var(--scroll-rgb), 0.13), inset 0 0 0 1px color-mix(in srgb, var(--brand) 26%, transparent) !important;
+}
+
+.flow-card.is-active::after,
+.scan-grid-card.is-active::after,
+.mobile-feature-card.is-active::after,
+.mobile-stage-card.is-active::after,
+.workflow-flow-card.is-active::after {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  border: 1px solid color-mix(in srgb, var(--brand) 48%, transparent);
+  pointer-events: none;
+}
+
+@media (max-width: 767px) {
+  .pipeline-flow-grid::before,
+  .pipeline-flow-grid::after {
+    display: none;
+  }
+}
+
+.rgb-scroll-orb {
+  pointer-events: auto;
+  cursor: pointer;
+}
+
+.rgb-scroll-orb svg {
+  color: var(--brand) !important;
+}

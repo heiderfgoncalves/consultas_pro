@@ -5,6 +5,7 @@ import { FinalCTA } from "@/components/landing/FinalCTA";
 import { Footer } from "@/components/landing/Footer";
 import { BackgroundFX } from "@/components/landing/BackgroundFX";
 import { ScanFlowCards } from "@/components/landing/ScanFlowCards";
+import ThemeToggle from "@/components/ThemeToggle";
 import Dock, { type DockItemData } from "@/components/ui/Dock";
 import { CONFIG } from "@/config";
 import {
@@ -15,7 +16,6 @@ import {
   LayoutGrid,
   Lock,
   LogIn,
-  Palette,
   Unlock,
   UserPlus,
 } from "lucide-react";
@@ -304,9 +304,11 @@ function RgbScrollController({
       </div>
 
       <div className="rgb-scroll-menu" style={{ top }}>
-        <div className="rgb-scroll-orb" aria-hidden>
-          <Palette className="h-3.5 w-3.5" />
-        </div>
+        <ThemeToggle
+          triggerClassName="rgb-scroll-orb cursor-target"
+          contentSide="left"
+          contentAlign="center"
+        />
 
         <button
           type="button"

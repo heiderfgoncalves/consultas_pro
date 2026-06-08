@@ -429,7 +429,6 @@ export function MobileLanding({
                   key={feature.title}
                   className={`mobile-feature-card ${index === Math.min(mobileFlowIndex, featureCards.length - 1) ? "is-active" : ""} ${index < Math.min(mobileFlowIndex, featureCards.length - 1) ? "is-done" : ""}`}
                 >
-                  <div className="scan-grid-process" aria-hidden><span /></div>
                   <div className="flex gap-2.5">
                     <div className="grid h-8 w-8 shrink-0 place-items-center rounded-xl bg-brand/10 text-brand">
                       <Icon className="h-3.5 w-3.5" />
@@ -637,7 +636,6 @@ function MobileStageCardContent({
           <span className="mono rounded-full border border-brand/25 bg-brand/10 px-2 py-0.5 text-[8px] font-bold text-brand">{stage.metric}</span>
         </div>
         <p className="mt-0.5 text-[11.5px] leading-4 text-muted-foreground">{stage.detail}</p>
-        <div className="flow-process-bar mobile-stage-process" aria-hidden><span /></div>
       </div>
       <span className="mono text-[9px] text-muted-foreground">0{index + 1}</span>
     </div>

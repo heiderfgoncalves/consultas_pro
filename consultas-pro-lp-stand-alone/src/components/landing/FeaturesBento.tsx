@@ -208,7 +208,6 @@ function Card({
       className="h-full w-full"
     >
       <div data-cursor-target="true" className={`scan-grid-card ${flowActive ? "is-active" : ""} ${flowDone ? "is-done" : ""} p-4 md:p-6 h-full flex flex-col justify-between select-none cursor-target`}>
-        <div className="scan-grid-process" aria-hidden><span /></div>
         <div>
           <div className="flex items-center gap-2 mb-2">
             <span className="text-brand">{icon}</span>

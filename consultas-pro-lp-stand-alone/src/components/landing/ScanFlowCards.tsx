@@ -85,9 +85,9 @@ export function ScanFlowCards({ compact = false, orientation }: ScanFlowCardsPro
       >
         <div className="flow-shell-head">
           <div>
-            <p className="mono flow-kicker">Linha viva de processamento</p>
+            <p className="mono flow-kicker">Consulta e pipeline</p>
             <h2 className="flow-title">
-              A luz atravessa o processo, acende o card e pausa enquanto ele processa.
+              Do dado recebido ao relatório pronto para venda.
             </h2>
           </div>
           <div className="flow-live-pill" aria-hidden>
@@ -96,7 +96,7 @@ export function ScanFlowCards({ compact = false, orientation }: ScanFlowCardsPro
           </div>
         </div>
 
-        <div className="flow-sequence" aria-label="Fluxo animado de processamento">
+        <div className="flow-sequence" aria-label="Fluxo de consulta e entrega">
           <div className="flow-track" aria-hidden>
             <div className="flow-track-progress" />
             <div className="flow-scanner-beam" />
@@ -120,14 +120,11 @@ export function ScanFlowCards({ compact = false, orientation }: ScanFlowCardsPro
                   <div className="flow-card-row">
                     <span className="mono flow-card-label">0{index + 1} / {step.label}</span>
                     <span className="mono flow-card-status">
-                      {isActive ? "PROCESSANDO" : isDone ? "OK" : "AGUARDA"}
+                      {isActive ? "ATIVO" : isDone ? "OK" : "AGUARDA"}
                     </span>
                   </div>
                   <h3>{step.title}</h3>
                   <p>{step.text}</p>
-                  <div className="flow-process-bar" aria-hidden>
-                    <span />
-                  </div>
                 </div>
               </article>
             );

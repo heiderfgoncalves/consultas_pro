@@ -89,7 +89,7 @@ export function Hero({ activeStepIndex, setActiveStepIndex }: HeroProps) {
                       className="p-6 md:p-8 bg-card/94 border border-hairline/40 rounded-md backdrop-blur-md shadow-2xl w-full h-full flex flex-col items-start text-left justify-center relative z-10"
                     >
                       <div className="flex flex-col items-start w-full">
-                        <div className="inline-flex items-center gap-2.5 rounded-full border border-hairline bg-surface/40 px-3.5 py-1.5 backdrop-blur-xl shadow-[0_0_40px_-12px_var(--color-brand)] animate-glitch-hover cursor-pointer mb-6 cursor-target">
+                        <div className="inline-flex items-center gap-2.5 rounded-full border border-hairline bg-surface/40 px-3.5 py-1.5 backdrop-blur-xl shadow-[0_0_40px_-12px_var(--color-brand)] cursor-pointer mb-6 cursor-target">
                           <PulseDot />
                           <TextType
                             text={[
@@ -106,19 +106,19 @@ export function Hero({ activeStepIndex, setActiveStepIndex }: HeroProps) {
                         </div>
 
                         <h1 className="text-[36px] md:text-[52px] font-medium leading-[1.08] tracking-[-0.03em] text-foreground cursor-default select-none text-left">
-                          <span className="animate-glitch-hover inline-block">
+                          <span className="inline-block">
                             Consultas, relatórios
                           </span>{" "}
-                          <span className="brand-text italic font-normal animate-glitch-hover inline-block">
+                          <span className="brand-text italic font-normal inline-block">
                             e white-label.
                           </span>
                           <br />
-                          <span className="animate-glitch-hover inline-block">
+                          <span className="inline-block">
                             Tudo sob controle operacional.
                           </span>
                         </h1>
 
-                        <p className="mt-6 text-[14px] md:text-[15px] leading-relaxed text-muted-foreground text-left max-w-lg animate-glitch-hover cursor-default select-none">
+                        <p className="mt-6 text-[14px] md:text-[15px] leading-relaxed text-muted-foreground text-left max-w-lg cursor-default select-none">
                           Centralize provedores, componha consultas sob medida,
                           normalize payloads e entregue relatórios
                           personalizados por painel, API ou widget. Uma landing
@@ -198,11 +198,6 @@ export function Hero({ activeStepIndex, setActiveStepIndex }: HeroProps) {
                     >
                       <div className="magic-border-container rounded-md p-[1px] w-full">
                         <HUDFrame className="p-6 md:p-8 bg-card/94 backdrop-blur-md rounded-md shadow-2xl relative overflow-hidden">
-                          {/* Efeito scanline discreto cruzando o painel de auditoria do mockup */}
-                          <div
-                            className="absolute inset-0 pointer-events-none z-0 opacity-10 bg-gradient-to-b from-transparent via-brand to-transparent h-[150px] animate-pulse"
-                            style={{ animationDuration: "3s" }}
-                          />
                           <PipelineCard
                             activeStepIndex={activeStepIndex}
                             setActiveStepIndex={setActiveStepIndex}

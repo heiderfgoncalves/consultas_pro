@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type CSSProperties } from "react";
 import { motion, LayoutGroup } from "framer-motion";
 import { FileText, Database, Shuffle, Calculator, Send, FileCheck } from "lucide-react";
 import { PulseDot } from "./primitives";
@@ -20,6 +20,12 @@ interface PipelineCardProps {
 
 export function PipelineCard({ activeStepIndex, setActiveStepIndex }: PipelineCardProps) {
   const [steps, setSteps] = useState(defaultSteps);
+  const pipelineFlowStyle = {
+    "--pipeline-flow-index": activeStepIndex,
+    "--pipeline-flow-count": defaultSteps.length,
+    "--pipeline-flow-offset": `${(activeStepIndex / defaultSteps.length) * 100}%`,
+    "--pipeline-flow-padding": `${100 / (defaultSteps.length * 2)}%`,
+  } as CSSProperties;
 
   const handleSwap = (draggedIdx: number, targetIdx: number, group: string) => {
     if (group === "hero-pipeline") {
@@ -51,7 +57,7 @@ export function PipelineCard({ activeStepIndex, setActiveStepIndex }: PipelineCa
       {/* Header */}
       <div className="flex items-start justify-between">
         <div>
-          <div className="mono text-[11px] tracking-[0.18em] uppercase text-brand animate-glitch-hover cursor-pointer">
+          <div className="mono text-[11px] tracking-[0.18em] uppercase text-brand cursor-pointer">
             &gt;&gt; CONSULTAS.PIPELINE
           </div>
           <div className="mt-1 mono text-[11px] tracking-[0.18em] uppercase text-muted-foreground">
@@ -71,7 +77,7 @@ export function PipelineCard({ activeStepIndex, setActiveStepIndex }: PipelineCa
       <div className="relative mt-4 min-h-[140px] overflow-visible">
 
         <LayoutGroup id="hero-pipeline-layout-group">
-          <div className="relative z-10 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3 md:gap-4">
+          <div className="pipeline-flow-grid relative z-10 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3 md:gap-4" style={pipelineFlowStyle}>
             {steps.map((s, i) => {
               const Icon = s.icon;
               // Mapeamento lógico de volta ao índice canônico para determinar a ativação
@@ -85,32 +91,6 @@ export function PipelineCard({ activeStepIndex, setActiveStepIndex }: PipelineCa
                   data-slot-index={i}
                   data-grid-group="hero-pipeline"
                 >
-                  {/* Conector horizontal dinâmico entre slots (oculto no último item) */}
-                  {i < steps.length - 1 && (
-                    <div className="absolute top-[50px] left-[50%] w-[calc(100%+12px)] md:w-[calc(100%+16px)] h-1 hidden md:block z-0 pointer-events-none">
-                      {/* Linha base inativa */}
-                      <svg className="w-full h-full absolute inset-0">
-                        <line x1="0" y1="2" x2="100%" y2="2" className="stroke-stone-200 dark:stroke-stone-900 stroke-[1]" />
-                      </svg>
-                      {/* Linha ativa com esteira de elétrons fluindo */}
-                      {isActive && (
-                        <svg className="w-full h-full absolute inset-0">
-                          <line 
-                            x1="0" 
-                            y1="2" 
-                            x2="100%" 
-                            y2="2" 
-                            className="stroke-brand stroke-[1.5] animate-pipeline-flow"
-                            style={{ 
-                              filter: "drop-shadow(0 0 3px var(--brand))",
-                              strokeDasharray: "6 4"
-                            }}
-                          />
-                        </svg>
-                      )}
-                    </div>
-                  )}
-
                   {/* Visual discreto de blueprint no fundo do slot (visível quando o slot está vazio/puxado) */}
                   <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none opacity-[0.18] z-0 select-none">
                     <span className="mono text-[8px] tracking-[0.1em] text-brand/60 uppercase">Etapa 0{i + 1}</span>
@@ -144,13 +124,6 @@ export function PipelineCard({ activeStepIndex, setActiveStepIndex }: PipelineCa
                           ? "border-brand/60 bg-brand/10 dark:bg-black text-brand shadow-[0_0_20px_-2px_color-mix(in_srgb,var(--brand),transparent)]"
                           : "border-stone-200 dark:border-stone-800/80 bg-stone-100 dark:bg-stone-950 text-stone-500 dark:text-stone-500 group-hover/card:border-stone-400 group-hover/card:dark:border-stone-500 group-hover/card:text-stone-800 group-hover/card:dark:text-stone-300"
                       }`}>
-                        {isActive && (
-                          <>
-                            <div className="absolute inset-0 bg-brand/15 dark:bg-brand/10 animate-pulse" />
-                            <div className="absolute top-0 left-0 w-full h-[1px] bg-brand/50" />
-                            <div className="absolute bottom-0 right-0 w-full h-[1px] bg-brand/50" />
-                          </>
-                        )}
                         <Icon className="h-5 w-5 relative z-10" />
                       </div>
                       

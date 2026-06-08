@@ -1,6 +1,6 @@
 import { Moon, Sun, Monitor, Palette, Check } from 'lucide-react';
 import { useTheme } from '@/hooks/use-theme';
-import { useSubTheme, SUB_THEMES } from '@/hooks/use-subtheme';
+import { useSubTheme, SUB_THEMES, type SubTheme } from '@/hooks/use-subtheme';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -12,26 +12,47 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { cn } from '@/lib/utils';
 
-export default function ThemeToggle() {
+type ThemeToggleProps = {
+  triggerClassName?: string;
+  contentSide?: 'top' | 'right' | 'bottom' | 'left';
+  contentAlign?: 'start' | 'center' | 'end';
+  onSubThemeSelect?: (theme: SubTheme) => void;
+};
+
+export default function ThemeToggle({
+  triggerClassName,
+  contentSide = 'right',
+  contentAlign = 'end',
+  onSubThemeSelect,
+}: ThemeToggleProps) {
   const { theme, setTheme } = useTheme();
   const { subTheme, setSubTheme } = useSubTheme();
   const activeMode = theme ?? 'dark';
 
   const ModeIcon = activeMode === 'dark' ? Moon : activeMode === 'light' ? Sun : Monitor;
 
+  const handleSubThemeSelect = (themeId: SubTheme) => {
+    setSubTheme(themeId);
+    onSubThemeSelect?.(themeId);
+  };
+
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <button
-          className="p-2 rounded-lg hover:bg-accent transition-all duration-200 group flex items-center justify-center relative active:scale-95"
+          className={cn(
+            "p-2 rounded-lg hover:bg-accent transition-all duration-200 group flex items-center justify-center relative active:scale-95",
+            triggerClassName,
+          )}
           title="Aparência & Temas"
+          aria-label="Abrir troca de tema e cor"
         >
           <ModeIcon className="w-[17px] h-[18px] text-muted-foreground group-hover:text-foreground transition-colors" />
           <span className="absolute bottom-1 right-1 w-1.5 h-1.5 rounded-full border border-background bg-primary shadow-sm" />
         </button>
       </DropdownMenuTrigger>
       
-      <DropdownMenuContent side="right" align="end" className="w-56 bg-card/95 backdrop-blur-md border border-border/40 p-1.5 shadow-xl rounded-xl">
+      <DropdownMenuContent side={contentSide} align={contentAlign} className="w-56 bg-card/95 backdrop-blur-md border border-border/40 p-1.5 shadow-xl rounded-xl">
         <DropdownMenuLabel className="font-mono text-[9px] tracking-wider text-muted-foreground uppercase px-2 py-1 select-none">
           Aparência do App
         </DropdownMenuLabel>
@@ -71,7 +92,7 @@ export default function ThemeToggle() {
             return (
               <DropdownMenuItem
                 key={themeItem.id}
-                onClick={() => setSubTheme(themeItem.id)}
+                onClick={() => handleSubThemeSelect(themeItem.id)}
                 className={cn(
                   "flex items-center gap-2.5 px-2 py-1.5 rounded-lg text-xs cursor-pointer select-none transition-all duration-150",
                   isActive 

@@ -180,7 +180,7 @@ export function InteractiveModularCard({
       } ${isDragging ? "cursor-grabbing" : isHovered ? (useDragHandle ? "cursor-default" : "cursor-grab") : ""} ${className}`}
     >
       {/* Scanner vertical individual de fundo quando ativo ou showScanner for requisitado */}
-      {(showScanner || isActive) && (
+      {showScanner && (
         <div className="absolute inset-0 rounded-md overflow-hidden pointer-events-none z-0">
           <div
             className="absolute left-0 right-0 h-[35%] bg-gradient-to-b from-transparent via-brand/20 to-transparent opacity-100"
@@ -195,14 +195,14 @@ export function InteractiveModularCard({
       <div
         className={`absolute inset-0 rounded-md pointer-events-none z-0 transition-opacity duration-300 ${
           isActive
-            ? "bg-brand/5 animate-pulse opacity-100"
+            ? "bg-brand/[0.035] opacity-100"
             : "bg-brand/[0.01] opacity-30"
         }`}
       />
       <div
         className={`absolute -inset-px rounded-md border pointer-events-none z-0 transition-opacity duration-300 ${
           isActive
-            ? "border-brand/35 animate-pulse opacity-100"
+            ? "border-brand/35 opacity-100"
             : "border-brand/10 opacity-10 group-hover/card:opacity-50"
         }`}
       />
@@ -216,7 +216,7 @@ export function InteractiveModularCard({
           }}
           className="absolute inset-0 rounded-md border border-dashed border-brand/55 bg-brand/5 backdrop-blur-[2px] flex flex-col items-center justify-center pointer-events-none z-0"
         >
-          <div className="mono text-[8px] tracking-[0.2em] text-brand/80 uppercase animate-pulse font-semibold">
+          <div className="mono text-[8px] tracking-[0.2em] text-brand/80 uppercase font-semibold">
             PREVIEW DETECTADO
           </div>
           <div className="mono text-[6.5px] tracking-widest text-muted-foreground/60 mt-0.5 font-mono">
@@ -241,7 +241,7 @@ export function InteractiveModularCard({
             : "pointer-events-none"
         } ${isHovered || isDragging ? "opacity-100 translate-y-0" : "opacity-0 -translate-y-1"}`}
       >
-        <GripHorizontal className="h-3 w-3 text-brand animate-pulse" />
+        <GripHorizontal className="h-3 w-3 text-brand" />
         <span className="mono text-[8px] tracking-wider uppercase font-semibold text-brand/90">
           {useDragHandle ? "ARRASTAR" : "AGARRAR"}
         </span>

@@ -138,7 +138,6 @@ export function SevenSteps() {
                         useDragHandle
                         className="p-3 md:p-4 w-full h-full flex flex-col items-center text-center bg-background/50 hover:bg-background/80 transition-colors duration-300 z-10"
                       >
-                        <div className="scan-grid-process" aria-hidden><span /></div>
                         <div className="relative">
                           <motion.div
                             initial={{ scale: 0 }}
