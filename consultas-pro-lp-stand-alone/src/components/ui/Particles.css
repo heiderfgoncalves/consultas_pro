@@ -1,0 +1,16 @@
+.particles-container {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100dvh;
+  overflow: hidden;
+  pointer-events: none;
+  contain: layout paint size;
+  isolation: isolate;
+}
+
+.particles-container canvas {
+  display: block;
+  width: 100% !important;
+  height: 100% !important;
+}
