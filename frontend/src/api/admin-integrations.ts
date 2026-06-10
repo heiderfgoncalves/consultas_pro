@@ -204,6 +204,7 @@ export function parseReportFieldConfig(raw: unknown): TypeReportFieldConfig | un
 
   return {
     version: 1,
+    title: typeof config.title === 'string' ? config.title : undefined,
     fields: assignKeysToReportFields(fields) as TypeReportFieldConfig['fields'],
   };
 }
