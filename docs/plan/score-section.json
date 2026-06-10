@@ -1,0 +1,774 @@
+[
+  {
+    "x": 50,
+    "y": 50,
+    "id": "el_score_header_icon_p1",
+    "data": {
+      "name": "Activity",
+      "strokeWidth": 1.5
+    },
+    "type": "icon",
+    "style": {
+      "color": "#334155",
+      "background": "transparent",
+      "borderColor": "#e2e8f0",
+      "borderWidth": 1,
+      "borderRadius": 8
+    },
+    "width": 28,
+    "height": 28,
+    "zIndex": 33,
+    "frameId": "frame_page_1"
+  },
+  {
+    "x": 88,
+    "y": 56,
+    "id": "el_score_header_text_p1",
+    "data": {
+      "text": "SCORE DE CRÉDITO"
+    },
+    "type": "text",
+    "style": {
+      "color": "#334155",
+      "fontSize": 13,
+      "fontWeight": 700
+    },
+    "width": 150,
+    "height": 20,
+    "zIndex": 34,
+    "frameId": "frame_page_1"
+  },
+  {
+    "x": 222,
+    "y": 64,
+    "id": "el_score_header_div_p1",
+    "data": {},
+    "type": "divider",
+    "style": {
+      "background": "#e2e8f0"
+    },
+    "width": 562,
+    "height": 2,
+    "zIndex": 35,
+    "frameId": "frame_page_1"
+  },
+  {
+    "x": 50,
+    "y": 85,
+    "id": "el_score_card_bg_p1",
+    "data": {},
+    "type": "container",
+    "style": {
+      "background": "#ffffff",
+      "borderColor": "#e2e8f0",
+      "borderWidth": 1,
+      "borderRadius": 12
+    },
+    "width": 734,
+    "height": 680,
+    "zIndex": 36,
+    "frameId": "frame_page_1"
+  },
+  {
+    "x": 70,
+    "y": 90,
+    "id": "el_score_headline_p1",
+    "data": {
+      "text": "Como o mercado enxerga seu CPF hoje (e o que está travando seu crédito)\n"
+    },
+    "type": "text",
+    "style": {
+      "color": "#0f172a",
+      "fontSize": 15,
+      "fontWeight": 700
+    },
+    "width": 694,
+    "height": 23,
+    "zIndex": 37,
+    "frameId": "frame_page_1"
+  },
+  {
+    "x": 70,
+    "y": 120,
+    "id": "el_score_subtitle_p1",
+    "data": {
+      "text": "Seu Score é uma estimativa de chance de pagar em dia nos próximos 6 meses. Quanto maior a pontuação, maior tende a ser a facilidade para conseguir crédito e melhores condições.\n\n"
+    },
+    "type": "text",
+    "style": {
+      "color": "#64748b",
+      "fontSize": 10
+    },
+    "width": 733,
+    "height": 45,
+    "zIndex": 38,
+    "frameId": "frame_page_1"
+  },
+  {
+    "x": 80,
+    "y": 150,
+    "id": "el_score_speedometer_p1",
+    "data": {
+      "text": "html:<div style='position:relative;width:100%;text-align:center;'><svg viewBox='0 0 200 110' style='width:100%;height:105px;display:block;'><path d='M 20 90 A 80 80 0 0 1 180 90' fill='none' stroke='#e5e7eb' stroke-width='14' stroke-linecap='round' /><path d='M 20 90 A 80 80 0 0 1 35.28 42.98' fill='none' stroke='#ef4444' stroke-width='14' stroke-linecap='round' /><path d='M 35.28 42.98 A 80 80 0 0 1 75.28 13.91' fill='none' stroke='#f97316' stroke-width='14' stroke-linecap='round' /><path d='M 75.28 13.91 A 80 80 0 0 1 124.72 13.91' fill='none' stroke='#eab308' stroke-width='14' stroke-linecap='round' /><path d='M 124.72 13.91 A 80 80 0 0 1 164.72 42.98' fill='none' stroke='#84cc16' stroke-width='14' stroke-linecap='round' /><path d='M 164.72 42.98 A 80 80 0 0 1 180 90' fill='none' stroke='#22c55e' stroke-width='14' stroke-linecap='round' /><circle cx='{{100 - 80 * cos($SCORE_CREDITO[0].score * 0.00314159265)}}' cy='{{90 - 80 * sin($SCORE_CREDITO[0].score * 0.00314159265)}}' r='7' fill='{{if($SCORE_CREDITO[0].score <= 200, '#ef4444', if($SCORE_CREDITO[0].score <= 400, '#f97316', if($SCORE_CREDITO[0].score <= 600, '#eab308', if($SCORE_CREDITO[0].score <= 800, '#84cc16', '#22c55e'))))}}' stroke='#fff' stroke-width='2' /><circle cx='{{100 - 80 * cos($SCORE_CREDITO[0].score * 0.00314159265)}}' cy='{{90 - 80 * sin($SCORE_CREDITO[0].score * 0.00314159265)}}' r='3' fill='#fff' /><line x1='100' y1='90' x2='{{100 - 80 * cos($SCORE_CREDITO[0].score * 0.00314159265)}}' y2='{{90 - 80 * sin($SCORE_CREDITO[0].score * 0.00314159265)}}' stroke='{{if($SCORE_CREDITO[0].score <= 200, '#ef4444', if($SCORE_CREDITO[0].score <= 400, '#f97316', if($SCORE_CREDITO[0].score <= 600, '#eab308', if($SCORE_CREDITO[0].score <= 800, '#84cc16', '#22c55e'))))}}' stroke-width='2.5' stroke-linecap='round' /><circle cx='100' cy='90' r='6' fill='#fff' stroke='#e2e8f0' stroke-width='1' /><circle cx='100' cy='90' r='2' fill='#94a3b8' /><text x='15' y='110' font-size='10' fill='#94a3b8' font-weight='700'>0</text><text x='165' y='110' font-size='10' fill='#94a3b8' font-weight='700'>1000</text></svg></div>"
+    },
+    "type": "text",
+    "style": {},
+    "width": 175,
+    "height": 105,
+    "zIndex": 39,
+    "frameId": "frame_page_1"
+  },
+  {
+    "x": 270,
+    "y": 172.6592184,
+    "id": "el_score_det_icon1_p1",
+    "data": {
+      "name": "TrendingUp",
+      "strokeWidth": 1.5
+    },
+    "type": "icon",
+    "style": {
+      "color": "#ec4899",
+      "padding": 3,
+      "background": "#fafafa38",
+      "borderColor": "#e2e8f0",
+      "borderWidth": 1,
+      "borderRadius": 6
+    },
+    "width": 28,
+    "height": 28,
+    "zIndex": 40,
+    "frameId": "frame_page_1"
+  },
+  {
+    "x": 308,
+    "y": 170.6592184,
+    "id": "el_score_det_text1_p1",
+    "data": {
+      "text": "html:<span style='font-size:11px;font-weight:600;color:#1e293b;font-family:sans-serif;'>Métrica do Score: <span style='color:{{if($SCORE_CREDITO[0].score <= 200, '#ef4444', if($SCORE_CREDITO[0].score <= 400, '#f97316', if($SCORE_CREDITO[0].score <= 600, '#eab308', if($SCORE_CREDITO[0].score <= 800, '#84cc16', '#22c55e'))))}};'>{{if($SCORE_CREDITO[0].score <= 200, 'Péssimo', if($SCORE_CREDITO[0].score <= 400, 'Ruim', if($SCORE_CREDITO[0].score <= 600, 'Regular', if($SCORE_CREDITO[0].score <= 800, 'Bom', 'Ótimo'))))}} ({{if($SCORE_CREDITO[0].score <= 200, '0 a 200', if($SCORE_CREDITO[0].score <= 400, '201 a 400', if($SCORE_CREDITO[0].score <= 600, '401 a 600', if($SCORE_CREDITO[0].score <= 800, '601 a 800', '801 a 1000'))))}})</span></span><br/><span style='color:#64748b;font-family:sans-serif;'>{{if($SCORE_CREDITO[0].score <= 200, 'Risco muito alto. Regularização recomendada.', if($SCORE_CREDITO[0].score <= 400, 'Risco alto. Negociação pode melhorar o perfil.', if($SCORE_CREDITO[0].score <= 600, 'Risco moderado. Valide renda e estabilidade.', if($SCORE_CREDITO[0].score <= 800, 'Risco baixo. Perfil favorável ao crédito.', 'Risco muito baixo. Excelente predisposição.'))))}}</span>"
+    },
+    "type": "text",
+    "style": {
+      "fontSize": 10,
+      "lineHeight": 1.4
+    },
+    "width": 440,
+    "height": 29,
+    "zIndex": 41,
+    "frameId": "frame_page_1"
+  },
+  {
+    "x": 270,
+    "y": 217.6592184,
+    "id": "el_score_det_icon2_p1",
+    "data": {
+      "name": "ClipboardCheck",
+      "strokeWidth": 1.5
+    },
+    "type": "icon",
+    "style": {
+      "color": "#10b981",
+      "padding": 3,
+      "background": "#fafafa38",
+      "borderColor": "#e2e8f0",
+      "borderWidth": 1,
+      "borderRadius": 6
+    },
+    "width": 28,
+    "height": 28,
+    "zIndex": 42,
+    "frameId": "frame_page_1"
+  },
+  {
+    "x": 270,
+    "y": 266.1117326,
+    "id": "el_score_det_icon3_p1",
+    "data": {
+      "name": "FileWarning",
+      "strokeWidth": 1.5
+    },
+    "type": "icon",
+    "style": {
+      "color": "#ef4444",
+      "padding": 3,
+      "background": "#fafafa38",
+      "borderColor": "#e2e8f0",
+      "borderWidth": 1,
+      "borderRadius": 6
+    },
+    "width": 28,
+    "height": 28,
+    "zIndex": 44,
+    "frameId": "frame_page_1"
+  },
+  {
+    "x": 308,
+    "y": 264.1117326,
+    "id": "el_score_det_text3_p1",
+    "data": {
+      "text": "html:<span style='font-size:11px;font-weight:600;color:#1e293b;font-family:sans-serif;'>Probabilidade de inadimplência: {{calc(100 - $SCORE_CREDITO[0].score / 10 )}}%</span><br/><span style='color:#64748b;font-family:sans-serif;'>Estimativa de inadimplência — use como apoio à decisão.\n</span>"
+    },
+    "type": "text",
+    "style": {
+      "fontSize": 10,
+      "lineHeight": 1.4
+    },
+    "width": 440,
+    "height": 29,
+    "zIndex": 45,
+    "frameId": "frame_page_1"
+  },
+  {
+    "x": 68.849162,
+    "y": 317.6592184,
+    "id": "el_score_ribbon_p1",
+    "data": {
+      "text": "html:<div style='display:flex;justify-content:space-between;margin:0;padding:6px 0;border-top:1px solid #f1f5f9;border-bottom:1px solid #f1f5f9;font-size:9px;font-family:sans-serif;box-sizing:border-box;'><div style='display:flex;align-items:center;gap:4px;'><span style='width:6px;height:6px;border-radius:50%;background:#dc2626;'></span><span style='font-weight:600;color:#1e293b;'>Péssimo</span> <span style='color:#64748b;'>0-200</span></div><div style='display:flex;align-items:center;gap:4px;'><span style='width:6px;height:6px;border-radius:50%;background:#ea580c;'></span><span style='font-weight:600;color:#1e293b;'>Ruim</span> <span style='color:#64748b;'>201-400</span></div><div style='display:flex;align-items:center;gap:4px;'><span style='width:6px;height:6px;border-radius:50%;background:#ca8a04;'></span><span style='font-weight:600;color:#1e293b;'>Regular</span> <span style='color:#64748b;'>401-600</span></div><div style='display:flex;align-items:center;gap:4px;'><span style='width:6px;height:6px;border-radius:50%;background:#65a30d;'></span><span style='font-weight:600;color:#1e293b;'>Bom</span> <span style='color:#64748b;'>601-800</span></div><div style='display:flex;align-items:center;gap:4px;'><span style='width:6px;height:6px;border-radius:50%;background:#16a34a;'></span><span style='font-weight:600;color:#1e293b;'>Ótimo</span> <span style='color:#64748b;'>801-1000</span></div></div>"
+    },
+    "type": "text",
+    "style": {},
+    "width": 694,
+    "height": 28,
+    "zIndex": 46,
+    "frameId": "frame_page_1"
+  },
+  {
+    "x": 68.849162,
+    "y": 352.35754240000006,
+    "id": "el_score_interpret_p1",
+    "data": {
+      "text": "Hoje seu Score está em {{if($SCORE_CREDITO[0].score <= 200, 'Péssimo (0 a 200)', if($SCORE_CREDITO[0].score <= 400, 'Ruim (201 a 400)', if($SCORE_CREDITO[0].score <= 600, 'Regular (401 a 600)', if($SCORE_CREDITO[0].score <= 800, 'Bom (601 a 800)', 'Ótimo (801 a 1000)'))))}} — isso geralmente indica que o mercado enxerga {{if($SCORE_CREDITO[0].score <= 200, 'risco muito alto', if($SCORE_CREDITO[0].score <= 400, 'risco alto', if($SCORE_CREDITO[0].score <= 600, 'risco moderado', if($SCORE_CREDITO[0].score <= 800, 'risco baixo', 'risco muito baixo'))))}}. O objetivo aqui é identificar o que mais pesa na sua pontuação e montar o caminho mais rápido para destravar aprovações.\n\n"
+    },
+    "type": "text",
+    "style": {
+      "color": "#334155",
+      "fontSize": 10,
+      "lineHeight": 1.4
+    },
+    "width": 694,
+    "height": 42,
+    "zIndex": 47,
+    "frameId": "frame_page_1"
+  },
+  {
+    "x": 70,
+    "y": 392,
+    "id": "el_score_influ_bg_p1",
+    "data": {},
+    "type": "container",
+    "style": {
+      "background": "#f8fafc",
+      "borderColor": "#e2e8f0",
+      "borderWidth": 1,
+      "borderRadius": 8
+    },
+    "width": 694,
+    "height": 140,
+    "zIndex": 48,
+    "frameId": "frame_page_1"
+  },
+  {
+    "x": 85,
+    "y": 407,
+    "id": "el_score_influ_icon_p1",
+    "data": {
+      "name": "Activity",
+      "strokeWidth": 1.5
+    },
+    "type": "icon",
+    "style": {
+      "color": "#475569",
+      "background": "transparent"
+    },
+    "width": 22,
+    "height": 22,
+    "zIndex": 49,
+    "frameId": "frame_page_1"
+  },
+  {
+    "x": 80,
+    "y": 440,
+    "id": "el_score_influ_body_p1",
+    "data": {
+      "text": "html:O Serasa Score é calculado por pilares. Os que mais pesam são hábitos de pagamento e experiência/relacionamento com o mercado — e dívidas negativadas também têm impacto alto, considerando inclusive o tempo desde a quitação.\n\n* Pagamentos em dia (cartão, parcelas e contas) têm peso alto na pontuação.\n* Dívidas negativadas costumam derrubar o Score e demoram a perder impacto sem regularização.\n* Muitas consultas/simulações de crédito em pouco tempo podem pesar negativamente (busca por crédito)."
+    },
+    "type": "text",
+    "style": {
+      "color": "#475569",
+      "fontSize": 11,
+      "lineHeight": 1.4
+    },
+    "width": 665,
+    "height": 92,
+    "zIndex": 50,
+    "frameId": "frame_page_1"
+  },
+  {
+    "x": 70,
+    "y": 545,
+    "id": "el_score_diag_bg_p1",
+    "data": {},
+    "type": "container",
+    "style": {
+      "background": "#ecfdf5",
+      "borderColor": "#a7f3d0",
+      "borderWidth": 1,
+      "borderRadius": 8
+    },
+    "width": 694,
+    "height": 100,
+    "zIndex": 51,
+    "frameId": "frame_page_1"
+  },
+  {
+    "x": 82.9827759,
+    "y": 564.1853846,
+    "id": "el_score_diag_icon_p1",
+    "data": {
+      "name": "ShieldCheck",
+      "strokeWidth": 1.5
+    },
+    "type": "icon",
+    "style": {
+      "color": "#065f46"
+    },
+    "width": 23,
+    "height": 23,
+    "zIndex": 52,
+    "frameId": "frame_page_1"
+  },
+  {
+    "x": 97.93969949999999,
+    "y": 559.9274862,
+    "id": "text_vLS0v74C",
+    "data": {
+      "text": " Nós te ajudamos com tudo isso!"
+    },
+    "name": "Texto",
+    "type": "text",
+    "style": {
+      "color": "#065f46",
+      "padding": 8,
+      "fontSize": 11,
+      "textAlign": "left",
+      "fontFamily": "Inter, sans-serif",
+      "fontWeight": 700,
+      "lineHeight": 1.4
+    },
+    "width": 223,
+    "height": 31,
+    "zIndex": 58,
+    "binding": {
+      "mode": "static"
+    },
+    "frameId": "frame_page_1",
+    "visible": true
+  },
+  {
+    "x": 77.9073077,
+    "y": 585.1170513,
+    "id": "text_nVyX2Bfz",
+    "data": {
+      "text": "O que trava crédito quase sempre é simples: pendência/negativação + histórico recente. A boa notícia é que, com estratégia, dá pra acelerar sua reabilitação e voltar a ser aprovado com mais facilidade.\n"
+    },
+    "name": "Texto",
+    "type": "text",
+    "style": {
+      "color": "#065f46",
+      "padding": 8,
+      "fontSize": 13,
+      "textAlign": "left",
+      "fontFamily": "Inter, sans-serif",
+      "fontWeight": 400,
+      "lineHeight": 1.4
+    },
+    "width": 674,
+    "height": 52,
+    "zIndex": 59,
+    "binding": {
+      "mode": "static"
+    },
+    "frameId": "frame_page_1",
+    "visible": true
+  },
+  {
+    "x": 110,
+    "y": 400,
+    "id": "text__5hEvfi3",
+    "data": {
+      "text": "O que mais influencia sua pontuação"
+    },
+    "name": "Texto",
+    "type": "text",
+    "style": {
+      "color": "#0f172a",
+      "padding": 8,
+      "fontSize": 14,
+      "textAlign": "left",
+      "fontFamily": "Inter, sans-serif",
+      "fontWeight": 700,
+      "lineHeight": 1.4
+    },
+    "width": 287,
+    "height": 36,
+    "zIndex": 62,
+    "binding": {
+      "mode": "static"
+    },
+    "frameId": "frame_page_1",
+    "visible": true
+  },
+  {
+    "x": 67.60115139999999,
+    "y": 671.589637,
+    "id": "container_un2rHO6Q",
+    "data": {},
+    "type": "container",
+    "style": {
+      "background": "#fdfded",
+      "borderColor": "#eab3087a",
+      "borderWidth": 1,
+      "borderRadius": 8
+    },
+    "width": 694,
+    "height": 55,
+    "zIndex": 63,
+    "frameId": "frame_page_1"
+  },
+  {
+    "x": 87.62282990000001,
+    "y": 689.8634873000001,
+    "id": "icon_DQaxcllQ",
+    "data": {
+      "name": "CircleAlert",
+      "strokeWidth": 1.5
+    },
+    "type": "icon",
+    "style": {
+      "color": "#c27d05"
+    },
+    "width": 22,
+    "height": 22,
+    "zIndex": 64,
+    "frameId": "frame_page_1"
+  },
+  {
+    "x": 108.90271960000001,
+    "y": 678.723832,
+    "id": "text_38L2EySE",
+    "data": {
+      "text": "html:<b>Atenção</b>: score e faixas são indicadores estatísticos e não garantem aprovação de crédito. A decisão final é do credor. O objetivo deste relatório é analisar os motivos de negativa e identificar o que está impactando no seu crédito."
+    },
+    "name": "Texto",
+    "type": "text",
+    "style": {
+      "color": "#c27d05",
+      "padding": 8,
+      "fontSize": 10,
+      "textAlign": "left",
+      "fontFamily": "Inter, sans-serif",
+      "fontWeight": 400,
+      "lineHeight": 1.4
+    },
+    "width": 642,
+    "height": 44,
+    "zIndex": 66,
+    "binding": {
+      "mode": "static"
+    },
+    "frameId": "frame_page_1",
+    "visible": true
+  },
+  {
+    "x": 304.3286486971516,
+    "y": 226.7286848796109,
+    "id": "text_EXcsOCJP",
+    "data": {
+      "text": "html:<span style='color:#64748b;font-family:sans-serif;'>Estimativa de adimplência nos próximos 6 meses.</span>"
+    },
+    "name": "Texto",
+    "type": "text",
+    "style": {
+      "color": "#0f172a",
+      "padding": 8,
+      "fontSize": 11,
+      "textAlign": "left",
+      "fontFamily": "Inter, sans-serif",
+      "lineHeight": 1.4
+    },
+    "width": 287,
+    "height": 31,
+    "zIndex": 68,
+    "binding": {
+      "mode": "static"
+    },
+    "frameId": "frame_page_1",
+    "visible": true
+  },
+  {
+    "x": 301.6349633971516,
+    "y": 205.3413142796109,
+    "id": "text_xPu--xc3",
+    "data": {
+      "text": "html:<span style='font-size:11px;font-weight:600;color:#1e293b;font-family:sans-serif;'>Chance de pagar (6 meses): {{calc($SCORE_CREDITO[0].score / 10 )}}%"
+    },
+    "name": "Texto",
+    "type": "text",
+    "style": {
+      "color": "#0f172a",
+      "padding": 8,
+      "fontSize": 14,
+      "textAlign": "left",
+      "fontFamily": "Inter, sans-serif",
+      "lineHeight": 1.4
+    },
+    "width": 353,
+    "height": 36,
+    "zIndex": 69,
+    "binding": {
+      "mode": "static"
+    },
+    "frameId": "frame_page_1",
+    "visible": true
+  },
+  {
+    "x": 135,
+    "y": 229,
+    "id": "text_CuWRaAgh",
+    "data": {
+      "text": "html:<div style='font-size:28px;font-weight:700;color:{{if($SCORE_CREDITO[0].score <= 200, '#ef4444', if($SCORE_CREDITO[0].score <= 400, '#f97316', if($SCORE_CREDITO[0].score <= 600, '#eab308', if($SCORE_CREDITO[0].score <= 800, '#84cc16', '#22c55e'))))}};margin-top:5px;font-family:sans-serif;'>{{$SCORE_CREDITO[0].score}}</div><div style='font-size:10px;font-weight:700;text-transform:uppercase;color:{{if($SCORE_CREDITO[0].score <= 200, '#ef4444', if($SCORE_CREDITO[0].score <= 400, '#f97316', if($SCORE_CREDITO[0].score <= 600, '#eab308', if($SCORE_CREDITO[0].score <= 800, '#84cc16', '#22c55e'))))}};margin-top:2px;font-family:sans-serif;'>{{if($SCORE_CREDITO[0].score <= 200, 'Péssimo', if($SCORE_CREDITO[0].score <= 400, 'Ruim', if($SCORE_CREDITO[0].score <= 600, 'Regular', if($SCORE_CREDITO[0].score <= 800, 'Bom', 'Ótimo'))))}}</div>"
+    },
+    "name": "Texto",
+    "type": "text",
+    "style": {
+      "color": "#0f172a",
+      "padding": 8,
+      "fontSize": 14,
+      "textAlign": "center",
+      "fontFamily": "Inter, sans-serif",
+      "lineHeight": 1.4
+    },
+    "width": 67,
+    "height": 76,
+    "zIndex": 80,
+    "binding": {
+      "mode": "static"
+    },
+    "frameId": "frame_page_1",
+    "visible": true
+  },
+  {
+    "x": 50,
+    "y": 785,
+    "id": "el_score_plano_bg_p1",
+    "data": {},
+    "type": "container",
+    "style": {
+      "background": "#ffffff",
+      "borderColor": "#e2e8f0",
+      "borderWidth": 1,
+      "borderRadius": 12
+    },
+    "width": 734,
+    "height": 250,
+    "zIndex": 100,
+    "frameId": "frame_page_1"
+  },
+  {
+    "x": 70,
+    "y": 805,
+    "id": "el_score_plano_icon_p1",
+    "data": {
+      "name": "ClipboardList",
+      "strokeWidth": 1.5
+    },
+    "type": "icon",
+    "style": {
+      "color": "#4f46e5"
+    },
+    "width": 22,
+    "height": 22,
+    "zIndex": 101,
+    "frameId": "frame_page_1"
+  },
+  {
+    "x": 100,
+    "y": 803,
+    "id": "el_score_plano_title_p1",
+    "data": {
+      "text": "Plano de ação (o que faremos por você)"
+    },
+    "type": "text",
+    "style": {
+      "color": "#0f172a",
+      "fontSize": 14,
+      "fontWeight": 700
+    },
+    "width": 400,
+    "height": 26,
+    "zIndex": 102,
+    "frameId": "frame_page_1"
+  },
+  {
+    "x": 70,
+    "y": 845,
+    "id": "el_score_plano_step1_num_p1",
+    "data": {
+      "text": "01"
+    },
+    "type": "text",
+    "style": {
+      "color": "#e0e7ff",
+      "fontSize": 28,
+      "fontWeight": 800
+    },
+    "width": 40,
+    "height": 35,
+    "zIndex": 103,
+    "frameId": "frame_page_1"
+  },
+  {
+    "x": 70,
+    "y": 885,
+    "id": "el_score_plano_step1_title_p1",
+    "data": {
+      "text": "Mapeamento completo"
+    },
+    "type": "text",
+    "style": {
+      "color": "#1e293b",
+      "fontSize": 11,
+      "fontWeight": 700
+    },
+    "width": 210,
+    "height": 20,
+    "zIndex": 104,
+    "frameId": "frame_page_1"
+  },
+  {
+    "x": 70,
+    "y": 910,
+    "id": "el_score_plano_step1_desc_p1",
+    "data": {
+      "text": "Conferimos pendências e registros que impactam sua aprovação e priorizamos o que tem maior peso no Score."
+    },
+    "type": "text",
+    "style": {
+      "color": "#64748b",
+      "fontSize": 10,
+      "lineHeight": 1.4
+    },
+    "width": 210,
+    "height": 115,
+    "zIndex": 105,
+    "frameId": "frame_page_1"
+  },
+  {
+    "x": 310,
+    "y": 845,
+    "id": "el_score_plano_step2_num_p1",
+    "data": {
+      "text": "02"
+    },
+    "type": "text",
+    "style": {
+      "color": "#e0e7ff",
+      "fontSize": 28,
+      "fontWeight": 800
+    },
+    "width": 40,
+    "height": 35,
+    "zIndex": 103,
+    "frameId": "frame_page_1"
+  },
+  {
+    "x": 310,
+    "y": 885,
+    "id": "el_score_plano_step2_title_p1",
+    "data": {
+      "text": "Regularização/negociação com estratégia"
+    },
+    "type": "text",
+    "style": {
+      "color": "#1e293b",
+      "fontSize": 11,
+      "fontWeight": 700
+    },
+    "width": 210,
+    "height": 20,
+    "zIndex": 104,
+    "frameId": "frame_page_1"
+  },
+  {
+    "x": 310,
+    "y": 910,
+    "id": "el_score_plano_step2_desc_p1",
+    "data": {
+      "text": "Montamos as melhores opções de acordo/negociação para regularizar pendências e viabilizar baixa de negativação com segurança."
+    },
+    "type": "text",
+    "style": {
+      "color": "#64748b",
+      "fontSize": 10,
+      "lineHeight": 1.4
+    },
+    "width": 210,
+    "height": 115,
+    "zIndex": 105,
+    "frameId": "frame_page_1"
+  },
+  {
+    "x": 550,
+    "y": 845,
+    "id": "el_score_plano_step3_num_p1",
+    "data": {
+      "text": "03"
+    },
+    "type": "text",
+    "style": {
+      "color": "#e0e7ff",
+      "fontSize": 28,
+      "fontWeight": 800
+    },
+    "width": 40,
+    "height": 35,
+    "zIndex": 103,
+    "frameId": "frame_page_1"
+  },
+  {
+    "x": 550,
+    "y": 885,
+    "id": "el_score_plano_step3_title_p1",
+    "data": {
+      "text": "Reabilitação"
+    },
+    "type": "text",
+    "style": {
+      "color": "#1e293b",
+      "fontSize": 11,
+      "fontWeight": 700
+    },
+    "width": 210,
+    "height": 20,
+    "zIndex": 104,
+    "frameId": "frame_page_1"
+  },
+  {
+    "x": 550,
+    "y": 910,
+    "id": "el_score_plano_step3_desc_p1",
+    "data": {
+      "text": "Após regularizar, orientamos as ações que ajudam o Score a se recuperar (ex.: pagamentos em dia, cautela com novas consultas e cadastro atualizado)."
+    },
+    "type": "text",
+    "style": {
+      "color": "#64748b",
+      "fontSize": 10,
+      "lineHeight": 1.4
+    },
+    "width": 210,
+    "height": 115,
+    "zIndex": 105,
+    "frameId": "frame_page_1"
+  }
+]
