@@ -139,7 +139,13 @@ export function TemplateCodeDialog() {
               height="100%"
               language="html"
               value={html}
-              options={{ readOnly: true, minimap: { enabled: false }, fontSize: 12, wordWrap: "on" }}
+              options={{
+                readOnly: true,
+                minimap: { enabled: false },
+                fontSize: 12,
+                wordWrap: "on",
+                lineNumbers: "on",
+              }}
             />
           )}
           {tab === "xml" && (
@@ -148,7 +154,12 @@ export function TemplateCodeDialog() {
               language="xml"
               value={xmlDraft}
               onChange={(v) => setXmlDraft(v ?? "")}
-              options={{ minimap: { enabled: false }, fontSize: 12, wordWrap: "on" }}
+              options={{
+                minimap: { enabled: false },
+                fontSize: 12,
+                wordWrap: "on",
+                lineNumbers: "on",
+              }}
             />
           )}
           {tab === "json" && (
@@ -157,7 +168,11 @@ export function TemplateCodeDialog() {
               language="json"
               value={jsonDraft}
               onChange={(v) => setJsonDraft(v ?? "")}
-              options={{ minimap: { enabled: false }, fontSize: 12 }}
+              options={{
+                minimap: { enabled: false },
+                fontSize: 12,
+                lineNumbers: "on",
+              }}
             />
           )}
         </div>

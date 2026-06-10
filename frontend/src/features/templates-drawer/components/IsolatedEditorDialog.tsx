@@ -1,7 +1,11 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useRef } from "react";
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { useIsolatedEditorStore } from "../store/isolated-editor.store";
-import { useEditorStore } from "../store/editor.store";
+import { useEditorStore, useEvaluationContext } from "../store/editor.store";
+import { parseTemplateXml, serializeTemplateXml } from "../engine/xml";
+import { renderSelectionHtml } from "./HtmlInspectorPanel";
+import type { ReportTemplate } from "../schema/template";
+import { toast } from "sonner";
 import { InfiniteCanvas } from "./Canvas/InfiniteCanvas";
 import { RightInspector } from "./RightInspector";
 import { ColorPickerPopover } from "./ColorPickerPopover";
@@ -89,6 +93,74 @@ export function IsolatedEditorDialog() {
   const [activeTab, setActiveTab] = useState<"visual" | "code">("visual");
   const { resolvedTheme } = useTheme();
   const editorTheme = resolvedTheme === "dark" ? "vs-dark" : "light";
+
+  const template = useEditorStore((s) => s.template);
+  const data = useEvaluationContext();
+  const lastGeneratedHtml = useRef<string>("");
+
+  const sincronizarArvoreParaCodigo = (targetFormat: typeof format) => {
+    try {
+      if (targetFormat === "json") {
+        setCode(JSON.stringify(elementTree, null, 2));
+      } else if (targetFormat === "xml") {
+        const sub: ReportTemplate = { ...template, elements: elementTree };
+        setCode(serializeTemplateXml(sub));
+      } else if (targetFormat === "html") {
+        const generated = renderSelectionHtml(template, elementTree, data);
+        lastGeneratedHtml.current = generated;
+        setCode(generated);
+      }
+    } catch (err: any) {
+      console.error("Erro ao sincronizar árvore para código:", err);
+      toast.error("Erro ao gerar o código bruto.");
+    }
+  };
+
+  const sincronizarCodigoParaArvore = (): boolean => {
+    try {
+      if (format === "html") {
+        if (code !== lastGeneratedHtml.current) {
+          // O usuário editou o HTML manualmente, vamos transformá-lo num container customizado!
+          const maxX = Math.max(...elementTree.map(e => e.x + e.width), 800);
+          const maxY = Math.max(...elementTree.map(e => e.y + e.height), 600);
+          const newElement: TemplateElement = {
+            id: "html_custom_" + Date.now().toString(36),
+            type: "container",
+            name: "HTML Bruto Customizado",
+            x: 0,
+            y: 0,
+            width: maxX,
+            height: maxY,
+            frameId: elementTree[0]?.frameId || "default",
+            data: { customHtml: code },
+            style: {},
+          };
+          useIsolatedEditorStore.setState({ elementTree: [newElement] });
+        }
+        return true;
+      }
+
+      if (format === "json") {
+        const parsed = JSON.parse(code);
+        const elements = Array.isArray(parsed) ? parsed : [parsed];
+        
+        const isValid = elements.every(el => el && typeof el === "object" && "id" in el && "type" in el);
+        if (!isValid) {
+          throw new Error("JSON deve ser um array ou objeto válido de elementos do template (conter 'id' e 'type').");
+        }
+
+        useIsolatedEditorStore.setState({ elementTree: elements });
+      } else if (format === "xml") {
+        const parsedTemplate = parseTemplateXml(code);
+        useIsolatedEditorStore.setState({ elementTree: parsedTemplate.elements });
+      }
+      return true;
+    } catch (err: any) {
+      console.error("Erro ao fazer parse do código:", err);
+      toast.error(`Erro de sintaxe no ${format.toUpperCase()}: ${err.message || err}`);
+      return false;
+    }
+  };
 
   // Sincronizar abertura por eventos customizados da tela do canvas principal
   useEffect(() => {
@@ -199,7 +271,12 @@ export function IsolatedEditorDialog() {
           {/* Abas Visuais vs Código Bruto - Usando azul */}
           <div className="flex items-center bg-slate-950/80 border border-slate-800/80 rounded-lg p-0.5 shadow-inner">
             <button
-              onClick={() => setActiveTab("visual")}
+              onClick={() => {
+                const success = sincronizarCodigoParaArvore();
+                if (success) {
+                  setActiveTab("visual");
+                }
+              }}
               className={cn(
                 "flex items-center gap-1.5 px-3 py-1 text-xs font-medium rounded-md transition-all duration-250 cursor-pointer",
                 activeTab === "visual"
@@ -210,7 +287,10 @@ export function IsolatedEditorDialog() {
               <Layers className="size-3.5" /> Editor Visual (Mini-Canvas)
             </button>
             <button
-              onClick={() => setActiveTab("code")}
+              onClick={() => {
+                sincronizarArvoreParaCodigo(format);
+                setActiveTab("code");
+              }}
               className={cn(
                 "flex items-center gap-1.5 px-3 py-1 text-xs font-medium rounded-md transition-all duration-250 cursor-pointer",
                 activeTab === "code"
@@ -224,7 +304,13 @@ export function IsolatedEditorDialog() {
 
           <div className="flex items-center gap-2">
             <button
-              onClick={save}
+              onClick={async () => {
+                if (activeTab === "code") {
+                  const success = sincronizarCodigoParaArvore();
+                  if (!success) return;
+                }
+                await save();
+              }}
               className="h-9 px-4 text-xs rounded-lg bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white font-semibold flex items-center gap-1.5 shadow-lg shadow-blue-500/10 hover:shadow-blue-500/20 active:scale-[0.98] transition-all cursor-pointer"
             >
               <Save className="size-3.5" /> Salvar Alterações
@@ -315,7 +401,10 @@ export function IsolatedEditorDialog() {
                   {(["html", "json", "xml"] as const).map((fmt) => (
                     <button
                       key={fmt}
-                      onClick={() => setFormat(fmt)}
+                      onClick={() => {
+                        sincronizarArvoreParaCodigo(fmt);
+                        setFormat(fmt);
+                      }}
                       className={cn(
                         "h-6 px-2.5 text-[10px] font-bold rounded transition-all cursor-pointer",
                         format === fmt
@@ -344,7 +433,8 @@ export function IsolatedEditorDialog() {
                     fontFamily: "Fira Code, Menlo, Monaco, Consolas, monospace",
                     wordWrap: "on",
                     automaticLayout: true,
-                    tabSize: 2
+                    tabSize: 2,
+                    readOnly: false
                   }}
                 />
               </div>

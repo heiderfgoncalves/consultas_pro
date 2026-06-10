@@ -1,3 +1,21 @@
+export interface CanonicalTypeMetadata {
+  chave: string;
+  label: string;
+  title?: string;
+}
+
+let canonicalTypesMetadata: Record<string, CanonicalTypeMetadata> = {};
+
+export function registerCanonicalTypesMetadata(meta: Record<string, CanonicalTypeMetadata>) {
+  const normalized: Record<string, CanonicalTypeMetadata> = {};
+  for (const key of Object.keys(meta)) {
+    if (meta[key]) {
+      normalized[key.toUpperCase()] = meta[key];
+    }
+  }
+  canonicalTypesMetadata = normalized;
+}
+
 /**
  * Safely resolve a dotted/bracketed path on a JSON-like value.
  * Examples: "cliente.nome", "dividas[0].credor"
@@ -87,6 +105,23 @@ export function resolveExpression(path: string, data: unknown, collectAllFallbac
   }
   if (currentSeg) {
     segments.push(currentSeg);
+  }
+
+  // Interceptação de metadados de tipos canônicos cadastrados
+  if (segments.length === 2) {
+    const firstSegUpper = segments[0]?.trim().toUpperCase();
+    if (firstSegUpper && canonicalTypesMetadata[firstSegUpper]) {
+      const secondSegLower = segments[1]?.trim().toLowerCase();
+      if (secondSegLower === "chave") {
+        return canonicalTypesMetadata[firstSegUpper].chave;
+      }
+      if (secondSegLower === "label") {
+        return canonicalTypesMetadata[firstSegUpper].label;
+      }
+      if (secondSegLower === "title" || secondSegLower === "titulo") {
+        return canonicalTypesMetadata[firstSegUpper].title || canonicalTypesMetadata[firstSegUpper].label;
+      }
+    }
   }
 
   let current: unknown = data;

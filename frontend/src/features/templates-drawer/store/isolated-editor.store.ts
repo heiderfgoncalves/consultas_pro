@@ -16,6 +16,7 @@ type IsolatedEditorState = {
   code: string;
   format: IsolatedEditorFormat;
   onSave: ((tree: TemplateElement[], code: string, format: IsolatedEditorFormat) => void | Promise<void>) | null;
+  copyBuffer: TemplateElement[] | null;
 
   openEditor: (options: {
     targetType: IsolatedEditorTargetType;
@@ -39,6 +40,9 @@ type IsolatedEditorState = {
   removeElements: (ids: string[]) => void;
   duplicateElements: (ids: string[]) => void;
 
+  copySelection: () => void;
+  pasteClipboard: () => void;
+
   setCode: (code: string) => void;
   setFormat: (format: IsolatedEditorFormat) => void;
   save: () => Promise<void>;
@@ -56,6 +60,7 @@ export const useIsolatedEditorStore = create<IsolatedEditorState>((set, get) => 
   code: "",
   format: "html",
   onSave: null,
+  copyBuffer: null,
 
   openEditor: (options) => {
     set({
@@ -173,6 +178,55 @@ export const useIsolatedEditorStore = create<IsolatedEditorState>((set, get) => 
 
   setCode: (code) => set({ code }),
   setFormat: (format) => set({ format }),
+
+  copySelection: () => {
+    const { selectedIds, elementTree } = get();
+    const items = elementTree.filter((e) => selectedIds.includes(e.id));
+    if (items.length === 0) return;
+    const clones = items.map((e) => structuredClone(e));
+    set({ copyBuffer: clones });
+    (window as any).__editorCopyBuffer = clones;
+  },
+
+  pasteClipboard: () => {
+    const copyBuffer = (window as any).__editorCopyBuffer || get().copyBuffer;
+    if (!copyBuffer || copyBuffer.length === 0) return;
+    
+    let maxZ = get().elementTree.reduce((m, e) => Math.max(m, e.zIndex), 0);
+    
+    // Ajuste inteligente de coordenadas para manter os elementos colados visíveis se vierem do canvas principal
+    let minX = Infinity;
+    let minY = Infinity;
+    copyBuffer.forEach((e: any) => {
+      if (e.x < minX) minX = e.x;
+      if (e.y < minY) minY = e.y;
+    });
+    
+    const shouldTranslateToOrigin = minX === Infinity || minX > 1000 || minX < -100 || minY > 1000 || minY < -100;
+    
+    const copies = copyBuffer.map((e: any) => {
+      const clone = structuredClone(e);
+      let nx = e.x + 24;
+      let ny = e.y + 24;
+      if (shouldTranslateToOrigin) {
+        nx = e.x - (minX === Infinity ? 0 : minX) + 24;
+        ny = e.y - (minY === Infinity ? 0 : minY) + 24;
+      }
+      return {
+        ...clone,
+        id: newId(e.type),
+        x: nx,
+        y: ny,
+        zIndex: ++maxZ,
+        frameId: undefined, // remove frameId se colado de fora
+      };
+    });
+    
+    set((state) => ({
+      elementTree: [...state.elementTree, ...copies],
+      selectedIds: copies.map((c) => c.id),
+    }));
+  },
 
   save: async () => {
     const { elementTree, code, format, onSave } = get();

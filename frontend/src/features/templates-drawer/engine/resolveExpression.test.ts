@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { resolveExpression } from "./resolveExpression";
+import { resolveExpression, registerCanonicalTypesMetadata } from "./resolveExpression";
 import fs from "fs";
 import path from "path";
 
@@ -163,5 +163,37 @@ describe("resolveExpression - Core engine tests", () => {
     };
     // $[0].valor deve pular SCORE_CREDITO e resolver para DIVIDAS_SERASA.valor (300)
     expect(resolveExpression("$[0].valor", scrambledData)).toBe(300);
+  });
+
+  it("deve resolver metadados virtuais de tipos canônicos cadastrados", () => {
+    // Registrar metadados fictícios
+    registerCanonicalTypesMetadata({
+      DIVIDAS_SPC: {
+        chave: "DIVIDAS_SPC",
+        label: "Dívidas SPC",
+        title: "Restrições Financeiras SPC"
+      },
+      DIVIDAS_SERASA: {
+        chave: "DIVIDAS_SERASA",
+        label: "Dívidas Serasa"
+        // sem title para testar fallback para label
+      }
+    });
+
+    // Testar resolução direta
+    expect(resolveExpression("DIVIDAS_SPC.chave", mockData)).toBe("DIVIDAS_SPC");
+    expect(resolveExpression("DIVIDAS_SPC.label", mockData)).toBe("Dívidas SPC");
+    expect(resolveExpression("DIVIDAS_SPC.title", mockData)).toBe("Restrições Financeiras SPC");
+    expect(resolveExpression("DIVIDAS_SPC.titulo", mockData)).toBe("Restrições Financeiras SPC");
+
+    // Testar com o prefixo "$"
+    expect(resolveExpression("$DIVIDAS_SPC.chave", mockData)).toBe("DIVIDAS_SPC");
+    expect(resolveExpression("$DIVIDAS_SPC.label", mockData)).toBe("Dívidas SPC");
+
+    // Testar fallback de title para label quando title não é definido
+    expect(resolveExpression("DIVIDAS_SERASA.title", mockData)).toBe("Dívidas Serasa");
+
+    // Testar caminhos normais que continuam resolvendo mesmo com metadados registrados
+    expect(resolveExpression("DIVIDAS_SPC.valor", mockData)).toBe(1500.50);
   });
 });

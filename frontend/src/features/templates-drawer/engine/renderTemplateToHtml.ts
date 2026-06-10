@@ -10,12 +10,18 @@ import { formatValue } from "./formatters";
 
 function styleToCss(el: TemplateElement, frame: Frame): string {
   const s = el.style;
+  const autoHeight = el.type === "table" && el.data?.autoHeight;
   const parts: string[] = [];
   parts.push("position:absolute");
   parts.push(`left:${el.x - frame.x}px`);
   parts.push(`top:${el.y - frame.y}px`);
   parts.push(`width:${el.width}px`);
-  parts.push(`height:${el.height}px`);
+  if (autoHeight) {
+    parts.push("height:auto");
+    parts.push(`min-height:${el.height}px`);
+  } else {
+    parts.push(`height:${el.height}px`);
+  }
   if (el.rotation) parts.push(`transform:rotate(${el.rotation}deg)`);
   if (s.background) parts.push(`background:${s.background}`);
   if (s.color) parts.push(`color:${s.color}`);
@@ -38,7 +44,7 @@ function styleToCss(el: TemplateElement, frame: Frame): string {
   }
   parts.push(`z-index:${el.zIndex}`);
   parts.push("box-sizing:border-box");
-  parts.push("overflow:hidden");
+  parts.push(autoHeight ? "overflow:visible" : "overflow:hidden");
   return parts.join(";");
 }
 
@@ -101,8 +107,16 @@ function elementBody(
           label: string;
           path: string;
           format?: string;
+          width?: string;
         }>) ?? [];
       
+      const headerBg = (el.data?.headerBg as string) ?? "transparent";
+      const headerColor = (el.data?.headerColor as string) ?? "inherit";
+      const headerSize = (el.data?.headerSize as number) ?? 12;
+      const rowBg = (el.data?.rowBg as string) ?? "transparent";
+      const rowColor = (el.data?.rowColor as string) ?? "inherit";
+      const rowSize = (el.data?.rowSize as number) ?? 12;
+
       let rows: unknown[] = [];
       if (mode === "skeleton") {
         rows = [
@@ -116,24 +130,32 @@ function elementBody(
       }
 
       const head = columns
-        .map(
-          (c) =>
-            `<th style="text-align:left;padding:6px;border-bottom:1px solid #e2e8f0">${escapeHtml(c.label)}</th>`,
-        )
+        .map((c) => {
+          const w = c.width && c.width !== "auto" ? `width:${c.width};` : "";
+          const bg = headerBg !== "transparent" ? `background:${headerBg};` : "";
+          const color = headerColor !== "inherit" ? `color:${headerColor};` : "";
+          const size = `font-size:${headerSize}px;`;
+          return `<th style="text-align:left;padding:6px;border-bottom:1px solid #e2e8f0;${w}${bg}${color}${size}">${escapeHtml(c.label)}</th>`;
+        })
         .join("");
+
+      const rowBgStyle = rowBg !== "transparent" ? `background:${rowBg};` : "";
+
       const body = rows
         .map((row) => {
           const tds = columns
             .map((c) => {
               if (mode === "skeleton") {
-                return `<td style="padding:6px;border-bottom:1px solid #f1f5f9;color:#94a3b8;font-family:monospace;font-size:10px">{{${path}[*].${c.path}}}</td>`;
+                const color = rowColor !== "inherit" ? rowColor : "#94a3b8";
+                return `<td style="padding:6px;border-bottom:1px solid #f1f5f9;color:${color};font-family:monospace;font-size:${rowSize}px">{{${path}[*].${c.path}}}</td>`;
               }
               const v = resolveExpression(c.path, row);
               const formatted = formatValue(v, c.format as BindingFormat | undefined);
-              return `<td style="padding:6px;border-bottom:1px solid #f1f5f9">${escapeHtml(formatted)}</td>`;
+              const color = rowColor !== "inherit" ? `color:${rowColor};` : "";
+              return `<td style="padding:6px;border-bottom:1px solid #f1f5f9;${color}font-size:${rowSize}px">${escapeHtml(formatted)}</td>`;
             })
             .join("");
-          return `<tr>${tds}</tr>`;
+          return `<tr style="${rowBgStyle}">${tds}</tr>`;
         })
         .join("");
       return `<table style="width:100%;border-collapse:collapse"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>`;

@@ -19,6 +19,24 @@ function ElementViewImpl({ element, selected, onSelect, isIsolated = false }: Pr
   const mode = useEditorStore((s) => s.mode);
   const data = useEvaluationContext();
 
+  const headerFooterEnabled = useEditorStore((s) => s.headerFooterEnabled);
+  const headerHeight = useEditorStore((s) => s.headerHeight);
+  const footerHeight = useEditorStore((s) => s.footerHeight);
+  const frames = useEditorStore((s) => s.template.frames);
+
+  const isReadOnly = (() => {
+    if (isIsolated) return false;
+    if (!headerFooterEnabled) return false;
+    if (frames.length === 0) return false;
+    const firstFrameId = frames[0].id;
+    if (element.frameId === firstFrameId) return false;
+    const parentFrame = frames.find((f) => f.id === element.frameId);
+    if (!parentFrame) return false;
+    const isHeaderArea = element.y - parentFrame.y <= headerHeight;
+    const isFooterArea = (parentFrame.y + parentFrame.height) - (element.y + element.height) <= footerHeight;
+    return isHeaderArea || isFooterArea;
+  })();
+
   let elementData = data;
   if (element.arguments && Object.keys(element.arguments).length > 0) {
     const params: Record<string, unknown> = {};
@@ -80,15 +98,18 @@ function ElementViewImpl({ element, selected, onSelect, isIsolated = false }: Pr
     return () => window.removeEventListener("rd:edit-element" as any, handleEdit);
   }, [element.id, element.type]);
 
-  const s = element.style;
+  const s = element.style || {};
   const isText = element.type === "text";
   const isSkeleton = mode === "skeleton";
+  const autoHeight = element.type === "table" && element.data?.autoHeight;
+
   const baseStyle: React.CSSProperties = {
     position: "absolute",
     left: element.x,
     top: element.y,
     width: element.width,
-    height: element.height,
+    height: autoHeight ? "auto" : element.height,
+    minHeight: autoHeight ? element.height : undefined,
     transform: element.rotation ? `rotate(${element.rotation}deg)` : undefined,
     background: isSkeleton ? "transparent" : s.background,
     color: isSkeleton ? "#0f172a" : s.color,
@@ -108,8 +129,8 @@ function ElementViewImpl({ element, selected, onSelect, isIsolated = false }: Pr
     padding: s.padding,
     zIndex: element.zIndex,
     boxSizing: "border-box",
-    overflow: "hidden",
-    cursor: editing ? "text" : "move",
+    overflow: autoHeight ? "visible" : "hidden",
+    cursor: editing ? "text" : isReadOnly ? "default" : "move",
     whiteSpace: isText ? "pre-wrap" : undefined,
     wordBreak: isText ? "break-word" : undefined,
     overflowWrap: isText ? "break-word" : undefined,
@@ -245,7 +266,16 @@ function ElementViewImpl({ element, selected, onSelect, isIsolated = false }: Pr
             label: string;
             path: string;
             format?: string;
+            width?: string;
           }>) ?? [];
+        
+        const headerBg = (element.data?.headerBg as string) ?? "transparent";
+        const headerColor = (element.data?.headerColor as string) ?? "inherit";
+        const headerSize = (element.data?.headerSize as number) ?? 12;
+        const rowBg = (element.data?.rowBg as string) ?? "transparent";
+        const rowColor = (element.data?.rowColor as string) ?? "inherit";
+        const rowSize = (element.data?.rowSize as number) ?? 12;
+
         const resolved = mode === "preview" ? resolveExpression(path, elementData) : null;
         const rows = Array.isArray(resolved)
           ? resolved
@@ -264,6 +294,10 @@ function ElementViewImpl({ element, selected, onSelect, isIsolated = false }: Pr
                       padding: 6,
                       borderBottom: "1px solid #e2e8f0",
                       fontWeight: 600,
+                      background: headerBg !== "transparent" ? headerBg : undefined,
+                      color: headerColor !== "inherit" ? headerColor : undefined,
+                      fontSize: headerSize,
+                      width: c.width && c.width !== "auto" ? c.width : undefined,
                     }}
                   >
                     {c.label}
@@ -273,7 +307,7 @@ function ElementViewImpl({ element, selected, onSelect, isIsolated = false }: Pr
             </thead>
             <tbody>
               {rows.map((row, i) => (
-                <tr key={i}>
+                <tr key={i} style={{ background: rowBg !== "transparent" ? rowBg : undefined }}>
                   {columns.map((c, j) => {
                     if (mode === "skeleton")
                       return (
@@ -282,7 +316,8 @@ function ElementViewImpl({ element, selected, onSelect, isIsolated = false }: Pr
                           style={{
                             padding: 6,
                             borderBottom: "1px solid #f1f5f9",
-                            color: "#64748b",
+                            color: rowColor !== "inherit" ? rowColor : "#64748b",
+                            fontSize: rowSize,
                           }}
                         >
                           {`{{${path}[*].${c.path}}}`}
@@ -295,6 +330,8 @@ function ElementViewImpl({ element, selected, onSelect, isIsolated = false }: Pr
                         style={{
                           padding: 6,
                           borderBottom: "1px solid #f1f5f9",
+                          color: rowColor !== "inherit" ? rowColor : undefined,
+                          fontSize: rowSize,
                         }}
                       >
                         {formatValue(v, c.format as BindingFormat | undefined)}
@@ -347,16 +384,18 @@ function ElementViewImpl({ element, selected, onSelect, isIsolated = false }: Pr
     <div
       data-element-id={element.id}
       style={baseStyle}
-      onMouseEnter={() => setHovered(element.id)}
+      onMouseEnter={() => {
+        if (!isReadOnly) setHovered(element.id);
+      }}
       onMouseLeave={() => {
-        if (hoveredId === element.id) setHovered(null);
+        if (!isReadOnly && hoveredId === element.id) setHovered(null);
       }}
       onMouseDown={(e) => {
-        if (editing) return;
+        if (editing || isReadOnly) return;
         onSelect(element.id, e.shiftKey);
       }}
       onDoubleClick={(e) => {
-        if (element.type === "text") {
+        if (element.type === "text" && !isReadOnly) {
           e.stopPropagation();
           setEditing(true);
         }

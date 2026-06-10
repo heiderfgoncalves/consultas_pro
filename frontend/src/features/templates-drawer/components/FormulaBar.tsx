@@ -3,6 +3,8 @@ import { useEditorStore } from "../store/editor.store";
 import type { TemplateElement } from "../schema/template";
 import { getSuggestions, insertSuggestionAt } from "../utils/suggestions";
 import { cn } from "@/lib/utils";
+import { SafeEditor as Editor } from "./SafeEditor";
+import { useTheme } from "next-themes";
 import { 
   X, 
   Check, 
@@ -65,7 +67,9 @@ export function FormulaBar() {
   const selectedElement = elements.find((e) => e.id === selectedIds[0]);
 
   // Estados locais
-  const [activePropKey, setActivePropKey] = useState<string>("");
+  const [activePropKey, setActivePropKey] = useState<string>("text");
+  const { resolvedTheme } = useTheme();
+  const editorTheme = resolvedTheme === "dark" ? "vs-dark" : "light";
   const [inputValue, setInputValue] = useState<string>("");
   const [originalValue, setOriginalValue] = useState<string>("");
   const [isNameEditing, setIsNameEditing] = useState<boolean>(false);
@@ -701,18 +705,43 @@ export function FormulaBar() {
                 )}
               >
                 {isExpanded ? (
-                  <textarea
-                    ref={inputRef as React.RefObject<HTMLTextAreaElement>}
-                    value={inputValue}
-                    onChange={handleInputChange}
-                    onFocus={handleInputFocus}
-                    onKeyUp={handleInputKeyUpAndClick}
-                    onKeyDown={handleInputKeyDown}
-                    onClick={handleInputKeyUpAndClick}
-                    placeholder={selectedElement ? "Digite um texto ou uma expressão, ex: {{$cliente.nome}}" : "Selecione um elemento para editar suas expressões..."}
-                    disabled={!selectedElement}
-                    className="w-full min-h-[80px] h-[80px] px-2 py-1.5 text-xs font-mono text-slate-950 dark:text-slate-55 bg-transparent border-none outline-none resize-y scrollbar-thin focus:ring-0 focus:outline-none"
-                  />
+                  activePropKey === "customHtml" ? (
+                    <div className="w-full min-h-[140px] h-[140px] border-t border-slate-200 dark:border-slate-800 relative z-0">
+                      <Editor
+                        key={`formulabar-${selectedElement?.id}`}
+                        height="100%"
+                        language="html"
+                        theme={editorTheme}
+                        value={inputValue}
+                        onChange={(v) => {
+                          setInputValue(v || "");
+                          if (selectedElement && activeProp) {
+                            activeProp.setValue(selectedElement, v || "", updateElement, updateData);
+                          }
+                        }}
+                        options={{
+                          minimap: { enabled: false },
+                          lineNumbers: "on",
+                          fontSize: 12,
+                          wordWrap: "on",
+                          padding: { top: 8 },
+                        }}
+                      />
+                    </div>
+                  ) : (
+                    <textarea
+                      ref={inputRef as React.RefObject<HTMLTextAreaElement>}
+                      value={inputValue}
+                      onChange={handleInputChange}
+                      onFocus={handleInputFocus}
+                      onKeyUp={handleInputKeyUpAndClick}
+                      onKeyDown={handleInputKeyDown}
+                      onClick={handleInputKeyUpAndClick}
+                      placeholder={selectedElement ? "Digite um texto ou uma expressão, ex: {{$cliente.nome}}" : "Selecione um elemento para editar suas expressões..."}
+                      disabled={!selectedElement}
+                      className="w-full min-h-[80px] h-[80px] px-2 py-1.5 text-xs font-mono text-slate-950 dark:text-slate-55 bg-transparent border-none outline-none resize-y scrollbar-thin focus:ring-0 focus:outline-none"
+                    />
+                  )
                 ) : (
                   <input
                     ref={inputRef as React.RefObject<HTMLInputElement>}

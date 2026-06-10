@@ -35,6 +35,7 @@ export function EditorApp() {
     useEditorStore.persist.rehydrate();
     setHydrated(true);
   }, []);
+
   const consoleOpen = useEditorStore((s) => s.consoleOpen);
   const htmlInspectorOpen = useEditorStore((s) => s.htmlInspectorOpen);
   const setHtmlInspectorOpen = useEditorStore((s) => s.setHtmlInspectorOpen);
@@ -42,6 +43,14 @@ export function EditorApp() {
   const setRightPanelOpen = useEditorStore((s) => s.setRightPanelOpen);
   const activeRightTab = useEditorStore((s) => s.activeRightTab);
   const setActiveRightTab = useEditorStore((s) => s.setActiveRightTab);
+
+  useEffect(() => {
+    const handler = () => {
+      setHtmlInspectorOpen(true);
+    };
+    window.addEventListener("rd:open-html-inspector", handler);
+    return () => window.removeEventListener("rd:open-html-inspector", handler);
+  }, [setHtmlInspectorOpen]);
 
   if (!hydrated) {
     return (
@@ -139,12 +148,9 @@ export function EditorApp() {
                   aria-label={tab.label}
                 >
                   <Icon className="size-4 shrink-0" />
-                  <span className="[writing-mode:vertical-lr] rotate-180 text-[8px] font-black tracking-wider uppercase select-none leading-none mt-1">
+                  <span className="[writing-mode:vertical-lr] text-[8px] font-black tracking-wider uppercase select-none leading-none mt-1">
                     {tab.shortLabel}
                   </span>
-                  {isActive && (
-                    <span className="absolute left-0 top-1/4 bottom-1/4 w-[2.5px] bg-white rounded-r" />
-                  )}
                 </button>
               </TooltipTrigger>
               <TooltipContent side="left" className="text-[11px] font-semibold bg-slate-900 text-white dark:bg-slate-150 dark:text-slate-950 px-2 py-1 shadow-md border-0">
@@ -219,7 +225,7 @@ export function EditorApp() {
       <SaveComponentDialog />
       <ConfirmDialog />
       <Dialog open={htmlInspectorOpen} onOpenChange={setHtmlInspectorOpen}>
-        <DialogContent className="max-w-4xl h-[80vh] p-0 overflow-hidden">
+        <DialogContent showClose={false} className="max-w-4xl h-[80vh] p-0 overflow-hidden">
           <DialogTitle className="sr-only">Editor HTML</DialogTitle>
           <DialogDescription className="sr-only">Painel de inspeção e edição de código HTML customizado do elemento</DialogDescription>
           <HtmlInspectorPanel />

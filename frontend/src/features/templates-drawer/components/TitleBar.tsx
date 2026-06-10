@@ -117,10 +117,19 @@ export function TitleBar() {
         targetId = createdTpl.id;
       }
 
+      const currentDataJson = useEditorStore.getState().dataJson;
+      const payloadTemplate = {
+        ...template,
+        metadata: {
+          ...(template.metadata || {}),
+          lastAdminData: currentDataJson
+        }
+      };
+
       // Com o ID real do banco (seja existente ou recém-criado), salva o layout
       const res = await patchTemplateLayoutApi(accessToken, targetId, {
         name: template.name,
-        layout: template,
+        layout: payloadTemplate,
       });
 
       return { res, isAutosave: vars?.isAutosave };

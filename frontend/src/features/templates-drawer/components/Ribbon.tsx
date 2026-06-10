@@ -101,7 +101,76 @@ function dragPayload(type: ElementType) {
 
 export function Ribbon() {
   const [tab, setTab] = useState<Tab>("inserir");
-  const s = useEditorStore();
+  
+  // Seletores atômicos para otimizar re-renders e evitar loops de renderização concorrente (Zustand Best Practices)
+  const selectedIds = useEditorStore((state) => state.selectedIds);
+  const template = useEditorStore((state) => state.template);
+  const showGrid = useEditorStore((state) => state.showGrid);
+  const snap = useEditorStore((state) => state.snap);
+  const mode = useEditorStore((state) => state.mode);
+  const reusableComponents = useEditorStore((state) => state.reusableComponents);
+  const consoleOpen = useEditorStore((state) => state.consoleOpen);
+  const recentColors = useEditorStore((state) => state.recentColors);
+  const activeFrameId = useEditorStore((state) => state.activeFrameId);
+  const rightPanelOpen = useEditorStore((state) => state.rightPanelOpen);
+  const activeRightTab = useEditorStore((state) => state.activeRightTab);
+
+  const undo = useEditorStore((state) => state.undo);
+  const redo = useEditorStore((state) => state.redo);
+  const addFrame = useEditorStore((state) => state.addFrame);
+  const alignSelected = useEditorStore((state) => state.alignSelected);
+  const bringForward = useEditorStore((state) => state.bringForward);
+  const sendBackward = useEditorStore((state) => state.sendBackward);
+  const duplicateElements = useEditorStore((state) => state.duplicateElements);
+  const groupSelectedElements = useEditorStore((state) => state.groupSelectedElements);
+  const ungroupSelectedElements = useEditorStore((state) => state.ungroupSelectedElements);
+  const updateCanvas = useEditorStore((state) => state.updateCanvas);
+  const toggleGrid = useEditorStore((state) => state.toggleGrid);
+  const toggleSnap = useEditorStore((state) => state.toggleSnap);
+  const updateElementStyle = useEditorStore((state) => state.updateElementStyle);
+  const setMode = useEditorStore((state) => state.setMode);
+  const toggleConsole = useEditorStore((state) => state.toggleConsole);
+  const setConsoleLayout = useEditorStore((state) => state.setConsoleLayout);
+  const pushRecentColor = useEditorStore((state) => state.pushRecentColor);
+  const removeElements = useEditorStore((state) => state.removeElements);
+  const setActiveRightTab = useEditorStore((state) => state.setActiveRightTab);
+  const setRightPanelOpen = useEditorStore((state) => state.setRightPanelOpen);
+  const updateMetadata = useEditorStore((state) => state.updateMetadata);
+
+  const s = {
+    selectedIds,
+    template,
+    showGrid,
+    snap,
+    updateMetadata,
+    mode,
+    reusableComponents,
+    consoleOpen,
+    recentColors,
+    activeFrameId,
+    rightPanelOpen,
+    activeRightTab,
+    undo,
+    redo,
+    addFrame,
+    alignSelected,
+    bringForward,
+    sendBackward,
+    duplicateElements,
+    groupSelectedElements,
+    ungroupSelectedElements,
+    updateCanvas,
+    toggleGrid,
+    toggleSnap,
+    updateElementStyle,
+    setMode,
+    toggleConsole,
+    setConsoleLayout,
+    pushRecentColor,
+    removeElements,
+    setActiveRightTab,
+    setRightPanelOpen,
+  };
 
   const tabs: { id: Tab; label: string }[] = [
     { id: "inserir", label: "Inserir" },
@@ -624,6 +693,37 @@ export function Ribbon() {
                 active={s.consoleOpen}
                 onClick={s.toggleConsole}
               />
+            </Group>
+            <Group title="Visibilidade">
+              <div className="flex flex-col justify-center gap-1 px-1 min-w-[110px] h-full">
+                {[
+                  { role: "COMPANY_OWNER", label: "Dono" },
+                  { role: "COMPANY_MANAGER", label: "Gerente" },
+                  { role: "USER", label: "Operador" },
+                ].map((item) => {
+                  const visibleRoles = (s.template.metadata?.visibleRoles as string[]) ?? ["COMPANY_OWNER", "COMPANY_MANAGER", "USER"];
+                  const isChecked = visibleRoles.includes(item.role);
+                  return (
+                    <label key={item.role} className="flex items-center gap-1.5 cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={isChecked}
+                        onChange={(e) => {
+                          let nextRoles: string[];
+                          if (e.target.checked) {
+                            nextRoles = [...visibleRoles, item.role];
+                          } else {
+                            nextRoles = visibleRoles.filter((r) => r !== item.role);
+                          }
+                          s.updateMetadata({ visibleRoles: nextRoles });
+                        }}
+                        className="rounded border-slate-300 dark:border-slate-700 text-blue-600 dark:text-blue-500 size-2.5 cursor-pointer"
+                      />
+                      <span className="text-[9px] font-medium text-slate-600 dark:text-slate-300 leading-none">{item.label}</span>
+                    </label>
+                  );
+                })}
+              </div>
             </Group>
           </>
         )}

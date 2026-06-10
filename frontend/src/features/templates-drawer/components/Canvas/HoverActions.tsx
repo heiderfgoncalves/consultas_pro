@@ -44,6 +44,27 @@ export function HoverActions({ containerRect, isIsolated = false, viewport: view
   const el = elements.find((e) => e.id === hoveredId);
   if (!el) return null;
 
+  // Cabeçalho & Rodapé globais (Somente Leitura nas demais páginas)
+  const headerFooterEnabled = useEditorStore.getState().headerFooterEnabled;
+  const headerHeight = useEditorStore.getState().headerHeight;
+  const footerHeight = useEditorStore.getState().footerHeight;
+  const frames = useEditorStore.getState().template.frames;
+
+  const isReadOnlyHeaderFooter = (element: typeof el) => {
+    if (isIsolated) return false;
+    if (!headerFooterEnabled) return false;
+    if (frames.length === 0) return false;
+    const firstFrameId = frames[0].id;
+    if (element.frameId === firstFrameId) return false;
+    const parentFrame = frames.find((f) => f.id === element.frameId);
+    if (!parentFrame) return false;
+    const isHeaderArea = element.y - parentFrame.y <= headerHeight;
+    const isFooterArea = (parentFrame.y + parentFrame.height) - (element.y + element.height) <= footerHeight;
+    return isHeaderArea || isFooterArea;
+  };
+
+  if (isReadOnlyHeaderFooter(el)) return null;
+
   const leftX_screen = viewport.x + el.x * viewport.zoom;
   const rightX_screen = viewport.x + (el.x + el.width) * viewport.zoom;
   const topY_screen = viewport.y + el.y * viewport.zoom;

@@ -1,7 +1,9 @@
 import { useEffect, useRef } from "react";
 import { useEditorStore } from "../../store/editor.store";
+import { useIsolatedEditorStore } from "../../store/isolated-editor.store";
 import { confirmDialog } from "../dialogs/ConfirmDialog";
 import { toast } from "sonner";
+import type { ElementType } from "../../schema/template";
 import {
   Copy,
   ClipboardPaste,
@@ -36,29 +38,64 @@ type Props = {
   y: number;
   kind?: Kind;
   targetId?: string;
+  isIsolated?: boolean;
   onClose: () => void;
 };
 
-export function ContextMenu({ x, y, kind = "element", targetId, onClose }: Props) {
+export function ContextMenu({ x, y, kind = "element", targetId, isIsolated = false, onClose }: Props) {
   const ref = useRef<HTMLDivElement>(null);
-  const selectedIds = useEditorStore((s) => s.selectedIds);
-  const elements = useEditorStore((s) => s.template.elements);
+  
+  // Seleção de Stores Condicional de acordo com isIsolated
+  const mainSelectedIds = useEditorStore((s) => s.selectedIds);
+  const mainElements = useEditorStore((s) => s.template.elements);
+  
+  const isolatedSelectedIds = useIsolatedEditorStore((s) => s.selectedIds);
+  const isolatedElements = useIsolatedEditorStore((s) => s.elementTree);
+
+  const selectedIds = isIsolated ? isolatedSelectedIds : mainSelectedIds;
+  const elements = isIsolated ? isolatedElements : mainElements;
+
   const frames = useEditorStore((s) => s.template.frames);
   const components = useEditorStore((s) => s.reusableComponents);
-  const copySelection = useEditorStore((s) => s.copySelection);
-  const pasteClipboard = useEditorStore((s) => s.pasteClipboard);
-  const duplicate = useEditorStore((s) => s.duplicateElements);
-  const remove = useEditorStore((s) => s.removeElements);
-  const bringForward = useEditorStore((s) => s.bringForward);
-  const sendBackward = useEditorStore((s) => s.sendBackward);
-  const updateElement = useEditorStore((s) => s.updateElement);
-  const alignSelected = useEditorStore((s) => s.alignSelected);
-  const groupSelectedElements = useEditorStore((s) => s.groupSelectedElements);
-  const ungroupSelectedElements = useEditorStore((s) => s.ungroupSelectedElements);
+
+  const mainCopySelection = useEditorStore((s) => s.copySelection);
+  const isolatedCopySelection = useIsolatedEditorStore((s) => s.copySelection);
+  const copySelection = isIsolated ? isolatedCopySelection : mainCopySelection;
+
+  const mainPasteClipboard = useEditorStore((s) => s.pasteClipboard);
+  const isolatedPasteClipboard = useIsolatedEditorStore((s) => s.pasteClipboard);
+  const pasteClipboard = isIsolated ? isolatedPasteClipboard : mainPasteClipboard;
+
+  const mainDuplicate = useEditorStore((s) => s.duplicateElements);
+  const isolatedDuplicate = useIsolatedEditorStore((s) => s.duplicateElements);
+  const duplicate = isIsolated ? isolatedDuplicate : mainDuplicate;
+
+  const mainRemove = useEditorStore((s) => s.removeElements);
+  const isolatedRemove = useIsolatedEditorStore((s) => s.removeElements);
+  const remove = isIsolated ? isolatedRemove : mainRemove;
+
+  const mainUpdateElement = useEditorStore((s) => s.updateElement);
+  const isolatedUpdateElement = useIsolatedEditorStore((s) => s.updateElement);
+  const updateElement = isIsolated ? isolatedUpdateElement : mainUpdateElement;
+
+  const mainAddElement = useEditorStore((s) => s.addElement);
+  const isolatedAddElement = useIsolatedEditorStore((s) => s.addElement);
+  const addElement = isIsolated 
+    ? (type: ElementType, pos: { x: number; y: number }, _frameId?: string) => isolatedAddElement(type, pos) 
+    : mainAddElement;
+
+  const mainInsertComponent = useEditorStore((s) => s.insertComponent);
+  const insertComponent = isIsolated ? (() => "") : mainInsertComponent;
+
+  // No-ops para ações não suportadas no modo isolado
+  const bringForward = isIsolated ? (() => {}) : useEditorStore((s) => s.bringForward);
+  const sendBackward = isIsolated ? (() => {}) : useEditorStore((s) => s.sendBackward);
+  const alignSelected = isIsolated ? (() => {}) : useEditorStore((s) => s.alignSelected);
+  const groupSelectedElements = isIsolated ? (() => {}) : useEditorStore((s) => s.groupSelectedElements);
+  const ungroupSelectedElements = isIsolated ? (() => {}) : useEditorStore((s) => s.ungroupSelectedElements);
+  
   const removeFrame = useEditorStore((s) => s.removeFrame);
   const duplicateFrame = useEditorStore((s) => s.duplicateFrame);
-  const addElement = useEditorStore((s) => s.addElement);
-  const insertComponent = useEditorStore((s) => s.insertComponent);
   const addFrame = useEditorStore((s) => s.addFrame);
   const updateFrame = useEditorStore((s) => s.updateFrame);
 
@@ -91,10 +128,14 @@ export function ContextMenu({ x, y, kind = "element", targetId, onClose }: Props
     { label: "Colar", icon: ClipboardPaste, shortcut: "Ctrl+V", onClick: () => { pasteClipboard(); onClose(); } },
     { label: "Duplicar", icon: CopyPlus, shortcut: "Ctrl+D", onClick: () => { duplicate(selectedIds); onClose(); } },
     "separator",
-    { label: "Trazer para frente", icon: ArrowUpToLine, shortcut: "]", onClick: () => { bringForward(selectedIds); onClose(); } },
-    { label: "Enviar para trás", icon: ArrowDownToLine, shortcut: "[", onClick: () => { sendBackward(selectedIds); onClose(); } },
-    "separator",
-    ...(selectedIds.length >= 2
+    ...(!isIsolated
+      ? ([
+          { label: "Trazer para frente", icon: ArrowUpToLine, shortcut: "]", onClick: () => { bringForward(selectedIds); onClose(); } },
+          { label: "Enviar para trás", icon: ArrowDownToLine, shortcut: "[", onClick: () => { sendBackward(selectedIds); onClose(); } },
+          "separator",
+        ] as Item[])
+      : []),
+    ...(!isIsolated && selectedIds.length >= 2
       ? ([
           { label: "Alinhar à esquerda", icon: AlignLeft, onClick: () => { alignSelected("left"); onClose(); } },
           { label: "Centralizar horizontal", icon: AlignCenter, onClick: () => { alignSelected("h-center"); onClose(); } },
@@ -104,13 +145,13 @@ export function ContextMenu({ x, y, kind = "element", targetId, onClose }: Props
           "separator",
         ] as Item[])
       : []),
-    ...(selectedIds.length >= 2
+    ...(!isIsolated && selectedIds.length >= 2
       ? ([
           { label: "Agrupar elementos", icon: Layers, onClick: () => { groupSelectedElements(); onClose(); } },
           "separator",
         ] as Item[])
       : []),
-    ...(selectedIds.some(id => elements.find(e => e.id === id)?.groupId)
+    ...(!isIsolated && selectedIds.some(id => elements.find(e => e.id === id)?.groupId)
       ? ([
           { label: "Desagrupar elementos", icon: Layers, onClick: () => { ungroupSelectedElements(); onClose(); } },
           "separator",
@@ -130,14 +171,18 @@ export function ContextMenu({ x, y, kind = "element", targetId, onClose }: Props
         });
         onClose();
       } },
-    { label: "Editar isoladamente", icon: Maximize, onClick: () => {
-        window.dispatchEvent(new CustomEvent("rd:open-isolated"));
-        onClose();
-      } },
-    { label: "Salvar como componente", icon: Save, onClick: () => {
-        window.dispatchEvent(new CustomEvent("rd:open-save-component"));
-        onClose();
-      } },
+    ...(!isIsolated
+      ? ([
+          { label: "Editar isoladamente", icon: Maximize, onClick: () => {
+              window.dispatchEvent(new CustomEvent("rd:open-isolated"));
+              onClose();
+            } },
+          { label: "Salvar como componente", icon: Save, onClick: () => {
+              window.dispatchEvent(new CustomEvent("rd:open-save-component"));
+              onClose();
+            } },
+        ] as Item[])
+      : []),
     { label: "Inspecionar (HTML/XML/JSON)", icon: Code2, shortcut: "Ctrl+Shift+X", onClick: () => {
         window.dispatchEvent(new CustomEvent("rd:open-html-inspector"));
         onClose();
@@ -195,12 +240,16 @@ export function ContextMenu({ x, y, kind = "element", targetId, onClose }: Props
       ]
     : [];
 
-  const canvasItems: Item[] = [
-    { label: "Nova página A4 retrato", icon: Plus, onClick: () => { addFrame("a4-p"); onClose(); } },
-    { label: "Nova página A4 paisagem", icon: Plus, onClick: () => { addFrame("a4-l"); onClose(); } },
-    "separator",
-    { label: "Colar aqui", icon: ClipboardPaste, shortcut: "Ctrl+V", onClick: () => { pasteClipboard(); onClose(); } },
-  ];
+  const canvasItems: Item[] = isIsolated
+    ? [
+        { label: "Colar aqui", icon: ClipboardPaste, shortcut: "Ctrl+V", onClick: () => { pasteClipboard(); onClose(); } },
+      ]
+    : [
+        { label: "Nova página A4 retrato", icon: Plus, onClick: () => { addFrame("a4-p"); onClose(); } },
+        { label: "Nova página A4 paisagem", icon: Plus, onClick: () => { addFrame("a4-l"); onClose(); } },
+        "separator",
+        { label: "Colar aqui", icon: ClipboardPaste, shortcut: "Ctrl+V", onClick: () => { pasteClipboard(); onClose(); } },
+      ];
 
   const items =
     kind === "frame" ? frameItems : kind === "canvas" ? canvasItems : elementItems;

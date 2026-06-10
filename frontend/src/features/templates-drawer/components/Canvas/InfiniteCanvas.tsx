@@ -48,6 +48,23 @@ export function InfiniteCanvas({ isIsolated }: { isIsolated?: boolean }) {
   const mainRightPanelOpen = useEditorStore((s) => s.rightPanelOpen);
   const mainSetRightPanelOpen = useEditorStore((s) => s.setRightPanelOpen);
 
+  const headerFooterEnabled = useEditorStore((s) => s.headerFooterEnabled);
+  const headerHeight = useEditorStore((s) => s.headerHeight);
+  const footerHeight = useEditorStore((s) => s.footerHeight);
+
+  const isElementReadOnlyHeaderFooter = (el: TemplateElement) => {
+    if (isIsolated) return false;
+    if (!headerFooterEnabled) return false;
+    if (frames.length === 0) return false;
+    const firstFrameId = frames[0].id;
+    if (el.frameId === firstFrameId) return false;
+    const parentFrame = frames.find((f) => f.id === el.frameId);
+    if (!parentFrame) return false;
+    const isHeaderArea = el.y - parentFrame.y <= headerHeight;
+    const isFooterArea = (parentFrame.y + parentFrame.height) - (el.y + el.height) <= footerHeight;
+    return isHeaderArea || isFooterArea;
+  };
+
   // Store Isolada
   const isolatedStore = useIsolatedEditorStore();
 
@@ -163,13 +180,18 @@ export function InfiniteCanvas({ isIsolated }: { isIsolated?: boolean }) {
         duplicateElements(selectedIds);
       }
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "c" && !isTyping) {
-        if (!isIsolated) {
+        e.preventDefault();
+        if (isIsolated) {
+          isolatedStore.copySelection();
+        } else {
           useEditorStore.getState().copySelection();
         }
       }
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "v" && !isTyping) {
-        if (!isIsolated) {
-          e.preventDefault();
+        e.preventDefault();
+        if (isIsolated) {
+          isolatedStore.pasteClipboard();
+        } else {
           useEditorStore.getState().pasteClipboard();
         }
       }
@@ -435,6 +457,14 @@ export function InfiniteCanvas({ isIsolated }: { isIsolated?: boolean }) {
       }
     }
 
+    if (elDom) {
+      const id = elDom.getAttribute("data-element-id")!;
+      const el = elements.find((x) => x.id === id);
+      if (el && isElementReadOnlyHeaderFooter(el)) {
+        elDom = null;
+      }
+    }
+
     // Se tiver agrupando com shift, alternamos a seleção (toggle) e retornamos imediatamente
     if (elDom && e.shiftKey && e.button === 0) {
       const id = elDom.getAttribute("data-element-id")!;
@@ -517,6 +547,7 @@ export function InfiniteCanvas({ isIsolated }: { isIsolated?: boolean }) {
 
               // Encontra todos os elementos no canvas que colidem com essa caixa de mundo
               const collidingIds = elements
+                .filter((el) => !isElementReadOnlyHeaderFooter(el))
                 .filter((el) => {
                   return (
                     el.x < worldMax.x &&
@@ -561,13 +592,19 @@ export function InfiniteCanvas({ isIsolated }: { isIsolated?: boolean }) {
 
   function onContextMenu(e: React.MouseEvent) {
     const target = e.target as HTMLElement;
-    const el = target.closest("[data-element-id]") as HTMLElement | null;
-    if (el) {
-      e.preventDefault();
-      const id = el.getAttribute("data-element-id")!;
-      if (!selectedIds.includes(id)) setSelected([id]);
-      setCtxMenu({ x: e.clientX, y: e.clientY, kind: "element", targetId: id });
-      return;
+    const elDom = target.closest("[data-element-id]") as HTMLElement | null;
+    if (elDom) {
+      const id = elDom.getAttribute("data-element-id")!;
+      const el = elements.find((x) => x.id === id);
+      if (el && isElementReadOnlyHeaderFooter(el)) {
+        // Ignora menu de contexto de elemento para cabeçalho/rodapé somente leitura,
+        // permitindo que o menu de contexto do frame/canvas seja exibido em vez dele.
+      } else {
+        e.preventDefault();
+        if (!selectedIds.includes(id)) setSelected([id]);
+        setCtxMenu({ x: e.clientX, y: e.clientY, kind: "element", targetId: id });
+        return;
+      }
     }
     // Frame vs empty canvas hit detection
     e.preventDefault();
@@ -941,6 +978,7 @@ export function InfiniteCanvas({ isIsolated }: { isIsolated?: boolean }) {
           y={ctxMenu.y}
           kind={ctxMenu.kind}
           targetId={ctxMenu.targetId}
+          isIsolated={isIsolated}
           onClose={() => setCtxMenu(null)}
         />
       )}

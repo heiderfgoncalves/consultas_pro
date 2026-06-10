@@ -98,6 +98,19 @@ type EditorState = {
   selectedScenarios: Record<string, string>;
   draftSampleResponses: Record<string, string>;
 
+  // Header & Footer
+  headerFooterEnabled: boolean;
+  headerHeight: number;
+  footerHeight: number;
+  replicateOnNewPages: boolean;
+
+  setHeaderFooterEnabled: (enabled: boolean) => void;
+  setHeaderHeight: (height: number) => void;
+  setFooterHeight: (height: number) => void;
+  setReplicateOnNewPages: (replicate: boolean) => void;
+  replicateHeaderFooterToFrame: (sourceFrameId: string, targetFrameId: string) => void;
+  replicateHeaderFooterToAllFrames: () => void;
+
   setActiveTemplateId: (id: string | null) => void;
   setActiveProductId: (id: string | null) => void;
   setRightPanelOpen: (open: boolean) => void;
@@ -204,6 +217,7 @@ type EditorState = {
     frameId?: string,
   ) => void;
   updateCanvas: (patch: Partial<ReportTemplate["canvas"]>) => void;
+  updateMetadata: (patch: Record<string, unknown>) => void;
 };
 
 const HISTORY_LIMIT = 50;
@@ -315,6 +329,86 @@ export const useEditorStore = create<EditorState>()(
       selectedConsultaIds: [],
       selectedScenarios: {},
       draftSampleResponses: {},
+
+      headerFooterEnabled: false,
+      headerHeight: 100,
+      footerHeight: 80,
+      replicateOnNewPages: true,
+
+      setHeaderFooterEnabled: (enabled) => set({ headerFooterEnabled: enabled }),
+      setHeaderHeight: (height) => set({ headerHeight: height }),
+      setFooterHeight: (height) => set({ footerHeight: height }),
+      setReplicateOnNewPages: (replicate) => set({ replicateOnNewPages: replicate }),
+      replicateHeaderFooterToFrame: (sourceFrameId, targetFrameId) => {
+        const { template, headerHeight, footerHeight } = get();
+        const sourceFrame = template.frames.find((f) => f.id === sourceFrameId);
+        const targetFrame = template.frames.find((f) => f.id === targetFrameId);
+        if (!sourceFrame || !targetFrame) return;
+
+        // Filtrar elementos do frame de origem que pertencem ao header ou footer
+        const sourceElements = template.elements.filter((e) => e.frameId === sourceFrameId);
+        const headerEls = sourceElements.filter(
+          (e) => e.y - sourceFrame.y <= headerHeight
+        );
+        const footerEls = sourceElements.filter(
+          (e) => (sourceFrame.y + sourceFrame.height) - (e.y + e.height) <= footerHeight
+        );
+
+        if (headerEls.length === 0 && footerEls.length === 0) return;
+
+        // Remover elementos existentes no frame de destino que estão na área de header/footer
+        const filteredElements = template.elements.filter((e) => {
+          if (e.frameId !== targetFrameId) return true;
+          const isHeaderArea = e.y - targetFrame.y <= headerHeight;
+          const isFooterArea = (targetFrame.y + targetFrame.height) - (e.y + e.height) <= footerHeight;
+          return !isHeaderArea && !isFooterArea;
+        });
+
+        let z = nextZ({ ...template, elements: filteredElements });
+
+        // Clonar e transladar elementos de header
+        const clonedHeaders = headerEls.map((e) => {
+          const clone = structuredClone(e);
+          return {
+            ...clone,
+            id: newId(e.type),
+            frameId: targetFrameId,
+            x: e.x - sourceFrame.x + targetFrame.x,
+            y: e.y - sourceFrame.y + targetFrame.y,
+            zIndex: z++,
+          };
+        });
+
+        // Clonar e transladar elementos de footer (com ajuste de altura se houver)
+        const clonedFooters = footerEls.map((e) => {
+          const clone = structuredClone(e);
+          const distFromBottom = (sourceFrame.y + sourceFrame.height) - e.y;
+          return {
+            ...clone,
+            id: newId(e.type),
+            frameId: targetFrameId,
+            x: e.x - sourceFrame.x + targetFrame.x,
+            y: targetFrame.y + targetFrame.height - distFromBottom,
+            zIndex: z++,
+          };
+        });
+
+        set((s) => ({
+          template: {
+            ...s.template,
+            elements: [...filteredElements, ...clonedHeaders, ...clonedFooters],
+          },
+        }));
+      },
+      replicateHeaderFooterToAllFrames: () => {
+        const { template } = get();
+        if (template.frames.length < 2) return;
+        get().pushHistory();
+        const firstFrameId = template.frames[0].id;
+        for (let i = 1; i < template.frames.length; i++) {
+          get().replicateHeaderFooterToFrame(firstFrameId, template.frames[i].id);
+        }
+      },
 
       setActiveTemplateId: (id) => set({ activeTemplateId: id }),
       setActiveProductId: (id) => set({ activeProductId: id }),
@@ -528,6 +622,14 @@ export const useEditorStore = create<EditorState>()(
             activeFrameId: frame.id,
           };
         });
+
+        // REPLICAR HEADER & FOOTER AUTOMATICAMENTE SE ATIVO
+        const state = get();
+        if (state.headerFooterEnabled && state.replicateOnNewPages && state.template.frames.length > 1) {
+          const firstFrameId = state.template.frames[0].id;
+          const targetFrameId = state.template.frames[state.template.frames.length - 1].id;
+          state.replicateHeaderFooterToFrame(firstFrameId, targetFrameId);
+        }
       },
       updateFrame: (id, patch) => {
         get().pushHistory();
@@ -739,21 +841,51 @@ export const useEditorStore = create<EditorState>()(
           selectedIds.includes(e.id),
         );
         if (items.length === 0) return;
-        set({ copyBuffer: items.map((e) => structuredClone(e)) });
+        const clones = items.map((e) => structuredClone(e));
+        set({ copyBuffer: clones });
+        (window as any).__editorCopyBuffer = clones;
       },
       pasteClipboard: () => {
-        const { copyBuffer } = get();
+        const copyBuffer = (window as any).__editorCopyBuffer || get().copyBuffer;
         if (!copyBuffer || copyBuffer.length === 0) return;
         get().pushHistory();
         set((s) => {
           let z = nextZ(s.template);
-          const copies = copyBuffer.map((e) => ({
-            ...structuredClone(e),
-            id: newId(e.type),
-            x: e.x + 24,
-            y: e.y + 24,
-            zIndex: z++,
-          }));
+          
+          // Se o elemento copiado veio de um ambiente isolado (não possui frameId ou veio de fora),
+          // nós o colamos dentro da página ativa (activeFrameId) se houver uma!
+          const activeFrame = s.template.frames.find((f) => f.id === s.activeFrameId) ?? s.template.frames[0];
+          
+          let minX = Infinity;
+          let minY = Infinity;
+          copyBuffer.forEach((e: any) => {
+            if (e.x < minX) minX = e.x;
+            if (e.y < minY) minY = e.y;
+          });
+          
+          const isFromIsolatedOrNoFrame = copyBuffer.some((e: any) => !e.frameId || !s.template.frames.some(f => f.id === e.frameId));
+          
+          const copies = copyBuffer.map((e: any) => {
+            const clone = structuredClone(e);
+            let nx = e.x + 24;
+            let ny = e.y + 24;
+            let frameId = e.frameId;
+            
+            if (isFromIsolatedOrNoFrame && activeFrame) {
+              nx = activeFrame.x + (e.x - (minX === Infinity ? 0 : minX)) + 24;
+              ny = activeFrame.y + (e.y - (minY === Infinity ? 0 : minY)) + 24;
+              frameId = activeFrame.id;
+            }
+            
+            return {
+              ...clone,
+              id: newId(e.type),
+              x: nx,
+              y: ny,
+              zIndex: z++,
+              frameId,
+            };
+          });
           return {
             template: {
               ...s.template,
@@ -986,6 +1118,18 @@ export const useEditorStore = create<EditorState>()(
           },
         }));
       },
+      updateMetadata: (patch) => {
+        get().pushHistory();
+        set((s) => ({
+          template: {
+            ...s.template,
+            metadata: {
+              ...(s.template.metadata || {}),
+              ...patch,
+            },
+          },
+        }));
+      },
     }),
     {
       name: "report-drawer:session",
@@ -1013,6 +1157,10 @@ export const useEditorStore = create<EditorState>()(
         leftPanelTab: s.leftPanelTab,
         selectedConsultaIds: s.selectedConsultaIds,
         selectedScenarios: s.selectedScenarios,
+        headerFooterEnabled: s.headerFooterEnabled,
+        headerHeight: s.headerHeight,
+        footerHeight: s.footerHeight,
+        replicateOnNewPages: s.replicateOnNewPages,
       }),
       skipHydration: true,
       onRehydrateStorage: () => (state) => {

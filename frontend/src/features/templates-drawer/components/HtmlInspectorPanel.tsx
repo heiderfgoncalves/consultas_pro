@@ -15,8 +15,6 @@ type Format = "html" | "xml" | "json";
 export function HtmlInspectorPanel() {
   const htmlInspectorOpen = useEditorStore((s) => s.htmlInspectorOpen);
   const setHtmlInspectorOpen = useEditorStore((s) => s.setHtmlInspectorOpen);
-  const [scope, setScope] = useState<Scope>("selection");
-  const [format, setFormat] = useState<Format>("html");
   const template = useEditorStore((s) => s.template);
   const data = useEvaluationContext();
   const selectedIds = useEditorStore((s) => s.selectedIds);
@@ -24,18 +22,18 @@ export function HtmlInspectorPanel() {
   const replaceTemplate = useEditorStore((s) => s.replaceTemplate);
   const updateElement = useEditorStore((s) => s.updateElement);
 
+  const [scope, setScope] = useState<Scope>(() => selectedIds.length > 0 ? "selection" : "template");
+  const [format, setFormat] = useState<Format>("html");
+
   const [draftText, setDraftText] = useState("");
   const [error, setError] = useState<string | null>(null);
   const { resolvedTheme } = useTheme();
 
   useEffect(() => {
-    const handler = () => {
+    if (htmlInspectorOpen) {
       setScope(selectedIds.length > 0 ? "selection" : "template");
-      setHtmlInspectorOpen(true);
-    };
-    window.addEventListener("rd:open-html-inspector", handler);
-    return () => window.removeEventListener("rd:open-html-inspector", handler);
-  }, [selectedIds.length, setHtmlInspectorOpen]);
+    }
+  }, [selectedIds.length, htmlInspectorOpen]);
 
   const code = useMemo(() => {
     try {
@@ -174,6 +172,7 @@ export function HtmlInspectorPanel() {
             minimap: { enabled: false },
             fontSize: 12,
             wordWrap: "on",
+            lineNumbers: "on",
           }}
         />
       </div>
@@ -181,7 +180,7 @@ export function HtmlInspectorPanel() {
   );
 }
 
-function renderSelectionHtml(
+export function renderSelectionHtml(
   template: ReportTemplate,
   selected: TemplateElement[],
   data: unknown,

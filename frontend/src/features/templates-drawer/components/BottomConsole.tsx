@@ -233,7 +233,12 @@ function ViewBody({ view, mode }: { view: ConsoleView; mode: ConsolePanelMode })
         language="json"
         value={dataJsonText}
         onChange={(v) => setDataJsonText(v ?? "")}
-        options={{ minimap: { enabled: false }, fontSize: 12, automaticLayout: true }}
+        options={{
+          minimap: { enabled: false },
+          fontSize: 12,
+          automaticLayout: true,
+          lineNumbers: "on",
+        }}
       />
     );
   }
@@ -244,7 +249,13 @@ function ViewBody({ view, mode }: { view: ConsoleView; mode: ConsolePanelMode })
         theme={theme}
         language="json"
         value={JSON.stringify(template, null, 2)}
-        options={{ minimap: { enabled: false }, fontSize: 12, readOnly: true, automaticLayout: true }}
+        options={{
+          minimap: { enabled: false },
+          fontSize: 12,
+          readOnly: true,
+          automaticLayout: true,
+          lineNumbers: "on",
+        }}
       />
     );
   }
@@ -255,7 +266,14 @@ function ViewBody({ view, mode }: { view: ConsoleView; mode: ConsolePanelMode })
         theme={theme}
         language="xml"
         value={serializeTemplateXml(template)}
-        options={{ minimap: { enabled: false }, fontSize: 12, readOnly: true, wordWrap: "on", automaticLayout: true }}
+        options={{
+          minimap: { enabled: false },
+          fontSize: 12,
+          readOnly: true,
+          wordWrap: "on",
+          automaticLayout: true,
+          lineNumbers: "on",
+        }}
       />
     );
   }
@@ -266,7 +284,14 @@ function ViewBody({ view, mode }: { view: ConsoleView; mode: ConsolePanelMode })
         theme={theme}
         language="html"
         value={r.html}
-        options={{ minimap: { enabled: false }, fontSize: 12, readOnly: true, wordWrap: "on", automaticLayout: true }}
+        options={{
+          minimap: { enabled: false },
+          fontSize: 12,
+          readOnly: true,
+          wordWrap: "on",
+          automaticLayout: true,
+          lineNumbers: "on",
+        }}
       />
     );
   }
@@ -311,7 +336,13 @@ function ViewBody({ view, mode }: { view: ConsoleView; mode: ConsolePanelMode })
             theme={theme}
             language="json"
             value={result}
-            options={{ minimap: { enabled: false }, fontSize: 12, readOnly: true, automaticLayout: true }}
+            options={{
+              minimap: { enabled: false },
+              fontSize: 12,
+              readOnly: true,
+              automaticLayout: true,
+              lineNumbers: "on",
+            }}
           />
         </div>
       </div>
@@ -370,7 +401,13 @@ function ViewBody({ view, mode }: { view: ConsoleView; mode: ConsolePanelMode })
         theme={theme}
         language="json"
         value={JSON.stringify(r.logs, null, 2)}
-        options={{ minimap: { enabled: false }, fontSize: 12, readOnly: true, automaticLayout: true }}
+        options={{
+          minimap: { enabled: false },
+          fontSize: 12,
+          readOnly: true,
+          automaticLayout: true,
+          lineNumbers: "on",
+        }}
       />
     );
   }
@@ -392,7 +429,13 @@ function ViewBody({ view, mode }: { view: ConsoleView; mode: ConsolePanelMode })
         theme={theme}
         language="json"
         value={JSON.stringify(el, null, 2)}
-        options={{ minimap: { enabled: false }, fontSize: 12, readOnly: true, automaticLayout: true }}
+        options={{
+          minimap: { enabled: false },
+          fontSize: 12,
+          readOnly: true,
+          automaticLayout: true,
+          lineNumbers: "on",
+        }}
       />
     );
   }

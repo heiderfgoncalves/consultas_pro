@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useEditorStore, useEvaluationContext } from "../store/editor.store";
 import { useIsolatedEditorStore } from "../store/isolated-editor.store";
 import type { BindingFormat, TemplateElement, ReusableComponent } from "../schema/template";
@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 import { ColorPickerPopover } from "./ColorPickerPopover";
 import { SafeEditor as Editor } from "./SafeEditor";
 import { renderTemplateToHtml } from "../engine/renderTemplateToHtml";
+import { renderSelectionHtml } from "./HtmlInspectorPanel";
 import { interpolate } from "../engine/interpolate";
 import { toast } from "sonner";
 import { AutocompleteInput, AutocompleteTextarea } from "./AutocompleteFields";
@@ -134,30 +135,38 @@ function ElementInspector({ element, isIsolated }: { element: TemplateElement; i
 
   return (
     <>
-      <div className="flex border-b border-border text-xs bg-slate-100/70 dark:bg-slate-900/50">
-        {(
-          [
-            { id: "layout", label: "Layout" },
-            { id: "style", label: "Estilo" },
-            { id: "html", label: "HTML" },
-            { id: "binding", label: "Binding" },
-            { id: "data", label: "Dados" },
-            ...(hasParameters ? [{ id: "parameters" as Tab, label: "Parâmetros" }] : []),
-          ] as { id: Tab; label: string }[]
-        ).map((t) => (
-          <button
-            key={t.id}
-            onClick={() => setTab(t.id)}
-            className={cn(
-              "flex-1 h-8 text-slate-500 hover:text-slate-850 dark:hover:text-slate-200 cursor-pointer transition-all duration-150 border-b-2 border-transparent",
-              tab === t.id &&
-                "bg-white dark:bg-slate-950 border-l border-r border-t -mb-px text-slate-900 dark:text-slate-100 font-bold rounded-t-md shadow-sm border-b-transparent",
-            )}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
+      {isIsolated && (
+        <div className="flex border-b border-border text-xs bg-slate-100/70 dark:bg-slate-900/50">
+          {(
+            [
+              { id: "layout", label: "Layout" },
+              { id: "style", label: "Estilo" },
+              { id: "html", label: "HTML" },
+              { id: "binding", label: "Binding" },
+              { id: "data", label: "Dados" },
+              ...(hasParameters ? [{ id: "parameters" as Tab, label: "Parâmetros" }] : []),
+            ] as { id: Tab; label: string }[]
+          ).map((t) => (
+            <button
+              key={t.id}
+              onClick={() => {
+                if (isIsolated) {
+                  setLocalTab(t.id);
+                } else if (t.id !== "parameters") {
+                  storeSetTab(t.id);
+                }
+              }}
+              className={cn(
+                "flex-1 h-8 text-slate-500 hover:text-slate-850 dark:hover:text-slate-200 cursor-pointer transition-all duration-150 border-b-2 border-transparent",
+                tab === t.id &&
+                  "bg-white dark:bg-slate-950 border-l border-r border-t -mb-px text-slate-900 dark:text-slate-100 font-bold rounded-t-md shadow-sm border-b-transparent",
+              )}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+      )}
 
       <div className="flex-1 overflow-auto p-3 space-y-2">
         {tab === "layout" && (
@@ -191,6 +200,134 @@ function ElementInspector({ element, isIsolated }: { element: TemplateElement; i
               />
               Visível
             </label>
+
+            {element.type === "table" && (() => {
+              const tableData = element.data ?? {};
+              const columns = (tableData.columns as Array<{ label: string; path: string; format?: string; width?: string }>) ?? [];
+              const headerBg = (tableData.headerBg as string) ?? "transparent";
+              const headerColor = (tableData.headerColor as string) ?? "inherit";
+              const headerSize = (tableData.headerSize as number) ?? 12;
+              const rowBg = (tableData.rowBg as string) ?? "transparent";
+              const rowColor = (tableData.rowColor as string) ?? "inherit";
+              const rowSize = (tableData.rowSize as number) ?? 12;
+              const autoHeight = (tableData.autoHeight as boolean) ?? false;
+
+              return (
+                <div className="border-t border-border mt-4 pt-3.5 space-y-4">
+                  <div className="text-[11px] font-bold text-indigo-500 dark:text-indigo-400 uppercase tracking-wider">
+                    Propriedades Exclusivas da Tabela
+                  </div>
+
+                  <div className="space-y-2">
+                    <TextField
+                      label="Array"
+                      value={(tableData.arrayPath as string) ?? ""}
+                      onChange={(v) => updateData(element.id, { arrayPath: v })}
+                    />
+                    <label className="flex items-center gap-2 text-xs">
+                      <input
+                        type="checkbox"
+                        checked={autoHeight}
+                        onChange={(e) => updateData(element.id, { autoHeight: e.target.checked })}
+                      />
+                      Altura flexível (ajusta às linhas)
+                    </label>
+                  </div>
+
+                  <div className="space-y-2 border-t border-slate-150 dark:border-slate-800 pt-2.5">
+                    <div className="text-[11px] font-bold text-slate-500">Estilo do Cabeçalho</div>
+                    <ColorField label="Fundo" value={headerBg} onChange={(v) => updateData(element.id, { headerBg: v })} />
+                    <ColorField label="Cor" value={headerColor} onChange={(v) => updateData(element.id, { headerColor: v })} />
+                    <NumberField label="Tam." value={headerSize} onChange={(v) => updateData(element.id, { headerSize: v })} />
+                  </div>
+
+                  <div className="space-y-2 border-t border-slate-150 dark:border-slate-800 pt-2.5">
+                    <div className="text-[11px] font-bold text-slate-500">Estilo das Linhas</div>
+                    <ColorField label="Fundo" value={rowBg} onChange={(v) => updateData(element.id, { rowBg: v })} />
+                    <ColorField label="Cor" value={rowColor} onChange={(v) => updateData(element.id, { rowColor: v })} />
+                    <NumberField label="Tam." value={rowSize} onChange={(v) => updateData(element.id, { rowSize: v })} />
+                  </div>
+
+                  <div className="space-y-2 border-t border-slate-150 dark:border-slate-800 pt-2.5">
+                    <div className="text-[11px] font-bold text-slate-500 mb-2">Gerenciar Colunas</div>
+                    {columns.map((c, i) => (
+                      <div key={i} className="flex flex-col gap-1.5 mb-2.5 p-2 border border-slate-100 dark:border-slate-900 rounded bg-slate-50/50 dark:bg-slate-950/20">
+                        <div className="flex items-center gap-1.5">
+                          <input
+                            value={c.label}
+                            onChange={(e) => {
+                              const next = [...columns];
+                              next[i] = { ...c, label: e.target.value };
+                              updateData(element.id, { columns: next });
+                            }}
+                            placeholder="Nome (Label)"
+                            className="flex-1 px-2 py-1 border border-border rounded text-[11px] bg-background text-foreground focus:outline-none"
+                          />
+                          <input
+                            value={c.path}
+                            onChange={(e) => {
+                              const next = [...columns];
+                              next[i] = { ...c, path: e.target.value };
+                              updateData(element.id, { columns: next });
+                            }}
+                            placeholder="Caminho (path)"
+                            className="flex-1 px-2 py-1 border border-border rounded text-[11px] font-mono bg-background text-foreground focus:outline-none"
+                          />
+                          <button
+                            onClick={() => {
+                              const next = columns.filter((_, j) => j !== i);
+                              updateData(element.id, { columns: next });
+                            }}
+                            className="p-1 text-slate-400 hover:text-red-500 hover:bg-slate-100 dark:hover:bg-slate-900 rounded"
+                            title="Remover Coluna"
+                          >
+                            <X className="size-3.5" />
+                          </button>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <select
+                            value={c.format ?? "text"}
+                            onChange={(e) => {
+                              const next = [...columns];
+                              next[i] = { ...c, format: e.target.value };
+                              updateData(element.id, { columns: next });
+                            }}
+                            className="flex-1 px-1.5 py-1 border border-border rounded text-[11px] bg-background text-foreground focus:outline-none"
+                          >
+                            <option value="text">Texto</option>
+                            <option value="currency">Moeda (R$)</option>
+                            <option value="date">Data (dd/mm/aaaa)</option>
+                            <option value="cpf">CPF</option>
+                            <option value="cnpj">CNPJ</option>
+                            <option value="percent">Percentual (%)</option>
+                          </select>
+                          <input
+                            value={c.width ?? "auto"}
+                            onChange={(e) => {
+                              const next = [...columns];
+                              next[i] = { ...c, width: e.target.value };
+                              updateData(element.id, { columns: next });
+                            }}
+                            placeholder="Largura (ex: auto, 100px)"
+                            className="flex-1 px-2 py-1 border border-border rounded text-[11px] bg-background text-foreground focus:outline-none"
+                          />
+                        </div>
+                      </div>
+                    ))}
+                    <button
+                      onClick={() =>
+                        updateData(element.id, {
+                          columns: [...columns, { label: "Nova Coluna", path: "campo" }],
+                        })
+                      }
+                      className="w-full text-xs py-1.5 border border-dashed border-border rounded hover:bg-slate-50 dark:hover:bg-slate-900/40 flex items-center justify-center gap-1 mt-2 text-indigo-600 dark:text-indigo-400 font-semibold cursor-pointer"
+                    >
+                      + Adicionar Coluna
+                    </button>
+                  </div>
+                </div>
+              );
+            })()}
           </>
         )}
 
@@ -238,29 +375,7 @@ function ElementInspector({ element, isIsolated }: { element: TemplateElement; i
         )}
 
         {tab === "html" && (
-          <div className="flex flex-col gap-2 h-[280px]">
-            <div className="text-[11px] text-slate-550 dark:text-slate-450 leading-normal">
-              Código HTML customizado (substitui a renderização visual padrão se preenchido):
-            </div>
-            <div className="flex-1 border border-slate-200 dark:border-slate-800 rounded overflow-hidden bg-slate-50 dark:bg-slate-950 relative">
-              <Editor
-                height="100%"
-                language="html"
-                theme={editorTheme}
-                value={(element.data?.customHtml as string) ?? ""}
-                onChange={(v) => updateData(element.id, { customHtml: v || "" })}
-                options={{
-                  minimap: { enabled: false },
-                  lineNumbers: "off",
-                  fontSize: 11,
-                  wordWrap: "on",
-                }}
-              />
-            </div>
-            <p className="text-[10px] text-slate-500 leading-normal">
-              Use interpolações como <code className="text-indigo-550 dark:text-indigo-400 font-mono">{"{{cliente.nome}}"}</code> para renderizar dados dinâmicos.
-            </p>
-          </div>
+          <ElementHtmlInspector element={element} isIsolated={isIsolated} updateData={updateData} editorTheme={editorTheme} />
         )}
 
         {tab === "binding" && (
@@ -432,74 +547,123 @@ function ElementDataEditor({
       );
     case "table": {
       const columns =
-        (data.columns as Array<{ label: string; path: string; format?: string }>) ?? [];
+        (data.columns as Array<{ label: string; path: string; format?: string; width?: string }>) ?? [];
+      const headerBg = (data.headerBg as string) ?? "transparent";
+      const headerColor = (data.headerColor as string) ?? "inherit";
+      const headerSize = (data.headerSize as number) ?? 12;
+      const rowBg = (data.rowBg as string) ?? "transparent";
+      const rowColor = (data.rowColor as string) ?? "inherit";
+      const rowSize = (data.rowSize as number) ?? 12;
+      const autoHeight = (data.autoHeight as boolean) ?? false;
+
       return (
-        <div className="space-y-2">
-          <TextField
-            label="Array"
-            value={(data.arrayPath as string) ?? ""}
-            onChange={(v) => updateData(element.id, { arrayPath: v })}
-          />
-          <div className="text-xs text-slate-500">Colunas</div>
-          {columns.map((c, i) => (
-            <div key={i} className="flex items-center gap-1">
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <TextField
+              label="Array"
+              value={(data.arrayPath as string) ?? ""}
+              onChange={(v) => updateData(element.id, { arrayPath: v })}
+            />
+            <label className="flex items-center gap-2 text-xs">
               <input
-                value={c.label}
-                onChange={(e) => {
-                  const next = [...columns];
-                  next[i] = { ...c, label: e.target.value };
-                  updateData(element.id, { columns: next });
-                }}
-                placeholder="Label"
-                className="flex-1 px-2 py-1 border rounded text-[11px]"
+                type="checkbox"
+                checked={autoHeight}
+                onChange={(e) => updateData(element.id, { autoHeight: e.target.checked })}
               />
-              <input
-                value={c.path}
-                onChange={(e) => {
-                  const next = [...columns];
-                  next[i] = { ...c, path: e.target.value };
-                  updateData(element.id, { columns: next });
-                }}
-                placeholder="path"
-                className="flex-1 px-2 py-1 border rounded text-[11px] font-mono"
-              />
-              <select
-                value={c.format ?? "text"}
-                onChange={(e) => {
-                  const next = [...columns];
-                  next[i] = { ...c, format: e.target.value };
-                  updateData(element.id, { columns: next });
-                }}
-                className="px-1 py-1 border rounded text-[11px]"
-              >
-                <option value="text">txt</option>
-                <option value="currency">R$</option>
-                <option value="date">dt</option>
-                <option value="cpf">cpf</option>
-                <option value="cnpj">cnpj</option>
-                <option value="percent">%</option>
-              </select>
-              <button
-                onClick={() => {
-                  const next = columns.filter((_, j) => j !== i);
-                  updateData(element.id, { columns: next });
-                }}
-                className="px-1.5 py-1 text-slate-500 hover:text-red-600"
-              >
-                ×
-              </button>
-            </div>
-          ))}
-          <button
-            onClick={() =>
-              updateData(element.id, {
-                columns: [...columns, { label: "Coluna", path: "campo" }],
-              })
-            }
-            className="text-xs px-2 py-1 border rounded hover:bg-slate-50"
-          >
-            + coluna
-          </button>
+              Altura flexível (ajusta às linhas)
+            </label>
+          </div>
+
+          <div className="space-y-2 border-t border-border pt-2">
+            <div className="text-xs font-semibold text-slate-500">Estilo do Cabeçalho</div>
+            <ColorField label="Fundo" value={headerBg} onChange={(v) => updateData(element.id, { headerBg: v })} />
+            <ColorField label="Cor" value={headerColor} onChange={(v) => updateData(element.id, { headerColor: v })} />
+            <NumberField label="Tam." value={headerSize} onChange={(v) => updateData(element.id, { headerSize: v })} />
+          </div>
+
+          <div className="space-y-2 border-t border-border pt-2">
+            <div className="text-xs font-semibold text-slate-500">Estilo das Linhas</div>
+            <ColorField label="Fundo" value={rowBg} onChange={(v) => updateData(element.id, { rowBg: v })} />
+            <ColorField label="Cor" value={rowColor} onChange={(v) => updateData(element.id, { rowColor: v })} />
+            <NumberField label="Tam." value={rowSize} onChange={(v) => updateData(element.id, { rowSize: v })} />
+          </div>
+
+          <div className="space-y-2 border-t border-border pt-2">
+            <div className="text-xs font-semibold text-slate-500 mb-2">Colunas</div>
+            {columns.map((c, i) => (
+              <div key={i} className="flex flex-col gap-1 mb-2 p-2 border border-slate-100 rounded bg-slate-50">
+                <div className="flex items-center gap-1">
+                  <input
+                    value={c.label}
+                    onChange={(e) => {
+                      const next = [...columns];
+                      next[i] = { ...c, label: e.target.value };
+                      updateData(element.id, { columns: next });
+                    }}
+                    placeholder="Label"
+                    className="flex-1 px-2 py-1 border rounded text-[11px]"
+                  />
+                  <input
+                    value={c.path}
+                    onChange={(e) => {
+                      const next = [...columns];
+                      next[i] = { ...c, path: e.target.value };
+                      updateData(element.id, { columns: next });
+                    }}
+                    placeholder="path"
+                    className="flex-1 px-2 py-1 border rounded text-[11px] font-mono"
+                  />
+                  <button
+                    onClick={() => {
+                      const next = columns.filter((_, j) => j !== i);
+                      updateData(element.id, { columns: next });
+                    }}
+                    className="px-1.5 py-1 text-slate-500 hover:text-red-600"
+                  >
+                    ×
+                  </button>
+                </div>
+                <div className="flex items-center gap-1">
+                  <select
+                    value={c.format ?? "text"}
+                    onChange={(e) => {
+                      const next = [...columns];
+                      next[i] = { ...c, format: e.target.value };
+                      updateData(element.id, { columns: next });
+                    }}
+                    className="flex-1 px-1 py-1 border rounded text-[11px]"
+                  >
+                    <option value="text">txt</option>
+                    <option value="currency">R$</option>
+                    <option value="date">dt</option>
+                    <option value="cpf">cpf</option>
+                    <option value="cnpj">cnpj</option>
+                    <option value="percent">%</option>
+                  </select>
+                  <input
+                    value={c.width ?? "auto"}
+                    onChange={(e) => {
+                      const next = [...columns];
+                      next[i] = { ...c, width: e.target.value };
+                      updateData(element.id, { columns: next });
+                    }}
+                    placeholder="Largura (ex: auto, 100px)"
+                    className="flex-1 px-2 py-1 border rounded text-[11px]"
+                  />
+                </div>
+              </div>
+            ))}
+            <button
+              onClick={() =>
+                updateData(element.id, {
+                  columns: [...columns, { label: "Coluna", path: "campo" }],
+                })
+              }
+              className="text-xs px-2 py-1 border rounded hover:bg-slate-50 mt-2"
+            >
+              + coluna
+            </button>
+          </div>
         </div>
       );
     }
@@ -567,8 +731,11 @@ function ComponentParametersEditor({
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Sliders } from "lucide-react";
 
-export function FrameInspector({ frameId }: { frameId?: string }) {
-  const [tab, setTab] = useState<"properties" | "html_compiled" | "html_custom">("properties");
+export function FrameInspector({ frameId, hideTabs }: { frameId?: string; hideTabs?: boolean }) {
+  const [localTab, setLocalTab] = useState<"properties" | "html_compiled" | "html_custom">("properties");
+  const [htmlViewMode, setHtmlViewMode] = useState<"custom" | "compiled">("custom");
+  const storeTab = useEditorStore((s) => s.activeRightTab);
+
   const frames = useEditorStore((s) => s.template.frames);
   const activeId = useEditorStore((s) => s.activeFrameId);
   const idToUse = frameId ?? activeId;
@@ -588,39 +755,78 @@ export function FrameInspector({ frameId }: { frameId?: string }) {
 
   const renderedHtml = frame ? renderTemplateToHtml(template, frame.id, data).html : "";
 
+  const tab = hideTabs
+    ? (storeTab === "html"
+        ? (htmlViewMode === "custom" ? "html_custom" : "html_compiled")
+        : "properties")
+    : localTab;
+
+  const setTab = setLocalTab;
+
   return (
     <div className="flex flex-col h-full bg-slate-50/50 dark:bg-[#0f172a]/50 text-slate-900 dark:text-slate-100">
-      <div className="flex border-b border-border text-xs bg-slate-100/70 dark:bg-slate-900/50">
-        <button
-          onClick={() => setTab("properties")}
-          className={cn(
-            "flex-1 h-8 text-slate-500 hover:text-slate-850 dark:hover:text-slate-200 cursor-pointer transition-all duration-150 border-b-2 border-transparent",
-            tab === "properties" && "bg-white dark:bg-slate-950 border-l border-r border-t -mb-px text-slate-900 dark:text-slate-100 font-bold rounded-t-md shadow-sm border-b-transparent",
-          )}
-        >
-          Propriedades
-        </button>
-        <button
-          onClick={() => setTab("html_compiled")}
-          className={cn(
-            "flex-1 h-8 text-slate-500 hover:text-slate-850 dark:hover:text-slate-200 cursor-pointer transition-all duration-150 border-b-2 border-transparent",
-            tab === "html_compiled" && "bg-white dark:bg-slate-950 border-l border-r border-t -mb-px text-slate-900 dark:text-slate-100 font-bold rounded-t-md shadow-sm border-b-transparent",
-          )}
-        >
-          Compilado
-        </button>
-        <button
-          onClick={() => setTab("html_custom")}
-          className={cn(
-            "flex-1 h-8 text-slate-500 hover:text-slate-850 dark:hover:text-slate-200 cursor-pointer transition-all duration-150 border-b-2 border-transparent",
-            tab === "html_custom" && "bg-white dark:bg-slate-950 border-l border-r border-t -mb-px text-slate-900 dark:text-slate-100 font-bold rounded-t-md shadow-sm border-b-transparent",
-          )}
-        >
-          Código HTML
-        </button>
-      </div>
+      {!hideTabs && (
+        <div className="flex border-b border-border text-xs bg-slate-100/70 dark:bg-slate-900/50">
+          <button
+            onClick={() => setTab("properties")}
+            className={cn(
+              "flex-1 h-8 text-slate-500 hover:text-slate-850 dark:hover:text-slate-200 cursor-pointer transition-all duration-150 border-b-2 border-transparent",
+              tab === "properties" && "bg-white dark:bg-slate-950 border-l border-r border-t -mb-px text-slate-900 dark:text-slate-100 font-bold rounded-t-md shadow-sm border-b-transparent",
+            )}
+          >
+            Propriedades
+          </button>
+          <button
+            onClick={() => setTab("html_compiled")}
+            className={cn(
+              "flex-1 h-8 text-slate-500 hover:text-slate-850 dark:hover:text-slate-200 cursor-pointer transition-all duration-150 border-b-2 border-transparent",
+              tab === "html_compiled" && "bg-white dark:bg-slate-950 border-l border-r border-t -mb-px text-slate-900 dark:text-slate-100 font-bold rounded-t-md shadow-sm border-b-transparent",
+            )}
+          >
+            Compilado
+          </button>
+          <button
+            onClick={() => setTab("html_custom")}
+            className={cn(
+              "flex-1 h-8 text-slate-500 hover:text-slate-850 dark:hover:text-slate-200 cursor-pointer transition-all duration-150 border-b-2 border-transparent",
+              tab === "html_custom" && "bg-white dark:bg-slate-950 border-l border-r border-t -mb-px text-slate-900 dark:text-slate-100 font-bold rounded-t-md shadow-sm border-b-transparent",
+            )}
+          >
+            Código HTML
+          </button>
+        </div>
+      )}
 
       <div className="flex-1 overflow-auto p-3 space-y-2">
+        {hideTabs && (tab === "html_custom" || tab === "html_compiled") && (
+          <div className="flex items-center justify-between bg-slate-100/60 dark:bg-slate-900/40 p-1.5 rounded-lg border border-slate-200 dark:border-slate-800 mb-2 select-none">
+            <span className="text-[10px] font-semibold text-slate-500">Visualização HTML</span>
+            <div className="flex rounded bg-slate-200 dark:bg-slate-950 p-0.5 border border-slate-200/50 dark:border-slate-800/50">
+              <button
+                onClick={() => setHtmlViewMode("custom")}
+                className={cn(
+                  "px-2 py-0.5 rounded text-[10px] font-semibold transition-all duration-150 cursor-pointer",
+                  htmlViewMode === "custom"
+                    ? "bg-white dark:bg-slate-800 shadow-sm text-slate-800 dark:text-slate-100"
+                    : "text-slate-400 hover:text-slate-650 dark:hover:text-slate-350"
+                )}
+              >
+                Customizado
+              </button>
+              <button
+                onClick={() => setHtmlViewMode("compiled")}
+                className={cn(
+                  "px-2 py-0.5 rounded text-[10px] font-semibold transition-all duration-150 cursor-pointer",
+                  htmlViewMode === "compiled"
+                    ? "bg-white dark:bg-slate-800 shadow-sm text-slate-800 dark:text-slate-100"
+                    : "text-slate-400 hover:text-slate-650 dark:hover:text-slate-350"
+                )}
+              >
+                Compilado
+              </button>
+            </div>
+          </div>
+        )}
         {tab === "properties" && (
           <>
             <div className="text-xs font-semibold text-slate-400 mb-1">Página</div>
@@ -659,15 +865,16 @@ export function FrameInspector({ frameId }: { frameId?: string }) {
                 Copiar
               </button>
             </div>
-            <div className="flex-1 border border-slate-200 dark:border-slate-800 rounded overflow-hidden bg-slate-50 dark:bg-slate-950 relative">
+            <div className="flex-1 min-h-[200px] border border-slate-200 dark:border-slate-800 rounded overflow-hidden bg-slate-50 dark:bg-slate-950 relative">
               <Editor
+                key={`compiled-${frame.id}`}
                 height="100%"
                 language="html"
                 theme={editorTheme}
                 value={renderedHtml}
                 options={{
                   minimap: { enabled: false },
-                  lineNumbers: "off",
+                  lineNumbers: "on",
                   fontSize: 11,
                   wordWrap: "on",
                   readOnly: true,
@@ -682,8 +889,9 @@ export function FrameInspector({ frameId }: { frameId?: string }) {
             <div className="text-[11px] text-slate-550 dark:text-slate-450 leading-normal">
               Código HTML Customizado (substitui os elementos visuais padrão da página para modularização total):
             </div>
-            <div className="flex-1 border border-slate-200 dark:border-slate-800 rounded overflow-hidden bg-slate-50 dark:bg-slate-950 relative">
+            <div className="flex-1 min-h-[200px] border border-slate-200 dark:border-slate-800 rounded overflow-hidden bg-slate-50 dark:bg-slate-950 relative">
               <Editor
+                key={`custom-${frame.id}`}
                 height="100%"
                 language="html"
                 theme={editorTheme}
@@ -764,6 +972,7 @@ export function RightInspector({ isIsolated }: { isIsolated?: boolean }) {
   const storeSelectedIds = useEditorStore((s) => s.selectedIds);
   const storeElements = useEditorStore((s) => s.template.elements);
   const storeSetRightPanelOpen = useEditorStore((s) => s.setRightPanelOpen);
+  const activeRightTab = useEditorStore((s) => s.activeRightTab);
 
   const isolatedSelectedIds = useIsolatedEditorStore((s) => s.selectedIds);
   const isolatedElements = useIsolatedEditorStore((s) => s.elementTree);
@@ -774,16 +983,37 @@ export function RightInspector({ isIsolated }: { isIsolated?: boolean }) {
   const selected = elements.find((e) => e.id === selectedIds[0]);
   const setRightPanelOpen = isIsolated ? () => {} : storeSetRightPanelOpen;
 
+  const tabLabels: Record<string, string> = {
+    layout: "Layout",
+    style: "Estilo",
+    html: "HTML Customizado",
+    binding: "Conexões / Binding",
+    data: "Dados / Conteúdo",
+    parameters: "Parâmetros",
+  };
+
+  const activeTabLabel = tabLabels[activeRightTab] || "Propriedades";
+
   return (
     <div
       className="flex flex-col h-full w-full min-w-0"
       style={{ background: "var(--editor-panel)" }}
     >
       {/* Cabeçalho de Propriedades com Botão Fechar - Apenas quando isolado (modal) */}
-      {isIsolated && (
+      {isIsolated ? (
         <div className="h-9 px-3 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-slate-100/50 dark:bg-slate-900/10 shrink-0">
           <span className="font-bold text-[10px] uppercase tracking-wider text-slate-400">
             {selected ? "Propriedades" : "Página"}
+          </span>
+        </div>
+      ) : (
+        /* Cabeçalho simples para a terceira coluna do editor */
+        <div className="h-9 px-3 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-slate-100/50 dark:bg-slate-900/10 shrink-0 select-none">
+          <span className="font-bold text-[10px] uppercase tracking-wider text-slate-450 dark:text-slate-400">
+            {selected 
+              ? `Propriedades do Elemento: ${activeTabLabel}` 
+              : `Propriedades da Página: ${activeRightTab === "html" ? "Código HTML" : "Geral"}`
+            }
           </span>
         </div>
       )}
@@ -796,9 +1026,112 @@ export function RightInspector({ isIsolated }: { isIsolated?: boolean }) {
             Selecione um elemento para inspecionar e editar suas propriedades.
           </div>
         ) : (
-          <FrameInspector />
+          <FrameInspector hideTabs={true} />
         )}
       </div>
+    </div>
+  );
+}
+
+function ElementHtmlInspector({
+  element,
+  isIsolated,
+  updateData,
+  editorTheme,
+}: {
+  element: TemplateElement;
+  isIsolated: boolean;
+  updateData: (id: string, data: any) => void;
+  editorTheme: string;
+}) {
+  const [mode, setMode] = useState<"custom" | "compiled">("custom");
+  const template = useEditorStore((s) => s.template);
+  const data = useEvaluationContext();
+
+  const renderedHtml = useMemo(() => {
+    try {
+      return renderSelectionHtml(template, [element], data);
+    } catch (err: any) {
+      return `<!-- Erro ao compilar: ${err?.message || err} -->`;
+    }
+  }, [template, element, data]);
+
+  return (
+    <div className="flex flex-col gap-2 h-[340px]">
+      <div className="flex items-center justify-between bg-slate-100/60 dark:bg-slate-900/40 p-1.5 rounded-lg border border-slate-200 dark:border-slate-800 select-none">
+        <span className="text-[10px] font-semibold text-slate-500">Visualização HTML</span>
+        <div className="flex rounded bg-slate-200 dark:bg-slate-950 p-0.5 border border-slate-200/50 dark:border-slate-800/50">
+          <button
+            onClick={() => setMode("custom")}
+            className={cn(
+              "px-2 py-0.5 text-[9px] font-bold rounded transition-colors",
+              mode === "custom" ? "bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 shadow-sm" : "text-slate-500 hover:text-slate-700"
+            )}
+          >
+            Customizado
+          </button>
+          <button
+            onClick={() => setMode("compiled")}
+            className={cn(
+              "px-2 py-0.5 text-[9px] font-bold rounded transition-colors",
+              mode === "compiled" ? "bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 shadow-sm" : "text-slate-500 hover:text-slate-700"
+            )}
+          >
+            Compilado
+          </button>
+        </div>
+      </div>
+
+      {mode === "custom" && (
+        <div className="flex flex-col gap-2 flex-1 min-h-0">
+          <div className="text-[10px] text-slate-550 dark:text-slate-450 leading-normal">
+            Código HTML customizado (substitui a renderização visual padrão se preenchido):
+          </div>
+          <div className="flex-1 border border-slate-200 dark:border-slate-800 rounded overflow-hidden bg-slate-50 dark:bg-slate-950 relative">
+            <Editor
+              key={isIsolated ? `isolated-custom-${element.id}` : `custom-${element.id}`}
+              height="100%"
+              language="html"
+              theme={editorTheme}
+              value={(element.data?.customHtml as string) ?? ""}
+              onChange={(v) => updateData(element.id, { customHtml: v || "" })}
+              options={{
+                minimap: { enabled: false },
+                lineNumbers: "on",
+                fontSize: 11,
+                wordWrap: "on",
+              }}
+            />
+          </div>
+          <p className="text-[10px] text-slate-500 leading-normal">
+            Use interpolações como <code className="text-indigo-550 dark:text-indigo-400 font-mono">{"{{cliente.nome}}"}</code> para renderizar dados dinâmicos.
+          </p>
+        </div>
+      )}
+
+      {mode === "compiled" && (
+        <div className="flex flex-col gap-2 flex-1 min-h-0">
+          <div className="text-[10px] text-slate-550 dark:text-slate-450 leading-normal">
+            HTML gerado por este elemento (Preview read-only):
+          </div>
+          <div className="flex-1 border border-slate-200 dark:border-slate-800 rounded overflow-hidden bg-slate-50 dark:bg-slate-950 relative">
+            <Editor
+              key={`compiled-${element.id}`}
+              height="100%"
+              language="html"
+              theme={editorTheme}
+              value={renderedHtml}
+              options={{
+                minimap: { enabled: false },
+                lineNumbers: "on",
+                fontSize: 11,
+                wordWrap: "on",
+                readOnly: true,
+              }}
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }

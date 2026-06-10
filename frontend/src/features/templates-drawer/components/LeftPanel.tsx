@@ -63,7 +63,7 @@ import type {
   TemplateMvpPoolItem,
   ProviderConsultation,
 } from "@/types/integrations";
-import { resolveExpression } from "../engine/resolveExpression";
+import { resolveExpression, registerCanonicalTypesMetadata } from "../engine/resolveExpression";
 import { buildTypeLinkedConsultationMappedPreview } from "@/lib/consultationMappedPreview";
 import { buildTypeKeyedDataForDrawer } from "@/lib/buildTypeKeyedDataForDrawer";
 import { buildByTypeWithGlobalDedupRemoved } from "@/lib/providerResponseMapping";
@@ -258,6 +258,17 @@ export function LeftPanel() {
   const updateFrame = useEditorStore((s) => s.updateFrame);
   const addFrame = useEditorStore((s) => s.addFrame);
   const setViewport = useEditorStore((s) => s.setViewport);
+
+  // Cabeçalho e Rodapé globais
+  const headerFooterEnabled = useEditorStore((s) => s.headerFooterEnabled);
+  const setHeaderFooterEnabled = useEditorStore((s) => s.setHeaderFooterEnabled);
+  const headerHeight = useEditorStore((s) => s.headerHeight);
+  const setHeaderHeight = useEditorStore((s) => s.setHeaderHeight);
+  const footerHeight = useEditorStore((s) => s.footerHeight);
+  const setFooterHeight = useEditorStore((s) => s.setFooterHeight);
+  const replicateOnNewPages = useEditorStore((s) => s.replicateOnNewPages);
+  const setReplicateOnNewPages = useEditorStore((s) => s.setReplicateOnNewPages);
+  const replicateHeaderFooterToAllFrames = useEditorStore((s) => s.replicateHeaderFooterToAllFrames);
 
   const components = useEditorStore((s) => s.reusableComponents);
   const removeComponent = useEditorStore((s) => s.removeComponent);
@@ -483,6 +494,19 @@ export function LeftPanel() {
     return keys;
   }, [selectedConsultaIds, consultations]);
 
+  // Sincroniza os metadados de tipos canônicos com o motor de expressões
+  useEffect(() => {
+    const meta: Record<string, { chave: string; label: string; title?: string }> = {};
+    for (const ft of fieldTypes) {
+      meta[ft.key] = {
+        chave: ft.key,
+        label: ft.label,
+        title: ft.reportFieldConfig?.title,
+      };
+    }
+    registerCanonicalTypesMetadata(meta);
+  }, [fieldTypes]);
+
   const dynamicFieldTypes = useMemo(() => {
 
     // Filtra fieldTypes para manter apenas os que estão em activeFieldTypeKeys
@@ -498,6 +522,27 @@ export function LeftPanel() {
 
       const hasConfiguredFields = (ft.reportFieldConfig?.fields ?? []).length > 0;
       let fields: Array<{ id: string; key: string; expression: string; label: string }> = [];
+
+      const metaFields = [
+        {
+          id: `${ft.key}.chave`,
+          key: "chave",
+          expression: `{$${ft.key}.chave}`,
+          label: "Chave (Meta)",
+        },
+        {
+          id: `${ft.key}.label`,
+          key: "label",
+          expression: `{$${ft.key}.label}`,
+          label: "Label (Meta)",
+        },
+        {
+          id: `${ft.key}.title`,
+          key: "title",
+          expression: `{$${ft.key}.title}`,
+          label: "Título Customizado (Meta)",
+        }
+      ];
 
       const configured = (ft.reportFieldConfig?.fields ?? []).map((f) => {
         const expr = `{$${ft.key}.${f.key}}`;
@@ -570,6 +615,9 @@ export function LeftPanel() {
         // Mostra apenas os configurados + calculados
         fields = [...configured, ...calculatedFields];
       }
+
+      // Adiciona campos virtuais de metadados do tipo ($TIPO.chave, $TIPO.label, $TIPO.title)
+      fields = [...fields, ...metaFields];
 
       return {
         key: ft.key,
@@ -1145,6 +1193,88 @@ export function LeftPanel() {
                   </div>
                 </div>
               ))}
+
+              {/* Seção Demarcada: Cabeçalho & Rodapé Globais */}
+              <div className="mt-4 pt-3.5 border-t border-slate-200 dark:border-slate-800 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-[10px] uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+                    <Sparkles className="size-3.5 text-indigo-500 animate-pulse" />
+                    <span>Cabeçalho & Rodapé</span>
+                  </span>
+                  <label className="relative inline-flex items-center cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={headerFooterEnabled}
+                      onChange={(e) => {
+                        setHeaderFooterEnabled(e.target.checked);
+                        if (e.target.checked) {
+                          toast.success("Cabeçalho e Rodapé globais habilitados!");
+                        }
+                      }}
+                      className="sr-only peer"
+                    />
+                    <div className="w-8 h-4.5 bg-slate-200 dark:bg-slate-800 rounded-full peer peer-focus:ring-1 peer-focus:ring-indigo-500/30 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-3.5 after:w-3.5 after:transition-all peer-checked:bg-indigo-600 animate-duration-1000"></div>
+                  </label>
+                </div>
+
+                {headerFooterEnabled && (
+                  <div className="p-3 rounded-lg border border-indigo-500/20 bg-indigo-500/5 dark:bg-indigo-950/20 space-y-3 animate-in fade-in-40 duration-200">
+                    <p className="text-[10px] text-slate-500 dark:text-slate-400 leading-normal">
+                      Elementos no topo (cabeçalho) ou rodapé da primeira página serão replicados para as demais páginas.
+                    </p>
+
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="space-y-1">
+                        <label className="text-[9px] font-bold text-slate-400 dark:text-slate-500 uppercase">Altura Header</label>
+                        <div className="relative flex items-center">
+                          <input
+                            type="number"
+                            value={headerHeight}
+                            onChange={(e) => setHeaderHeight(Math.max(10, parseInt(e.target.value) || 0))}
+                            className="w-full px-2 py-1 text-xs rounded border border-slate-250 dark:border-slate-800 bg-slate-100 dark:bg-slate-900 text-slate-800 dark:text-slate-100 outline-none focus:border-indigo-500 transition-colors"
+                          />
+                          <span className="absolute right-2 text-[9px] text-slate-400">px</span>
+                        </div>
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[9px] font-bold text-slate-400 dark:text-slate-500 uppercase">Altura Footer</label>
+                        <div className="relative flex items-center">
+                          <input
+                            type="number"
+                            value={footerHeight}
+                            onChange={(e) => setFooterHeight(Math.max(10, parseInt(e.target.value) || 0))}
+                            className="w-full px-2 py-1 text-xs rounded border border-slate-250 dark:border-slate-800 bg-slate-100 dark:bg-slate-900 text-slate-800 dark:text-slate-100 outline-none focus:border-indigo-500 transition-colors"
+                          />
+                          <span className="absolute right-2 text-[9px] text-slate-400">px</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 py-0.5">
+                      <input
+                        type="checkbox"
+                        id="replicate_new_pages"
+                        checked={replicateOnNewPages}
+                        onChange={(e) => setReplicateOnNewPages(e.target.checked)}
+                        className="rounded border-slate-350 dark:border-slate-800 text-indigo-600 focus:ring-indigo-500 size-3 cursor-pointer"
+                      />
+                      <label htmlFor="replicate_new_pages" className="text-[10px] font-semibold text-slate-650 dark:text-slate-300 cursor-pointer select-none">
+                        Replicar em novas páginas
+                      </label>
+                    </div>
+
+                    <button
+                      onClick={() => {
+                        replicateHeaderFooterToAllFrames();
+                        toast.success("Cabeçalho e rodapé replicados para as páginas existentes.");
+                      }}
+                      className="w-full py-1.5 rounded border border-indigo-500 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-600 hover:text-white transition-all text-[11px] font-bold flex items-center justify-center gap-1 cursor-pointer bg-transparent"
+                    >
+                      <RefreshCcw className="size-3" /> Replicar nas Páginas Existentes
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
           )}
 
@@ -1624,7 +1754,7 @@ export function LeftPanel() {
           }
         }}
       >
-        <DialogContent className="max-w-4xl w-[850px] bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-0 shadow-2xl overflow-hidden text-slate-800 dark:text-slate-200 flex flex-col">
+        <DialogContent showClose={false} className="max-w-4xl w-[850px] bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-0 shadow-2xl overflow-hidden text-slate-800 dark:text-slate-200 flex flex-col">
           
           {/* Cabeçalho cinza platina elegante */}
           <div className="bg-white dark:bg-slate-950 border-b border-slate-200 dark:border-slate-800 p-4 px-5 flex items-center justify-between">
