@@ -7,10 +7,15 @@ type ToasterProps = React.ComponentProps<typeof Sonner>;
 const Toaster = ({ ...props }: ToasterProps) => {
   const { theme = "system" } = useTheme();
   const [mounted, setMounted] = useState(false);
+  const [activeTheme, setActiveTheme] = useState<ToasterProps["theme"]>("system");
 
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  useEffect(() => {
+    setActiveTheme(theme as ToasterProps["theme"]);
+  }, [theme]);
 
   if (!mounted) {
     return null;
@@ -18,7 +23,7 @@ const Toaster = ({ ...props }: ToasterProps) => {
 
   return (
     <Sonner
-      theme={theme as ToasterProps["theme"]}
+      theme={activeTheme}
       className="toaster group"
       toastOptions={{
         classNames: {

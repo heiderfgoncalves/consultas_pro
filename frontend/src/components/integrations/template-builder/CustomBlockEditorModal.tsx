@@ -4,6 +4,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
+import { Label } from '@/components/ui/label';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable';
 import type { ConsultationFieldType, ProviderConsultation } from '@/types/integrations';
@@ -345,7 +346,7 @@ export function CustomBlockEditorModal({
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && requestClose()}>
-      <DialogContent className="max-w-[92vw] w-[92vw] max-h-[88vh] h-[88vh] p-0 overflow-hidden flex flex-col">
+      <DialogContent showClose={false} className="max-w-[92vw] w-[92vw] max-h-[88vh] h-[88vh] p-0 overflow-hidden flex flex-col">
         <DialogHeader className="px-4 py-2.5 border-b border-border flex-row items-center justify-between shrink-0">
           <div className="flex items-center gap-3">
             <IconPicker

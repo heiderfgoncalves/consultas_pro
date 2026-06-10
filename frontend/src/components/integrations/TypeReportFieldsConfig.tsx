@@ -141,7 +141,11 @@ function normalizeConfig(config?: TypeReportFieldConfig): TypeReportFieldConfig 
       })),
     }));
 
-  return { version: 1, fields: assignKeysToReportFields(fields) };
+  return {
+    version: 1,
+    title: config?.title ?? '',
+    fields: assignKeysToReportFields(fields),
+  };
 }
 
 function SortableFieldRow({
@@ -268,7 +272,7 @@ export default function TypeReportFieldsConfig({
   };
 
   return (
-    <div className="rounded-md border border-border/50 bg-muted/10">
+    <div className="rounded-md border border-border/50 bg-muted/10 overflow-hidden">
       <div className="space-y-1.5 p-2">
         {draft.fields.length === 0 ? (
           <p className="px-1 py-2 text-center text-xs text-muted-foreground">

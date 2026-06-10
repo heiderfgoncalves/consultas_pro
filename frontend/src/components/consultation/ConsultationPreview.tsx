@@ -3,6 +3,20 @@ import { type ConsultationBlock } from '@/stores/consultationStore';
 import TemplateRenderer from './TemplateRenderer';
 import type { TemplateDocument, TemplateNode } from '@/types/template-document';
 import { buildExpressionContextFromConsultation } from '@/lib/templateSectionUtils';
+import { useTheme } from '@/hooks/use-theme';
+import { ZoomIn, ZoomOut } from 'lucide-react';
+
+const LUCIDE_STYLE = `
+  <style>
+    .cpro-scope i[data-lucide] svg, 
+    .cpro-scope svg.lucide { 
+      width: 100% !important; 
+      height: 100% !important; 
+      display: inline-block; 
+    }
+  </style>
+`;
+
 
 interface ConsultationPreviewProps {
   blocks: ConsultationBlock[];
@@ -14,6 +28,7 @@ interface ConsultationPreviewProps {
   mode?: 'edit' | 'preview';
   realData?: Record<string, unknown>;
   layout?: TemplateDocument;
+  rawItems?: any[];
 }
 
 // Constrói dinamicamente um TemplateDocument baseado nos blocos selecionados (Fase 5)
@@ -181,7 +196,21 @@ export default function ConsultationPreview({
   clientName = 'JULIANO CAMPOS PEREIRA',
   realData,
   layout,
+  rawItems,
 }: ConsultationPreviewProps) {
+  const [htmlOutput, setHtmlOutput] = React.useState<string | null>(null);
+  const { resolvedTheme } = useTheme();
+  const isDark = resolvedTheme === 'dark';
+  const [zoom, setZoom] = React.useState<number>(1.1);
+
+  const handleZoomIn = () => setZoom(prev => Math.min(2.0, Number((prev + 0.1).toFixed(2))));
+  const handleZoomOut = () => setZoom(prev => Math.max(0.5, Number((prev - 0.1).toFixed(2))));
+  const handleResetZoom = () => setZoom(1.0);
+
+
+
+
+
   // Constrói o contexto da expressão a partir de dados reais ou mocks
   const expressionContext = useMemo(() => {
     const providerProduct = {
@@ -208,6 +237,201 @@ export default function ConsultationPreview({
     if (layout) return layout;
     return buildDynamicDocument(blocks, 'Consulta Preview');
   }, [blocks, layout]);
+
+  // Se for um layout moderno da templates drawer (tem frames), também usamos o renderizador HTML moderno
+  const isModernLayout = useMemo(() => {
+    return !!(layout && (layout as any).frames && (layout as any).frames.length > 0);
+  }, [layout]);
+
+  // Se tiver rawItems, usamos o motor novo (HTML)
+  const isNewEngine = !!(rawItems && rawItems.length > 0);
+
+  React.useEffect(() => {
+    if (!isNewEngine && !isModernLayout) return;
+
+    // Importamos dinamicamente para evitar ciclo ou usar diretamente
+    import('@/features/templates-drawer/engine/renderTemplateToHtml').then(({ renderTemplateToHtml }) => {
+      const mergedData = {
+        ...(realData || {}),
+        cliente: {
+          nome: clientName || (realData as any)?.cliente?.nome || 'JULIANO CAMPOS PEREIRA',
+          documento: docInput || (realData as any)?.cliente?.documento || '000.000.000-00',
+        },
+        clientName: clientName || (realData as any)?.clientName || (realData as any)?.cliente?.nome || 'JULIANO CAMPOS PEREIRA',
+        clientCpf: docInput || (realData as any)?.clientCpf || (realData as any)?.cliente?.documento || '000.000.000-00',
+        consultationDate: new Date().toLocaleDateString('pt-BR') + ' ' + new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
+        protocol: docInput ? `PROT-${docInput.replace(/\D/g, '').slice(-6)}` : 'PROT-000000',
+      };
+
+      if (isModernLayout && layout) {
+        const modernTemplate = layout as any;
+        let html = LUCIDE_STYLE + `<div class="modern-report-container" style="display: flex; flex-direction: column; align-items: center; gap: 24px; padding: 12px 24px; max-width: 100%; overflow-x: auto;">`;
+        
+        modernTemplate.frames.forEach((f: any) => {
+          try {
+            const result = renderTemplateToHtml(modernTemplate, f.id, mergedData);
+            const orient = f.preset?.endsWith("-l") ? "landscape" : "portrait";
+            html += `
+              <section class="page border border-slate-200 dark:border-slate-800" data-orient="${orient}" style="background: ${f.background || '#fff'}; box-shadow: 0 4px 12px rgba(15,23,42,0.06); position: relative; overflow: hidden; width: ${f.width}px; height: ${f.height}px; transform-origin: top center; margin: 0 auto; box-sizing: border-box; border-radius: 8px;">
+                ${result.html}
+              </section>
+            `;
+          } catch (err: any) {
+            html += `<div class="p-4 border border-red-500 text-red-500 rounded-lg text-sm bg-white">Erro ao renderizar frame ${f.name || ''}: ${err.message}</div>`;
+          }
+        });
+
+        html += `</div>`;
+        setHtmlOutput(html);
+
+        // Dispara a criação dos ícones do Lucide de forma segura após o render
+        setTimeout(() => {
+          if (typeof (window as any).lucide !== 'undefined') {
+            (window as any).lucide.createIcons();
+          }
+        }, 150);
+      } else if (isNewEngine && rawItems) {
+        let html = LUCIDE_STYLE + `<div class="cpro-report-container" style="display: flex; flex-direction: column; gap: 1rem;">`;
+        
+        rawItems.forEach((item) => {
+          const productLayout = item.providerProduct?.templateLayout;
+          if (productLayout && productLayout.frames && productLayout.frames.length > 0) {
+            try {
+              const result = renderTemplateToHtml(productLayout, productLayout.frames[0].id, mergedData);
+              html += `<div class="cpro-report-block" data-product-id="${item.providerProduct?.id}">\n${result.html}\n</div>`;
+            } catch (err: any) {
+              html += `<div class="p-4 border border-red-500 text-red-500 rounded-lg text-sm">Erro ao renderizar bloco ${item.providerProduct?.name || ''}: ${err.message}</div>`;
+            }
+          } else {
+             html += `<div class="p-4 border border-border/50 bg-muted/10 rounded-lg text-muted-foreground text-sm text-center">Bloco ${item.providerProduct?.name || item.alias || 'Desconhecido'} sem layout configurado no Tipo.</div>`;
+          }
+        });
+
+        html += `</div>`;
+        setHtmlOutput(html);
+
+        // Dispara a criação dos ícones do Lucide de forma segura após o render
+        setTimeout(() => {
+          if (typeof (window as any).lucide !== 'undefined') {
+            (window as any).lucide.createIcons();
+          }
+        }, 150);
+      }
+    });
+  }, [isNewEngine, isModernLayout, rawItems, layout, realData, clientName, docInput]);
+
+  if (isNewEngine || isModernLayout) {
+    if (htmlOutput === null) {
+      return <div className="p-8 text-center text-muted-foreground animate-pulse">Renderizando visualização prévia...</div>;
+    }
+
+    const bgIframe = isDark ? '#0f172a' : '#f1f5f9';
+    const colorIframe = isDark ? '#f8fafc' : '#0f172a';
+    const pageShadow = isDark 
+      ? '0 10px 25px -5px rgba(0, 0, 0, 0.4), 0 8px 10px -6px rgba(0, 0, 0, 0.4)' 
+      : '0 10px 25px -5px rgba(15, 23, 42, 0.08), 0 8px 10px -6px rgba(15, 23, 42, 0.08)';
+
+    const iframeSrcDoc = `
+      <!doctype html>
+      <html>
+        <head>
+          <meta charset="utf-8"/>
+          <link rel="preconnect" href="https://fonts.googleapis.com">
+          <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+          <link href="https://fonts.googleapis.com/css2?family=Geist:wght@100..900&family=Geist+Mono:wght@100..900&family=Inter:wght@100..900&family=JetBrains+Mono:wght@100..900&display=swap" rel="stylesheet">
+          <script src="https://cdn.jsdelivr.net/npm/lucide@0.462.0/dist/umd/lucide.min.js"></script>
+          <style>
+            * { box-sizing: border-box; }
+            body { 
+              margin: 0; 
+              padding: 20px; 
+              background: ${bgIframe}; 
+              font-family: 'Geist', 'Inter', sans-serif; 
+              color: ${colorIframe}; 
+              display: flex;
+              justify-content: center;
+              min-height: 100vh;
+              transition: background-color 0.3s, color 0.3s;
+            }
+            .stage-container {
+              width: 100%;
+              display: flex;
+              flex-direction: column;
+              align-items: center;
+              gap: 20px;
+            }
+            i[data-lucide] svg, svg.lucide { 
+              width: 100% !important; 
+              height: 100% !important; 
+              display: inline-block; 
+            }
+            /* Zoom dinâmico para se ajustarem à tela da prévia */
+            .modern-report-container {
+              zoom: ${zoom};
+              transform-origin: top center;
+            }
+            .cpro-report-container {
+              zoom: ${zoom};
+              transform-origin: top center;
+            }
+            .modern-report-container section.page {
+              box-shadow: ${pageShadow} !important;
+              border-radius: 8px !important;
+            }
+          </style>
+        </head>
+        <body>
+          <div class="stage-container">
+            ${htmlOutput}
+          </div>
+          <script>
+            if (typeof lucide !== "undefined") { 
+              lucide.createIcons(); 
+            }
+          </script>
+        </body>
+      </html>
+    `;
+
+    return (
+      <div className={`overflow-hidden w-full relative flex-1 h-full min-h-[400px] transition-colors duration-300 ${isDark ? 'bg-slate-950' : 'bg-slate-50'}`}>
+        <iframe
+          title="Prévia do Relatório"
+          srcDoc={iframeSrcDoc}
+          className={`w-full h-full border-0 transition-colors duration-300 ${isDark ? 'bg-slate-950' : 'bg-slate-50'}`}
+        />
+        
+        {/* Controle de Zoom Flutuante Premium em Glassmorphism */}
+        <div className="absolute bottom-5 right-5 z-10 flex items-center gap-1.5 px-2.5 py-1.5 rounded-full border shadow-lg backdrop-blur-md transition-all duration-300 bg-background/80 border-border/40 text-foreground hover:border-border/80">
+          <button 
+            onClick={handleZoomOut}
+            className="p-1 rounded-full hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+            title="Diminuir Zoom"
+            disabled={zoom <= 0.5}
+          >
+            <ZoomOut className="w-3.5 h-3.5" />
+          </button>
+          
+          <button 
+            onClick={handleResetZoom}
+            className="text-[10px] font-semibold px-2 min-w-[50px] text-center hover:text-primary transition-colors select-none"
+            title="Redefinir Zoom para 100%"
+          >
+            {Math.round(zoom * 100)}%
+          </button>
+          
+          <button 
+            onClick={handleZoomIn}
+            className="p-1 rounded-full hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+            title="Aumentar Zoom"
+            disabled={zoom >= 2.0}
+          >
+            <ZoomIn className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="bg-card rounded-xl shadow-xs overflow-hidden">

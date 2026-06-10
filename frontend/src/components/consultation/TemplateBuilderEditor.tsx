@@ -273,7 +273,6 @@ export default function TemplateBuilderEditor({
   }, [availableConsultationBlocks, fieldTypes]);
 
   const sourceBlocks = builderMode === 'admin' && adminConsultationBlocks.length > 0 ? adminConsultationBlocks : availableBlocks;
-
   const filteredBlocks = useMemo(() => {
     return sourceBlocks.filter((b) => {
       const matchesSearch = b.name.toLowerCase().includes(searchQuery.toLowerCase()) || b.description.toLowerCase().includes(searchQuery.toLowerCase());
