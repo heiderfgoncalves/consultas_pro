@@ -51,7 +51,7 @@ export interface TeamMember {
   email: string;
   phone: string;
   status: 'active' | 'inactive' | 'pending';
-  role: 'operator' | 'viewer';
+  role: 'admin' | 'analyst' | 'viewer' | 'operator' | string;
   lastActivity: string;
   consultationsThisMonth: number;
   spentThisMonth: number;
@@ -115,25 +115,25 @@ const sampleJsonLog = JSON.stringify({
 }, null, 2);
 
 export const mockHistory: ConsultationHistory[] = [
-  { id: '1', date: '2026-03-30 14:32', document: '***456789**', documentType: 'cpf', templateName: 'Análise Completa', totalPrice: 45.20, status: 'completed', blocks: mockTemplates[0].blocks, jsonLog: sampleJsonLog, externalUserId: 'cliente_rprotec_123' },
-  { id: '2', date: '2026-03-29 09:15', document: '***345678**', documentType: 'cpf', templateName: 'Consulta Rápida', totalPrice: 18.20, status: 'completed', blocks: mockTemplates[1].blocks, reportedBy: 'Ana Souza', reportComment: 'Score parece inconsistente com os dados apresentados', reportStatus: 'pending', jsonLog: sampleJsonLog },
-  { id: '3', date: '2026-03-28 16:44', document: '**345678/0001-**', documentType: 'cnpj', templateName: 'Premium + Bacen', totalPrice: 82.50, status: 'processing', blocks: mockTemplates[2].blocks, jsonLog: sampleJsonLog, externalUserId: 'api_rprotec_prod' },
-  { id: '4', date: '2026-03-27 11:20', document: '***789012**', documentType: 'cpf', templateName: 'Consulta Rápida', totalPrice: 18.20, status: 'completed', blocks: mockTemplates[1].blocks, reportedBy: 'Pedro Lima', reportComment: 'Dados do SPC não bateram com consulta manual', reportStatus: 'reviewed', jsonLog: sampleJsonLog, externalUserId: 'ana_silva' },
-  { id: '5', date: '2026-03-26 08:05', document: '***234567**', documentType: 'cpf', templateName: 'Análise Completa', totalPrice: 45.20, status: 'error', blocks: mockTemplates[0].blocks, jsonLog: sampleJsonLog },
+  { id: '1', date: '2026-05-31 14:32', document: '123.456.789-00', documentType: 'cpf', templateName: 'CPF - Cadastro de Pessoas Físicas', totalPrice: 45.20, status: 'completed', blocks: mockTemplates[0].blocks, jsonLog: sampleJsonLog, externalUserId: 'cliente_rprotec_123' },
+  { id: '2', date: '2026-05-31 14:28', document: '12.345.678/0001-90', documentType: 'cnpj', templateName: 'CNPJ - Cadastro Nacional de Pessoa Jurídica', totalPrice: 82.50, status: 'completed', blocks: mockTemplates[2].blocks, jsonLog: sampleJsonLog, externalUserId: 'api_rprotec_prod' },
+  { id: '3', date: '2026-05-31 14:25', document: 'ABC-1023', documentType: 'cpf', templateName: 'Placa - Consulta Veicular', totalPrice: 15.00, status: 'processing', blocks: [availableBlocks[3]], jsonLog: sampleJsonLog, externalUserId: 'felipe_rodriguez' },
+  { id: '4', date: '2026-05-30 11:20', document: '***789012**', documentType: 'cpf', templateName: 'Consulta Rápida', totalPrice: 18.20, status: 'completed', blocks: mockTemplates[1].blocks, reportedBy: 'Pedro Lima', reportComment: 'Dados do SPC não bateram com consulta manual', reportStatus: 'reviewed', jsonLog: sampleJsonLog, externalUserId: 'ana_silva' },
+  { id: '5', date: '2026-05-29 08:05', document: '***234567**', documentType: 'cpf', templateName: 'Análise Completa', totalPrice: 45.20, status: 'error', blocks: mockTemplates[0].blocks, jsonLog: sampleJsonLog },
 ];
 
 export const mockFinancialEntries: FinancialEntry[] = [
-  { id: '1', date: '2026-03-30 14:32', type: 'debit', description: 'Consulta #1 — Análise Completa', amount: -45.20, balanceAfter: 1247.50, user: 'Carlos Eduardo' },
-  { id: '2', date: '2026-03-29 09:15', type: 'debit', description: 'Consulta #2 — Consulta Rápida', amount: -18.20, balanceAfter: 1292.70, user: 'Ana Souza' },
-  { id: '3', date: '2026-03-28 10:00', type: 'credit', description: 'Recarga via PIX', amount: 500.00, balanceAfter: 1310.90 },
-  { id: '4', date: '2026-03-27 11:20', type: 'debit', description: 'Consulta #4 — Consulta Rápida', amount: -18.20, balanceAfter: 810.90, user: 'Carlos Eduardo' },
-  { id: '5', date: '2026-03-25 16:00', type: 'credit', description: 'Recarga via Cartão de Crédito', amount: 300.00, balanceAfter: 829.10 },
-  { id: '6', date: '2026-03-20 09:00', type: 'bonus', description: 'Bônus de boas-vindas', amount: 50.00, balanceAfter: 529.10 },
+  { id: '1', date: '24/05/2025 14:32', type: 'credit', description: 'Compra de créditos 10.000', amount: 5000.00, balanceAfter: 8350.75, user: 'Ana Paula Silva' },
+  { id: '2', date: '24/05/2025 11:07', type: 'debit', description: 'Consumo de consultas', amount: -1250.30, balanceAfter: 3350.75, user: 'Carlos Mendes' },
+  { id: '3', date: '23/05/2025 16:45', type: 'credit', description: 'Compra de créditos 5.000', amount: 2500.00, balanceAfter: 4601.05, user: 'Mariana Souza' },
+  { id: '4', date: '22/05/2025 09:12', type: 'debit', description: 'Consumo de consultas', amount: -980.40, balanceAfter: 2101.05, user: 'Carlos Mendes' },
+  { id: '5', date: '21/05/2025 10:33', type: 'adjustment', description: 'Ajuste de créditos', amount: 400.00, balanceAfter: 3081.45, user: 'Juliana Costa' },
 ];
 
 export const mockTeamMembers: TeamMember[] = [
-  { id: '1', name: 'Ana Souza', email: 'ana@empresa.com.br', phone: '(11) 98888-7777', status: 'active', role: 'operator', lastActivity: '2026-03-30', consultationsThisMonth: 12, spentThisMonth: 156.40 },
-  { id: '2', name: 'Pedro Lima', email: 'pedro@empresa.com.br', phone: '(11) 97777-6666', status: 'active', role: 'operator', lastActivity: '2026-03-29', consultationsThisMonth: 8, spentThisMonth: 98.20 },
-  { id: '3', name: 'Maria Santos', email: 'maria@empresa.com.br', phone: '(11) 96666-5555', status: 'inactive', role: 'viewer', lastActivity: '2026-03-15', consultationsThisMonth: 0, spentThisMonth: 0 },
-  { id: '4', name: 'João Oliveira', email: 'joao@empresa.com.br', phone: '(11) 95555-4444', status: 'pending', role: 'operator', lastActivity: '', consultationsThisMonth: 0, spentThisMonth: 0 },
+  { id: '1', name: 'Ana Paula Silva', email: 'ana.paula@elitesolucoes.com.br', phone: '(11) 98888-7777', status: 'active', role: 'Administradora', lastActivity: 'Hoje, 14:32', consultationsThisMonth: 120, spentThisMonth: 1560.40 },
+  { id: '2', name: 'Carlos Mendes', email: 'carlos.mendes@elitesolucoes.com.br', phone: '(11) 97777-6666', status: 'active', role: 'Analista', lastActivity: 'Hoje, 11:07', consultationsThisMonth: 84, spentThisMonth: 980.20 },
+  { id: '3', name: 'Mariana Souza', email: 'mariana.souza@elitesolucoes.com.br', phone: '(11) 96666-5555', status: 'active', role: 'Analista', lastActivity: 'Ontem, 16:45', consultationsThisMonth: 50, spentThisMonth: 520.10 },
+  { id: '4', name: 'Felipe Rodrigues', email: 'felipe.rodrigues@elitesolucoes.com.br', phone: '(11) 95555-4444', status: 'active', role: 'Visualizador', lastActivity: 'Ontem, 09:22', consultationsThisMonth: 10, spentThisMonth: 120.00 },
+  { id: '5', name: 'Juliana Costa', email: 'juliana.costa@elitesolucoes.com.br', phone: '(11) 94444-3333', status: 'inactive', role: 'Analista', lastActivity: '23/05/2025', consultationsThisMonth: 0, spentThisMonth: 0 },
 ];
