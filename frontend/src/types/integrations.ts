@@ -43,6 +43,7 @@ export interface TypeReportFieldDefinition {
 
 export interface TypeReportFieldConfig {
   version: 1;
+  title?: string;
   fields: TypeReportFieldDefinition[];
 }
 
