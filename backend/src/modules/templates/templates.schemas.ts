@@ -11,7 +11,7 @@ export const createTemplateSchema = z.object({
     providerProductId: z.string().min(1),
     sortOrder: z.number().int().nonnegative().default(0),
     alias: z.string().optional(),
-  })).min(1),
+  })).default([]),
 });
 
 const templateLayoutV1Schema = z.object({
@@ -46,6 +46,8 @@ const reportTemplateSchema = z.object({
 
 export const updateTemplateLayoutSchema = z.object({
   name: z.string().min(1).optional(),
+  description: z.string().optional(),
+  visibility: z.enum(['PRIVATE', 'COMPANY', 'GLOBAL']).optional(),
   layout: z.any().optional(),
   logo: z.string().nullable().optional(),
   items: z.array(z.object({

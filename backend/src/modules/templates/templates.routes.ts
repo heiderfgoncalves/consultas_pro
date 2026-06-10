@@ -201,6 +201,8 @@ export async function registerTemplateRoutes(app: FastifyInstance) {
         where: { id: params.templateId },
         data: {
           ...(payload.name !== undefined ? { name: payload.name } : {}),
+          ...(payload.description !== undefined ? { description: payload.description } : {}),
+          ...(payload.visibility !== undefined ? { visibility: payload.visibility } : {}),
           ...(payload.layout !== undefined ? { layout: payload.layout } : {}),
           ...(payload.logo !== undefined ? { logo: payload.logo } : {}),
         },
