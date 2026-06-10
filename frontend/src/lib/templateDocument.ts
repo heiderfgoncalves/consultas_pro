@@ -139,6 +139,11 @@ export function migrateTemplateLayout(raw: unknown): TemplateDocument | null {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
   const obj = raw as Record<string, unknown>;
 
+  // Se for um layout moderno do Templates Drawer (possui frames ou elements)
+  if (Array.isArray(obj.frames) || Array.isArray(obj.elements)) {
+    return obj as any;
+  }
+
   if (obj.schemaVersion === 2 && Array.isArray(obj.nodes)) {
     return normalizeTemplateDocument(obj as TemplateDocument);
   }
