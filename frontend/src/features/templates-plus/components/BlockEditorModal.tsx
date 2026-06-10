@@ -62,7 +62,7 @@ export function BlockEditorModal() {
 
   return (
     <Dialog open onOpenChange={(o) => !o && tryClose()}>
-      <DialogContent className="flex h-[95vh] max-h-[1100px] w-[98vw] max-w-[1800px] flex-col overflow-hidden p-0 [&>button.absolute]:hidden">
+      <DialogContent showClose={false} className="flex h-[95vh] max-h-[1100px] w-[98vw] max-w-[1800px] flex-col overflow-hidden p-0">
         <DialogTitle className="sr-only">Editor de Bloco · {name}</DialogTitle>
         {/* header */}
         <div className="flex h-14 shrink-0 items-center gap-3 border-b border-border bg-chrome px-4">
