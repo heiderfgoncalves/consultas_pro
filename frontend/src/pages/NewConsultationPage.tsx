@@ -2,9 +2,12 @@ import { useState, useMemo, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Plus, Send, FileText, Eye, AlertTriangle, Play, Edit, Star, Trash2, Copy,
-  Sparkles, ShieldAlert, CheckCircle, Upload, X, Wallet, Lock, Info, StarOff, RotateCcw
+  Sparkles, ShieldAlert, CheckCircle, Upload, X, Wallet, Lock, Info, StarOff, RotateCcw,
+  Clock, RefreshCw
 } from 'lucide-react';
 import { useAuthStore } from '@/stores/authStore';
+import { useNavigate } from 'react-router-dom';
+import { apiRequest } from '@/lib/api';
 import { useConsultationStore, availableBlocks, type ConsultationBlock, type SavedTemplate } from '@/stores/consultationStore';
 import { PageHeader } from '@/components/shared/StatCard';
 import { Button } from '@/components/ui/button';
@@ -106,46 +109,181 @@ const SIMULATED_PROFILES = {
   }
 };
 
+// Modal de Carregamento Premium da Consulta Real
+function ConsultationLoadingModal({
+  open,
+  status,
+  message,
+  onClose
+}: {
+  open: boolean;
+  status: 'queued' | 'processing' | 'completed' | 'error';
+  message: string;
+  onClose: () => void;
+}) {
+  return (
+    <Dialog open={open} onOpenChange={(o) => { if (!o && (status === 'completed' || status === 'error')) onClose(); }}>
+      <DialogContent showClose={false} className="max-w-md p-6 bg-slate-950 text-white border border-slate-800 rounded-2xl shadow-2xl flex flex-col items-center text-center">
+        <DialogHeader className="w-full flex flex-col items-center">
+          <DialogTitle className="text-base font-bold flex items-center gap-2 text-white">
+            <Sparkles className="w-5 h-5 text-indigo-400 animate-pulse" />
+            Análise em Tempo Real
+          </DialogTitle>
+          <div className="sr-only">Aguardando processamento do relatório de consulta de crédito</div>
+        </DialogHeader>
+        
+        <div className="my-8 relative flex items-center justify-center">
+          {/* Círculo externo animado com gradiente */}
+          <div className="absolute w-24 h-24 rounded-full border-2 border-indigo-500/20 animate-ping" />
+          
+          <div className="absolute w-20 h-20 rounded-full border-t-2 border-r-2 border-indigo-500 animate-spin" />
+          
+          <div className="relative w-16 h-16 rounded-full bg-slate-900 border border-slate-800 flex items-center justify-center">
+            {status === 'queued' && <Clock className="w-8 h-8 text-indigo-400 animate-pulse" />}
+            {status === 'processing' && <RefreshCw className="w-8 h-8 text-violet-400 animate-spin" />}
+            {status === 'completed' && <CheckCircle className="w-8 h-8 text-emerald-400 scale-110 transition-transform duration-300" />}
+            {status === 'error' && <AlertTriangle className="w-8 h-8 text-rose-500 animate-bounce" />}
+          </div>
+        </div>
+
+        <div className="space-y-2">
+          <h4 className="text-sm font-semibold tracking-wide uppercase text-indigo-300">
+            {status === 'queued' && 'Na Fila de Execução'}
+            {status === 'processing' && 'Acessando Provedores'}
+            {status === 'completed' && 'Relatório Gerado!'}
+            {status === 'error' && 'Erro no Processamento'}
+          </h4>
+          <p className="text-xs text-slate-400 max-w-[280px] leading-relaxed">
+            {message}
+          </p>
+        </div>
+
+        {/* Barra de progresso fofa */}
+        <div className="w-full bg-slate-900 h-1.5 rounded-full overflow-hidden mt-6 border border-slate-800">
+          <motion.div 
+            className={`h-full ${status === 'completed' ? 'bg-emerald-500' : status === 'error' ? 'bg-rose-500' : 'bg-gradient-to-r from-indigo-500 to-violet-500'}`}
+            initial={{ width: '5%' }}
+            animate={{ 
+              width: status === 'completed' ? '100%' : status === 'error' ? '100%' : status === 'processing' ? '70%' : '20%' 
+            }}
+            transition={{ duration: 1 }}
+          />
+        </div>
+        
+        {(status === 'completed' || status === 'error') && (
+          <Button 
+            onClick={onClose} 
+            className={`w-full mt-6 text-xs h-9 font-medium ${status === 'completed' ? 'bg-emerald-600 hover:bg-emerald-500 text-white' : 'bg-slate-800 hover:bg-slate-700 text-white'}`}
+          >
+            {status === 'completed' ? 'Ver Relatório Completo' : 'Fechar'}
+          </Button>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 // Modal de Prévia Rápida de Templates
-function TemplatePreviewModal({ template, open, onClose }: { template: any; open: boolean; onClose: () => void }) {
+function TemplatePreviewModal({ 
+  template, 
+  open, 
+  onClose,
+  customRealData,
+  customDocument,
+  customClientName,
+  isRealConsultation = false,
+  isAdmin = false,
+  onEditTemplate
+}: { 
+  template: any; 
+  open: boolean; 
+  onClose: () => void;
+  customRealData?: any;
+  customDocument?: string;
+  customClientName?: string;
+  isRealConsultation?: boolean;
+  isAdmin?: boolean;
+  onEditTemplate?: (tpl: any) => void;
+}) {
   const [profile, setProfile] = useState<'clean' | 'restricted'>('clean');
   const activeSim = SIMULATED_PROFILES[profile];
 
+  const hasRealData = !!customRealData;
+  const hasAdminData = !hasRealData && !!template.layout?.metadata?.lastAdminData;
+  
+  const realDataToUse = hasRealData 
+    ? customRealData 
+    : (hasAdminData ? template.layout.metadata.lastAdminData : activeSim.realData);
+
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-5xl max-h-[92vh] overflow-y-auto p-0 bg-background border border-border">
-        <DialogHeader className="px-6 pt-5 pb-3 border-b border-border flex flex-row items-center justify-between">
-          <DialogTitle className="flex items-center gap-2 text-sm font-bold text-foreground">
-            <Eye className="w-4 h-4 text-primary" />
-            Prévia Interativa — {template.name}
+      <DialogContent className="max-w-[64vw] w-[64vw] h-[86vh] max-h-[86vh] overflow-hidden p-0 bg-background border border-border flex flex-col">
+        <DialogHeader className="px-4 py-2 border-b border-border flex flex-row items-center justify-between shrink-0">
+          <DialogTitle className="flex items-center gap-2 text-xs font-bold text-foreground">
+            <Eye className="w-3.5 h-3.5 text-primary" />
+            {isRealConsultation ? 'Relatório Real' : 'Prévia'} — {template.name}
           </DialogTitle>
-          <div className="flex items-center gap-1 bg-muted p-0.5 rounded-lg border border-border mr-6">
-            <Button
-              size="sm"
-              variant={profile === 'clean' ? 'default' : 'ghost'}
-              className="h-6 text-[10px] px-2.5 rounded-md"
-              onClick={() => setProfile('clean')}
-            >
-              <CheckCircle className="w-3 h-3 mr-1 text-success" /> Ficha Limpa
-            </Button>
-            <Button
-              size="sm"
-              variant={profile === 'restricted' ? 'default' : 'ghost'}
-              className="h-6 text-[10px] px-2.5 rounded-md"
-              onClick={() => setProfile('restricted')}
-            >
-              <ShieldAlert className="w-3 h-3 mr-1 text-destructive" /> Com Restrições
-            </Button>
+          <div className="sr-only">
+            Visualização prévia do template selecionado
+          </div>
+          <div className="flex items-center gap-2 mr-6">
+            {isAdmin && onEditTemplate && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="text-[9px] h-6 px-2.5 gap-1 hover:text-primary hover:border-primary/30"
+                onClick={() => {
+                  onClose();
+                  onEditTemplate(template);
+                }}
+                title="Editar este template no editor"
+              >
+                <Edit className="w-3.5 h-3.5" /> Editar Template
+              </Button>
+            )}
+
+            {isRealConsultation ? (
+              <div className="text-[9px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2 py-0.5 rounded-md font-semibold flex items-center gap-1.5 select-none animate-pulse">
+                <Sparkles className="size-2.5 text-emerald-400" />
+                Consulta Realizada (API Oficial)
+              </div>
+            ) : hasAdminData ? (
+              <div className="text-[9px] bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 px-2 py-0.5 rounded-md font-semibold flex items-center gap-1.5 select-none animate-pulse">
+                <Sparkles className="size-2.5 text-indigo-400" />
+                Dados do Administrador
+              </div>
+            ) : (
+              <div className="flex items-center gap-1 bg-muted p-0.5 rounded-lg border border-border">
+                <Button
+                  size="sm"
+                  variant={profile === 'clean' ? 'default' : 'ghost'}
+                  className="h-5 text-[9px] px-2 rounded-md"
+                  onClick={() => setProfile('clean')}
+                >
+                  <CheckCircle className="w-2.5 h-2.5 mr-1 text-success" /> Ficha Limpa
+                </Button>
+                <Button
+                  size="sm"
+                  variant={profile === 'restricted' ? 'default' : 'ghost'}
+                  className="h-5 text-[9px] px-2 rounded-md"
+                  onClick={() => setProfile('restricted')}
+                >
+                  <ShieldAlert className="w-2.5 h-2.5 mr-1 text-destructive" /> Com Restrições
+                </Button>
+              </div>
+            )}
           </div>
         </DialogHeader>
-        <div className="p-4 bg-muted/20">
-          <div className="bg-card rounded-xl border border-border shadow-md overflow-hidden">
+
+        <div className="p-0 bg-background flex-1 overflow-hidden flex flex-col min-h-0">
+          <div className="overflow-hidden flex-1 flex flex-col min-h-0">
             <ConsultationPreview
               blocks={template.blocks}
-              document={activeSim.document}
-              clientName={activeSim.clientName}
+              rawItems={template.rawItems}
+              document={hasRealData ? (customDocument || "") : (hasAdminData ? "" : activeSim.document)}
+              clientName={hasRealData ? (customClientName || "") : (hasAdminData ? "" : activeSim.clientName)}
               logo={template.logo}
-              realData={activeSim.realData}
+              realData={realDataToUse}
               mode="preview"
               layout={template.layout}
             />
@@ -159,7 +297,147 @@ function TemplatePreviewModal({ template, open, onClose }: { template: any; open
 export default function NewConsultationPage() {
   const { user, accessToken } = useAuthStore();
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const { selectedBlocks, addBlock, removeBlock, clearBlocks } = useConsultationStore();
+
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Estados para o fluxo de emissão real de consulta com polling
+  const [pollingActive, setPollingActive] = useState(false);
+  const [pollingStatus, setPollingStatus] = useState<'queued' | 'processing' | 'completed' | 'error'>('queued');
+  const [pollingMessage, setPollingMessage] = useState('Enviando solicitação...');
+  const [realConsultationData, setRealConsultationData] = useState<any | null>(null);
+  const [realDocument, setRealDocument] = useState('');
+  const [realClientName, setRealClientName] = useState('');
+  const [showRealPreview, setShowRealPreview] = useState(false);
+  const [selectedTemplateForRealPreview, setSelectedTemplateForRealPreview] = useState<any | null>(null);
+
+  // Executa uma consulta real e monitora o progresso via polling
+  const handleExecuteRealConsultation = async (tpl: any) => {
+    if (!document) {
+      toast.error('Informe um CPF ou CNPJ válido para esta consulta.');
+      return;
+    }
+
+    setPollingActive(true);
+    setPollingStatus('queued');
+    setPollingMessage('Sua consulta foi recebida e está entrando na fila de execução do servidor...');
+    setSelectedTemplateForRealPreview(tpl);
+
+    let consultationId = '';
+
+    try {
+      const providerProductIds = tpl.blocks
+        .filter((b: any) => b.category !== 'Consulta Customizada')
+        .map((b: any) => b.id);
+
+      const cleanedDoc = document.replace(/\D/g, '');
+      const subjectType = cleanedDoc.length === 14 ? 'CNPJ' : 'CPF';
+
+      // 1. POST /consultations para iniciar a consulta
+      const result = await apiRequest<any>('/consultations', {
+        method: 'POST',
+        body: JSON.stringify({
+          subjectDocument: cleanedDoc,
+          subjectType,
+          templateId: tpl.id,
+          providerProductIds: providerProductIds.length > 0 ? providerProductIds : undefined,
+          externalUserId: user?.id,
+        })
+      });
+
+      if (!result || !result.id) {
+        throw new Error('Retorno inválido do servidor ao criar consulta.');
+      }
+
+      consultationId = result.id;
+      setPollingStatus('processing');
+      setPollingMessage('Solicitação enviada. Acionando canais de dados parceiros e reunindo as informações oficiais...');
+
+      // 2. Polling loop para aguardar a conclusão
+      let attempts = 0;
+      const maxAttempts = 30; // 30 tentativas = ~1 minuto limite
+      const intervalMs = 2000; // 2 segundos entre checagens
+
+      const poll = async () => {
+        if (attempts >= maxAttempts) {
+          setPollingStatus('error');
+          setPollingMessage('O tempo limite de processamento foi excedido. Verifique o histórico mais tarde.');
+          toast.error('Tempo de espera excedido para a análise em lote.');
+          return;
+        }
+
+        try {
+          const check = await apiRequest<any>(`/consultations/${consultationId}`);
+          
+          if (check.status === 'COMPLETED') {
+            const dataPayload = check.renderPayload || check.mergedPayload || {};
+            setRealConsultationData(dataPayload);
+            setRealDocument(document);
+            setRealClientName(clientName || dataPayload.cliente?.nome || dataPayload.clientName || 'CLIENTE ANALISADO');
+            setPollingStatus('completed');
+            setPollingMessage('Todas as conexões retornaram com sucesso! Relatório compilado com dados oficiais da API.');
+            toast.success('Análise oficial concluída com sucesso!');
+          } else if (check.status === 'ERROR' || check.status === 'FAILED') {
+            setPollingStatus('error');
+            setPollingMessage(check.errorMessage || 'Falha ao processar dados com um dos provedores parceiros.');
+            toast.error('Erro no processamento da consulta.');
+          } else {
+            // Continua processando ou em fila
+            attempts++;
+            if (check.status === 'PROCESSING') {
+              setPollingMessage(`Processando resposta dos provedores de dados oficiais (tentativa ${attempts})...`);
+            }
+            setTimeout(poll, intervalMs);
+          }
+        } catch (pollErr: any) {
+          console.error('Erro no polling da consulta:', pollErr);
+          attempts++;
+          setTimeout(poll, intervalMs);
+        }
+      };
+
+      // Inicia polling após o primeiro intervalo
+      setTimeout(poll, intervalMs);
+
+    } catch (err: any) {
+      console.error('Erro ao emitir consulta para prévia:', err);
+      setPollingStatus('error');
+      setPollingMessage(err.message || 'Houve uma falha interna ao contatar o servidor de dados.');
+      toast.error('Ocorreu um erro ao emitir a consulta.');
+    }
+  };
+
+  const handleEmitConsultation = async () => {
+    if (!document || selectedBlocks.length === 0) return;
+    
+    // Como a emissão também fará polling real para abrir o preview, utilizamos o handleExecuteRealConsultation
+    // Criamos um template virtual correspondente
+    const tpl = selectedTemplate || {
+      id: undefined,
+      name: 'Relatório Customizado',
+      blocks: selectedBlocks,
+      logo: reportLogo,
+      rawItems: [],
+      layout: null
+    };
+
+    setIsSubmitting(true);
+    try {
+      // Disparamos o fluxo real com polling
+      await handleExecuteRealConsultation(tpl);
+      
+      // Limpamos o formulário
+      setDocument('');
+      setClientName('');
+      clearBlocks();
+      setSelectedTemplate(null);
+    } catch (err) {
+      // tratador de erro secundário
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   // Estados locais da tela
   const [selectedTemplate, setSelectedTemplate] = useState<any | null>(null);
@@ -172,7 +450,16 @@ export default function NewConsultationPage() {
   const [clientName, setClientName] = useState('');
   const [reportLogo, setReportLogo] = useState<string | null>(null);
   const [simProfile, setSimProfile] = useState<'clean' | 'restricted' | null>(null);
-  const [activeTab, setActiveTab] = useState<'standard' | 'custom'>('standard');
+
+  const isAdmin = user?.backendRole === 'PLATFORM_ADMIN' && user?.accessLevel === 0;
+  const [activeTab, setActiveTab] = useState<'standard' | 'custom' | 'templates'>('templates');
+
+  // Força o ajuste do activeTab se o usuário carregar ou se seu cargo mudar
+  useEffect(() => {
+    if (user) {
+      setActiveTab('templates');
+    }
+  }, [user]);
 
   // React Query: Buscar templates dinâmica e reativamente do backend
   const { data: apiTemplates = [], isLoading } = useQuery({
@@ -227,7 +514,7 @@ export default function NewConsultationPage() {
       return createTemplateApi(accessToken, {
         name: `${tpl.name} (Cópia)`,
         description: tpl.description || `Cópia de ${tpl.name}`,
-        visibility: user?.role === 'ADMIN' ? tpl.visibility : 'PRIVATE',
+        visibility: user?.backendRole === 'PLATFORM_ADMIN' ? tpl.visibility : 'PRIVATE',
         layout: tpl.layout,
         logo: tpl.logo,
         items: clonedItems,
@@ -279,6 +566,30 @@ export default function NewConsultationPage() {
     return apiTemplates.filter((t) => t.visibility === 'PRIVATE');
   }, [apiTemplates]);
 
+  // Filtra templates permitidos para o usuário comum de acordo com metadata.visibleRoles
+  const userTemplates = useMemo(() => {
+    return apiTemplates.filter((t) => {
+      // Se for o administrador no acesso real de admin, ele vê todos os templates
+      if (user?.backendRole === 'PLATFORM_ADMIN' && user?.accessLevel === 0) return true;
+      
+      // Determinamos a role efetiva (real ou simulada)
+      const effectiveRole = user?.backendRole === 'PLATFORM_ADMIN'
+        ? (user.accessLevel === 1 ? 'COMPANY_OWNER' : 'USER')
+        : user?.backendRole;
+        
+      const visibleRoles = t.layout?.metadata?.visibleRoles;
+      if (!visibleRoles || !Array.isArray(visibleRoles)) {
+        // Se não houver visibleRoles configurado, fica visível por padrão
+        return true;
+      }
+      
+      if (effectiveRole === 'COMPANY_OWNER' || effectiveRole === 'COMPANY_MANAGER') {
+        return visibleRoles.includes('COMPANY_OWNER') || visibleRoles.includes('COMPANY_MANAGER');
+      }
+      return visibleRoles.includes(effectiveRole || '');
+    });
+  }, [apiTemplates, user]);
+
   // Sincroniza logo padrão do template quando um novo template é selecionado
   useEffect(() => {
     if (selectedTemplate) {
@@ -305,20 +616,54 @@ export default function NewConsultationPage() {
     
     // Rola suavemente até o container de Emissão se selecionado
     setTimeout(() => {
-      document.getElementById('emission-container')?.scrollIntoView({ behavior: 'smooth' });
+      window.document.getElementById('emission-container')?.scrollIntoView({ behavior: 'smooth' });
     }, 150);
   };
 
   // Lida com edição de template: se usuário comum e template padrão -> clona!
   const handleEditTemplate = (tpl: any) => {
-    if (user?.role !== 'ADMIN' && (tpl.visibility === 'GLOBAL' || tpl.visibility === 'COMPANY')) {
+    if (user?.backendRole !== 'PLATFORM_ADMIN' && (tpl.visibility === 'GLOBAL' || tpl.visibility === 'COMPANY')) {
       toast.info('Este é um template padrão. Criando uma cópia personalizada na sua conta...');
       cloneMutation.mutate(tpl);
     } else {
-      setEditingTemplate(tpl);
-      setEditorOpen(true);
+      if (isAdmin) {
+        try {
+          const existingSessionStr = localStorage.getItem('report-drawer:session');
+          let sessionObj: any = { state: {}, version: 0 };
+          if (existingSessionStr) {
+            try {
+              sessionObj = JSON.parse(existingSessionStr);
+            } catch (e) {}
+          }
+          
+          sessionObj.state = {
+            ...sessionObj.state,
+            activeTemplateId: tpl.id,
+            template: tpl.layout || {
+              id: tpl.id,
+              name: tpl.name,
+              version: 1,
+              canvas: { background: "#e2e8f0", grid: 8 },
+              frames: [],
+              elements: []
+            },
+            dirty: false,
+            hasSyncedFromServer: false
+          };
+          
+          localStorage.setItem('report-drawer:session', JSON.stringify(sessionObj));
+          toast.success(`Carregando "${tpl.name}" no Editor Moderno...`);
+        } catch (err) {
+          console.error("Erro ao setar sessão do editor no localStorage:", err);
+        }
+        navigate('/admin/templates-drawer');
+      } else {
+        setEditingTemplate(tpl);
+        setEditorOpen(true);
+      }
     }
   };
+
 
   // Callback de salvamento do Construtor de Templates (TemplateBuilderEditor)
   const handleSaveTemplateBuilder = async (payload: any) => {
@@ -342,7 +687,7 @@ export default function NewConsultationPage() {
         // Modo Criação: Novo Template
         await createTemplateApi(accessToken, {
           name: payload.name || 'Novo Template',
-          visibility: user?.role === 'ADMIN' ? 'GLOBAL' : 'PRIVATE',
+          visibility: user?.backendRole === 'PLATFORM_ADMIN' ? 'GLOBAL' : 'PRIVATE',
           layout: payload.document,
           logo: payload.logo,
           items: itemsPayload,
@@ -413,558 +758,260 @@ export default function NewConsultationPage() {
         subtitle="Selecione um template canônico ou personalize seus relatórios para emissão instantânea"
       >
         <div className="flex items-center gap-2">
-          <Button
-            onClick={() => {
-              setEditingTemplate(null);
-              setEditorOpen(true);
-            }}
-            className="gradient-primary text-primary-foreground text-xs h-8 gap-1.5 shadow-glow"
-          >
-            <Plus className="w-3.5 h-3.5" /> Novo Template
-          </Button>
-        </div>
-      </PageHeader>
-
-      {/* Abas Principais de Templates */}
-      <Tabs value={activeTab} onValueChange={(v: any) => setActiveTab(v)} className="w-full">
-        <div className="flex items-center justify-between border-b border-border/80 pb-3">
-          <TabsList className="bg-muted/50 p-0.5 rounded-xl border border-border/60">
-            <TabsTrigger value="standard" className="text-xs px-4 py-1.5 rounded-lg data-[state=active]:bg-background data-[state=active]:shadow-sm">
-              Templates Padrão ({standardTemplates.length})
-            </TabsTrigger>
-            <TabsTrigger value="custom" className="text-xs px-4 py-1.5 rounded-lg data-[state=active]:bg-background data-[state=active]:shadow-sm">
-              Templates Personalizados ({customTemplates.length})
-            </TabsTrigger>
-          </TabsList>
-          {selectedTemplate && (
-            <div className="text-[11px] text-muted-foreground bg-muted/40 px-3 py-1 rounded-full border border-border/50 flex items-center gap-1.5 animate-pulse">
-              <span className="w-1.5 h-1.5 rounded-full bg-success"></span>
-              Ativo para emissão: <strong className="text-foreground">{selectedTemplate.name}</strong>
-            </div>
-          )}
-        </div>
-
-        {/* Templates Padrão */}
-        <TabsContent value="standard" className="pt-4 mt-0">
-          {isLoading ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {[1, 2, 3].map((n) => (
-                <div key={n} className="h-[210px] rounded-xl border border-border bg-card animate-pulse p-4 space-y-4">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-lg bg-muted"></div>
-                    <div className="space-y-2 flex-1">
-                      <div className="h-3 bg-muted rounded w-2/3"></div>
-                      <div className="h-2 bg-muted rounded w-1/3"></div>
-                    </div>
-                  </div>
-                  <div className="h-2 bg-muted rounded w-full"></div>
-                  <div className="h-2 bg-muted rounded w-3/4"></div>
-                  <div className="h-8 bg-muted rounded-lg w-full mt-4"></div>
-                </div>
-              ))}
-            </div>
-          ) : standardTemplates.length === 0 ? (
-            <div className="text-center py-12 bg-card rounded-xl border border-dashed border-border p-8 flex flex-col items-center justify-center text-muted-foreground">
-              <FileText className="w-10 h-10 mb-2.5 text-muted-foreground/60" />
-              <p className="text-sm font-medium">Nenhum template padrão cadastrado pelo administrador.</p>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {standardTemplates.map((tpl, i) => (
-                <motion.div
-                  key={tpl.id}
-                  initial={{ opacity: 0, y: 12 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: i * 0.05 }}
-                  className={`bg-card rounded-xl border transition-all duration-200 overflow-hidden flex flex-col group relative ${
-                    selectedTemplate?.id === tpl.id
-                      ? 'border-primary ring-2 ring-primary/20 shadow-glow'
-                      : 'border-border/80 hover:border-primary/40 shadow-card hover:shadow-elevated'
-                  }`}
-                >
-                  <div className="p-4 flex-1">
-                    <div className="flex items-start justify-between mb-2.5">
-                      <div className="flex items-center gap-2.5">
-                        <div className={`w-9 h-9 rounded-lg flex items-center justify-center transition-colors ${
-                          selectedTemplate?.id === tpl.id ? 'bg-primary/15 text-primary' : 'bg-primary/10 text-primary'
-                        }`}>
-                          <FileText className="w-4.5 h-4.5" />
-                        </div>
-                        <div>
-                          <h3 className="text-xs font-bold text-foreground line-clamp-1">{tpl.name}</h3>
-                          <p className="text-[10px] text-muted-foreground">{tpl.blocks.length} blocos inclusos</p>
-                        </div>
-                      </div>
-                      <button
-                        onClick={() => favoriteMutation.mutate({ id: tpl.id, isFavorite: !tpl.isFavorite })}
-                        className="text-muted-foreground/60 hover:text-warning transition-colors"
-                        title={tpl.isFavorite ? 'Remover favorito' : 'Favoritar'}
-                      >
-                        <Star className={`w-4 h-4 ${tpl.isFavorite ? 'text-warning fill-warning' : ''}`} />
-                      </button>
-                    </div>
-
-                    <p className="text-[11px] text-muted-foreground line-clamp-2 min-h-[32px] mb-3 leading-relaxed">
-                      {tpl.description || 'Template oficial para consultas de conformidade do sistema.'}
-                    </p>
-
-                    <div className="flex flex-wrap gap-1 mb-3.5">
-                      {tpl.blocks.slice(0, 3).map((block: any) => (
-                        <span key={block.id} className="px-2 py-0.5 text-[9px] font-medium rounded-md bg-muted text-muted-foreground border border-border/40">
-                          {block.name}
-                        </span>
-                      ))}
-                      {tpl.blocks.length > 3 && (
-                        <span className="px-1.5 py-0.5 text-[9px] rounded-md bg-primary/10 text-primary font-bold">
-                          +{tpl.blocks.length - 3}
-                        </span>
-                      )}
-                    </div>
-
-                    <div className="flex items-center justify-between text-[11px] text-muted-foreground bg-muted/30 px-2.5 py-1.5 rounded-lg mb-4 border border-border/20">
-                      <span>Valor estimado</span>
-                      <span className="font-bold text-foreground">R$ {tpl.totalPrice.toFixed(2)}</span>
-                    </div>
-
-                    <div className="grid grid-cols-4 gap-1.5">
-                      <Button
-                        size="sm"
-                        className="col-span-2 gradient-primary text-primary-foreground text-[10px] h-7 gap-1"
-                        onClick={() => loadTemplate(tpl)}
-                      >
-                        <Play className="w-3 h-3" /> Usar
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="text-[10px] h-7 px-1.5"
-                        onClick={() => setPreviewTemplate(tpl)}
-                        title="Prévia interativa"
-                      >
-                        <Eye className="w-3.5 h-3.5" />
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="text-[10px] h-7 px-1.5 hover:text-primary hover:border-primary/30"
-                        onClick={() => handleEditTemplate(tpl)}
-                        title="Personalizar/Editar"
-                      >
-                        <Edit className="w-3.5 h-3.5" />
-                      </Button>
-                    </div>
-                  </div>
-                  <div className="px-4 py-1.5 border-t border-border/50 bg-muted/20 text-[9px] text-muted-foreground flex justify-between items-center select-none">
-                    <span>GLOBAL/SISTEMA</span>
-                    <span>Atualizado em {tpl.updatedAt}</span>
-                  </div>
-                </motion.div>
-              ))}
-            </div>
-          )}
-        </TabsContent>
-
-        {/* Templates Personalizados */}
-        <TabsContent value="custom" className="pt-4 mt-0">
-          {isLoading ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {[1, 2, 3].map((n) => (
-                <div key={n} className="h-[210px] rounded-xl border border-border bg-card animate-pulse p-4" />
-              ))}
-            </div>
-          ) : customTemplates.length === 0 ? (
-            <motion.button
+          {isAdmin && (
+            <Button
               onClick={() => {
                 setEditingTemplate(null);
                 setEditorOpen(true);
               }}
-              className="bg-card rounded-xl border-2 border-dashed border-border/80 hover:border-primary/40 shadow-card hover:shadow-elevated transition-all duration-200 p-8 flex flex-col items-center justify-center gap-2.5 text-muted-foreground hover:text-primary group min-h-[190px] w-full"
+              className="gradient-primary text-primary-foreground text-xs h-8 gap-1.5 shadow-glow"
             >
-              <div className="w-10 h-10 rounded-xl bg-muted group-hover:bg-primary/10 flex items-center justify-center transition-colors">
-                <Plus className="w-5 h-5 text-muted-foreground group-hover:text-primary" />
-              </div>
-              <div>
-                <p className="text-xs font-semibold">Crie o seu primeiro template personalizado</p>
-                <p className="text-[10px] text-muted-foreground/80 mt-0.5">Seus relatórios canônicos em um só lugar</p>
-              </div>
-            </motion.button>
-          ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {customTemplates.map((tpl, i) => (
-                <motion.div
-                  key={tpl.id}
-                  initial={{ opacity: 0, y: 12 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: i * 0.05 }}
-                  className={`bg-card rounded-xl border transition-all duration-200 overflow-hidden flex flex-col group relative ${
-                    selectedTemplate?.id === tpl.id
-                      ? 'border-primary ring-2 ring-primary/20 shadow-glow'
-                      : 'border-border/80 hover:border-primary/40 shadow-card hover:shadow-elevated'
-                  }`}
-                >
-                  <div className="p-4 flex-1">
-                    <div className="flex items-start justify-between mb-2.5">
-                      <div className="flex items-center gap-2.5">
-                        <div className={`w-9 h-9 rounded-lg flex items-center justify-center transition-colors ${
-                          selectedTemplate?.id === tpl.id ? 'bg-primary/15 text-primary' : 'bg-primary/10 text-primary'
-                        }`}>
-                          <FileText className="w-4.5 h-4.5" />
-                        </div>
-                        <div>
-                          <h3 className="text-xs font-bold text-foreground line-clamp-1">{tpl.name}</h3>
-                          <p className="text-[10px] text-muted-foreground">{tpl.blocks.length} blocos inclusos</p>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-1.5">
-                        <button
-                          onClick={() => favoriteMutation.mutate({ id: tpl.id, isFavorite: !tpl.isFavorite })}
-                          className="text-muted-foreground/60 hover:text-warning transition-colors"
-                          title={tpl.isFavorite ? 'Remover favorito' : 'Favoritar'}
-                        >
-                          <Star className={`w-4 h-4 ${tpl.isFavorite ? 'text-warning fill-warning' : ''}`} />
-                        </button>
-                      </div>
-                    </div>
+              <Plus className="w-3.5 h-3.5" /> Novo Template
+            </Button>
+          )}
+        </div>
+      </PageHeader>
 
-                    <p className="text-[11px] text-muted-foreground line-clamp-2 min-h-[32px] mb-3 leading-relaxed">
-                      {tpl.description || 'Sem descrição pessoal fornecida.'}
-                    </p>
-
-                    <div className="flex flex-wrap gap-1 mb-3.5">
-                      {tpl.blocks.slice(0, 3).map((block: any) => (
-                        <span key={block.id} className="px-2 py-0.5 text-[9px] font-medium rounded-md bg-muted text-muted-foreground border border-border/40">
-                          {block.name}
-                        </span>
-                      ))}
-                      {tpl.blocks.length > 3 && (
-                        <span className="px-1.5 py-0.5 text-[9px] rounded-md bg-primary/10 text-primary font-bold">
-                          +{tpl.blocks.length - 3}
-                        </span>
-                      )}
-                    </div>
-
-                    <div className="flex items-center justify-between text-[11px] text-muted-foreground bg-muted/30 px-2.5 py-1.5 rounded-lg mb-4 border border-border/20">
-                      <span>Valor estimado</span>
-                      <span className="font-bold text-foreground">R$ {tpl.totalPrice.toFixed(2)}</span>
-                    </div>
-
-                    <div className="grid grid-cols-5 gap-1.5">
-                      <Button
-                        size="sm"
-                        className="col-span-2 gradient-primary text-primary-foreground text-[10px] h-7 gap-1"
-                        onClick={() => loadTemplate(tpl)}
-                      >
-                        <Play className="w-3 h-3" /> Usar
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="text-[10px] h-7 px-1"
-                        onClick={() => setPreviewTemplate(tpl)}
-                        title="Prévia"
-                      >
-                        <Eye className="w-3.5 h-3.5" />
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="text-[10px] h-7 px-1 hover:text-primary"
-                        onClick={() => handleEditTemplate(tpl)}
-                        title="Editar"
-                      >
-                        <Edit className="w-3.5 h-3.5" />
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="text-[10px] h-7 px-1 text-destructive hover:text-destructive hover:bg-destructive/10"
-                        onClick={() => {
-                          if (window.confirm('Tem certeza que deseja excluir permanentemente este template?')) {
-                            deleteMutation.mutate(tpl.id);
-                          }
-                        }}
-                        title="Deletar"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </Button>
-                    </div>
-                  </div>
-                  <div className="px-4 py-1.5 border-t border-border/50 bg-muted/20 text-[9px] text-muted-foreground flex justify-between items-center select-none">
-                    <span className="text-primary font-medium">CONTA PESSOAL</span>
-                    <span>Atualizado em {tpl.updatedAt}</span>
-                  </div>
-                </motion.div>
-              ))}
-
-              {/* Botão rápido para adicionar no grid de personalizados */}
-              <button
-                onClick={() => {
-                  setEditingTemplate(null);
-                  setEditorOpen(true);
-                }}
-                className="bg-card rounded-xl border-2 border-dashed border-border/80 hover:border-primary/40 shadow-card hover:shadow-elevated transition-all duration-200 p-6 flex flex-col items-center justify-center gap-2 text-muted-foreground hover:text-primary group min-h-[190px]"
-              >
-                <div className="w-9 h-9 rounded-lg bg-muted group-hover:bg-primary/10 flex items-center justify-center transition-colors">
-                  <Plus className="w-4 h-4 text-muted-foreground group-hover:text-primary" />
-                </div>
-                <span className="text-xs font-semibold">Novo Template</span>
-              </button>
+      {/* Emissão rápida (Restaurado do backup v1) */}
+      <div className="rounded-xl border border-border bg-card p-4 shadow-card">
+        <h3 className="text-xs font-semibold text-foreground mb-3">Emissão Rápida</h3>
+        <div className="flex items-end gap-3 flex-wrap sm:flex-nowrap">
+          <div className="flex-1 min-w-[200px] space-y-1">
+            <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Documento (CPF/CNPJ)</label>
+            <Input 
+              placeholder="000.000.000-00" 
+              value={document} 
+              onChange={(e) => setDocument(formatDocument(e.target.value))} 
+              className="h-8 text-xs" 
+            />
+          </div>
+          {templateFields.length > 0 && (
+             <div className="flex-1 min-w-[200px] space-y-1">
+              <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Nome Completo</label>
+              <Input 
+                placeholder="Nome do cliente" 
+                value={clientName} 
+                onChange={(e) => setClientName(e.target.value)} 
+                className="h-8 text-xs" 
+              />
             </div>
           )}
-        </TabsContent>
-      </Tabs>
-
-      {/* ÁREA DE EMISSÃO COM PREVIEW INTERATIVO LATERAL */}
-      {selectedTemplate && (
-        <motion.div
-          id="emission-container"
-          initial={{ opacity: 0, y: 16 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="rounded-xl border border-border bg-card shadow-card overflow-hidden"
-        >
-          <div className="px-4 py-3 border-b border-border bg-muted/10 flex items-center justify-between select-none">
-            <h3 className="text-xs font-bold text-foreground uppercase tracking-wider flex items-center gap-1.5">
-              <Sparkles className="w-3.5 h-3.5 text-primary" />
-              Painel de Emissão — {selectedTemplate.name}
-            </h3>
-            <button
-              onClick={() => {
-                setSelectedTemplate(null);
-                clearBlocks();
-              }}
-              className="text-muted-foreground/60 hover:text-foreground transition-colors p-1 rounded-md"
-              title="Fechar painel"
+          <div className="flex items-center gap-2 mt-2 sm:mt-0">
+            {selectedBlocks.length > 0 && (
+              <div className="flex items-center gap-2 text-xs mr-2">
+                <span className="text-muted-foreground">{selectedBlocks.length} blocos</span>
+                <span className="font-bold text-foreground">R$ {totalPrice.toFixed(2)}</span>
+                {insufficientBalance && <span className="text-destructive text-[10px] flex items-center gap-1"><AlertTriangle className="w-3 h-3" /> Saldo insuficiente</span>}
+              </div>
+            )}
+            <Button 
+              className="gradient-primary text-primary-foreground h-8 text-xs gap-1.5 shadow-glow" 
+              disabled={selectedBlocks.length === 0 || insufficientBalance || !document || isSubmitting}
+              onClick={handleEmitConsultation}
             >
-              <X className="w-4 h-4" />
-            </button>
+              <Send className="w-3.5 h-3.5" /> {isSubmitting ? 'Emitindo...' : 'Emitir Consulta'}
+            </Button>
           </div>
+        </div>
+        {selectedTemplate && (
+          <div className="mt-3 pt-3 border-t border-border flex items-center justify-between text-[11px] text-muted-foreground">
+             <div className="flex items-center gap-1.5">
+               <span className="w-1.5 h-1.5 rounded-full bg-success animate-pulse"></span>
+               Ativo: <strong className="text-foreground">{selectedTemplate.name}</strong>
+             </div>
+             <button onClick={() => { setSelectedTemplate(null); clearBlocks(); }} className="text-destructive hover:underline">
+               Limpar seleção
+             </button>
+          </div>
+        )}
+      </div>
 
-          <ResizablePanelGroup direction="horizontal" className="min-h-[500px]">
-            {/* Coluna Esquerda: Formulário de Emissão */}
-            <ResizablePanel defaultSize={45} minSize={30}>
-              <div className="p-4 space-y-5 flex flex-col justify-between h-full">
-                <div className="space-y-4">
-                  {/* Simulador rápido de perfis */}
-                  <div className="space-y-1.5">
-                    <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider flex items-center gap-1">
-                      <Info className="w-3 h-3 text-primary" /> Simular Perfil de Teste
-                    </label>
-                    <div className="flex gap-2">
-                      <Button
-                        size="sm"
-                        variant={simProfile === 'clean' ? 'default' : 'outline'}
-                        className="text-[10px] h-7 flex-1"
-                        onClick={() => handleSimulateProfile('clean')}
-                      >
-                        <CheckCircle className="w-3 h-3 mr-1 text-success" /> Ficha Limpa
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant={simProfile === 'restricted' ? 'default' : 'outline'}
-                        className="text-[10px] h-7 flex-1"
-                        onClick={() => handleSimulateProfile('restricted')}
-                      >
-                        <ShieldAlert className="w-3 h-3 mr-1 text-destructive" /> Com Restrições
-                      </Button>
-                      {simProfile && (
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          className="text-[10px] h-7 px-2"
-                          onClick={handleClearSimulation}
-                          title="Limpar simulação"
-                        >
-                          <RotateCcw className="w-3 h-3" />
-                        </Button>
-                      )}
-                    </div>
-                  </div>
+      {/* Tabs and Template Cards */}
+      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'standard' | 'custom' | 'templates')} className="w-full">
+        <TabsList className="bg-muted/50 p-1 mb-4 h-auto flex flex-wrap sm:inline-flex rounded-xl">
+          {isAdmin ? (
+            <>
+              <TabsTrigger value="templates" className="text-xs px-4 py-2 rounded-lg data-[state=active]:bg-background data-[state=active]:text-primary data-[state=active]:shadow-sm">
+                Templates ({userTemplates.length})
+              </TabsTrigger>
+              <TabsTrigger value="standard" className="text-xs px-4 py-2 rounded-lg data-[state=active]:bg-background data-[state=active]:text-primary data-[state=active]:shadow-sm">
+                Templates Padrão ({standardTemplates.length})
+              </TabsTrigger>
+              <TabsTrigger value="custom" className="text-xs px-4 py-2 rounded-lg data-[state=active]:bg-background data-[state=active]:text-primary data-[state=active]:shadow-sm">
+                Templates Personalizados ({customTemplates.length})
+              </TabsTrigger>
+            </>
+          ) : (
+            <TabsTrigger value="templates" className="text-xs px-4 py-2 rounded-lg data-[state=active]:bg-background data-[state=active]:text-primary data-[state=active]:shadow-sm">
+              Templates ({userTemplates.length})
+            </TabsTrigger>
+          )}
+        </TabsList>
 
-                  {/* Campo de Documento */}
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
-                      Documento (CPF/CNPJ)
-                    </label>
-                    <Input
-                      placeholder="000.000.000-00"
-                      value={document}
-                      onChange={(e) => setDocument(formatDocument(e.target.value))}
-                      className="h-8.5 text-xs rounded-lg"
-                    />
-                  </div>
-
-                  {/* Campo de Nome do Cliente */}
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
-                      Nome Completo do Cliente
-                    </label>
-                    <Input
-                      placeholder="Nome do cliente consultado"
-                      value={clientName}
-                      onChange={(e) => setClientName(e.target.value)}
-                      className="h-8.5 text-xs rounded-lg"
-                    />
-                  </div>
-
-                  {/* Inputs dinâmicos varridos do layout do template */}
-                  {templateFields.length > 0 && (
-                    <div className="space-y-3 pt-3 border-t border-border/50">
-                      <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider block">
-                        Variáveis do Relatório ({templateFields.length})
-                      </label>
-                      <div className="grid grid-cols-1 gap-2.5 max-h-[140px] overflow-y-auto pr-1">
-                        {templateFields.map((field: any, idx: number) => {
-                          const isLocked = field.locked || field.style?.locked || field.binding?.locked;
-                          return (
-                            <div key={field.id || idx} className="space-y-1">
-                              <div className="flex items-center justify-between">
-                                <span className="text-[10px] font-medium text-muted-foreground">
-                                  {field.label || 'Campo Sem Nome'}
-                                </span>
-                                {isLocked && (
-                                  <span className="text-[9px] text-destructive bg-destructive/10 px-1.5 py-0.5 rounded-full flex items-center gap-0.5 select-none font-medium">
-                                    <Lock className="w-2.5 h-2.5" /> Bloqueado pelo Admin
-                                  </span>
-                                )}
-                              </div>
-                              <div className="relative flex items-center">
-                                <Input
-                                  placeholder={field.binding?.expression || 'Valor da variável'}
-                                  disabled={isLocked}
-                                  value={isLocked ? (field.binding?.expression || 'Bloqueado') : ''}
-                                  className={`h-7.5 text-[11px] rounded-lg pr-8 ${isLocked ? 'bg-muted/40 cursor-not-allowed text-muted-foreground' : ''}`}
-                                />
-                                {isLocked && (
-                                  <Lock className="w-3 h-3 absolute right-2.5 text-muted-foreground" />
-                                )}
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Resumo dos Blocos */}
-                  <div className="space-y-1.5 pt-3 border-t border-border/50">
-                    <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider block">
-                      Produtos Acoplados ({selectedBlocks.length})
-                    </label>
-                    <div className="flex flex-wrap gap-1.5 max-h-[80px] overflow-y-auto">
-                      {selectedBlocks.map((block) => (
-                        <div
-                          key={block.id}
-                          className="flex items-center gap-1.5 text-[10px] bg-muted px-2.5 py-1 rounded-md border border-border/40 text-foreground"
-                        >
-                          <span>{block.name}</span>
-                          <span className="text-primary font-semibold">R$ {block.price.toFixed(2)}</span>
+        {(isAdmin ? ['templates', 'standard', 'custom'] : ['templates']).map((tabKey) => {
+          const tabTemplates = tabKey === 'standard' 
+            ? standardTemplates 
+            : tabKey === 'custom' 
+              ? customTemplates 
+              : userTemplates;
+          return (
+            <TabsContent key={tabKey} value={tabKey} className="mt-0">
+              {isLoading ? (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {[1, 2, 3].map((n) => (
+                    <div key={n} className="h-[210px] rounded-xl border border-border bg-card animate-pulse p-4 space-y-4">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-lg bg-muted"></div>
+                        <div className="space-y-2 flex-1">
+                          <div className="h-3 bg-muted rounded w-2/3"></div>
+                          <div className="h-2 bg-muted rounded w-1/3"></div>
                         </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Subtotal, Saldo e Botão de Envio */}
-                <div className="border-t border-border pt-4 space-y-3.5">
-                  <div className="flex justify-between items-center text-xs">
-                    <span className="text-muted-foreground">Valor Estimado:</span>
-                    <span className="text-base font-bold text-foreground">R$ {totalPrice.toFixed(2)}</span>
-                  </div>
-                  
-                  <div className="flex justify-between items-center text-xs">
-                    <span className="text-muted-foreground flex items-center gap-1">
-                      <Wallet className="w-3.5 h-3.5 text-muted-foreground" /> Saldo em Conta:
-                    </span>
-                    <span className="font-semibold text-success">
-                      R$ {user?.balance.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                    </span>
-                  </div>
-
-                  {insufficientBalance && (
-                    <div className="flex items-center gap-1.5 text-[11px] text-destructive bg-destructive/10 p-2.5 rounded-lg border border-destructive/20 select-none">
-                      <AlertTriangle className="w-4 h-4 text-destructive shrink-0" />
-                      <span>Saldo insuficiente para emitir esta consulta. Faça uma recarga para continuar.</span>
-                    </div>
-                  )}
-
-                  <Button
-                    className="w-full h-9.5 text-xs font-semibold gap-2 shadow-glow gradient-primary text-primary-foreground rounded-lg"
-                    disabled={selectedBlocks.length === 0 || insufficientBalance || !document}
-                  >
-                    <Send className="w-4 h-4" /> Emitir Consulta Oficial
-                  </Button>
-                </div>
-              </div>
-            </ResizablePanel>
-
-            <ResizableHandle withHandle />
-
-            {/* Coluna Direita: Preview do Relatório Interativo */}
-            <ResizablePanel defaultSize={55} minSize={35}>
-              <div className="h-full flex flex-col bg-muted/10 border-l border-border/50">
-                <div className="px-4 py-2 border-b border-border/80 bg-muted/20 flex items-center justify-between select-none">
-                  <span className="text-[11px] font-bold text-foreground uppercase tracking-wider">
-                    Prévia em Tempo Real
-                  </span>
-                  {/* Upload de Logotipo para Homologação */}
-                  <div className="flex items-center">
-                    {reportLogo ? (
-                      <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-md border border-border bg-card shadow-xs">
-                        <img src={reportLogo} alt="Logo" className="h-4 max-w-[60px] object-contain" />
-                        <button
-                          onClick={() => setReportLogo(null)}
-                          className="text-muted-foreground hover:text-destructive transition-colors"
-                          title="Remover logotipo"
-                        >
-                          <X className="w-3 h-3" />
-                        </button>
                       </div>
-                    ) : (
-                      <label className="flex items-center gap-1 px-2.5 py-0.5 rounded-md border border-dashed border-border/80 hover:border-primary/50 cursor-pointer transition-colors text-[10px] text-muted-foreground hover:text-primary bg-card/50">
-                        <Upload className="w-3 h-3" />
-                        <span>Carregar Logo</span>
-                        <input
-                          type="file"
-                          accept="image/*"
-                          className="hidden"
-                          onChange={(e) => {
-                            const file = e.target.files?.[0];
-                            if (file) {
-                              const reader = new FileReader();
-                              reader.onload = (ev) => setReportLogo(ev.target?.result as string);
-                              reader.readAsDataURL(file);
-                            }
-                          }}
-                        />
-                      </label>
-                    )}
-                  </div>
+                      <div className="h-2 bg-muted rounded w-full"></div>
+                      <div className="h-2 bg-muted rounded w-3/4"></div>
+                      <div className="h-8 bg-muted rounded-lg w-full mt-4"></div>
+                    </div>
+                  ))}
                 </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {tabTemplates.map((tpl, i) => (
+                    <motion.div
+                      key={tpl.id}
+                      initial={{ opacity: 0, y: 12 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: i * 0.05 }}
+                      className={`bg-card rounded-xl border transition-all duration-200 overflow-hidden flex flex-col group relative ${
+                        selectedTemplate?.id === tpl.id
+                          ? 'border-primary ring-2 ring-primary/20 shadow-glow'
+                          : 'border-border/80 hover:border-primary/40 shadow-card hover:shadow-elevated'
+                      }`}
+                    >
+                      <div className="p-4 flex-1 flex flex-col">
+                        <div className="flex items-start justify-between mb-2.5">
+                          <div className="flex items-center gap-2.5">
+                            <div className={`w-9 h-9 rounded-lg flex items-center justify-center transition-colors ${
+                              selectedTemplate?.id === tpl.id ? 'bg-primary/15 text-primary' : 'bg-primary/10 text-primary'
+                            }`}>
+                              <FileText className="w-4.5 h-4.5" />
+                            </div>
+                            <div>
+                              <h3 className="text-xs font-bold text-foreground line-clamp-1">{tpl.name}</h3>
+                              <p className="text-[10px] text-muted-foreground">{tpl.blocks.length} blocos inclusos</p>
+                            </div>
+                          </div>
+                          <button
+                            onClick={() => favoriteMutation.mutate({ id: tpl.id, isFavorite: !tpl.isFavorite })}
+                            className="text-muted-foreground/60 hover:text-warning transition-colors"
+                            title={tpl.isFavorite ? 'Remover favorito' : 'Favoritar'}
+                          >
+                            <Star className={`w-4 h-4 ${tpl.isFavorite ? 'text-warning fill-warning' : ''}`} />
+                          </button>
+                        </div>
 
-                <div className="flex-1 overflow-y-auto scrollbar-thin p-4">
-                  <div className="bg-card rounded-xl border border-border shadow-md overflow-hidden bg-white/5 backdrop-blur-md">
-                    <ConsultationPreview
-                      blocks={selectedBlocks}
-                      document={document || '000.000.000-00'}
-                      clientName={clientName || 'JULIANO CAMPOS PEREIRA'}
-                      logo={reportLogo}
-                      realData={currentSimulatedRealData}
-                      mode="preview"
-                      layout={selectedTemplate?.layout}
-                    />
-                  </div>
+                        <p className="text-[11px] text-muted-foreground line-clamp-2 min-h-[32px] mb-3 leading-relaxed">
+                          {tpl.description || 'Sem descrição pessoal fornecida.'}
+                        </p>
+
+                        <div className="flex flex-wrap gap-1 mb-auto pb-3">
+                          {tpl.blocks.slice(0, 3).map((block: any) => (
+                            <span key={block.id} className="px-2 py-0.5 text-[9px] font-medium rounded-md bg-muted text-muted-foreground border border-border/40">
+                              {block.name}
+                            </span>
+                          ))}
+                          {tpl.blocks.length > 3 && (
+                            <span className="px-1.5 py-0.5 text-[9px] rounded-md bg-primary/10 text-primary font-bold">
+                              +{tpl.blocks.length - 3}
+                            </span>
+                          )}
+                        </div>
+
+                        <div className="flex items-center justify-between text-[11px] text-muted-foreground bg-muted/30 px-2.5 py-1.5 rounded-lg mb-4 border border-border/20">
+                          <span>Valor estimado</span>
+                          <span className="font-bold text-foreground">R$ {tpl.totalPrice.toFixed(2)}</span>
+                        </div>
+
+                        <div className="flex gap-1.5">
+                          <Button
+                            size="sm"
+                            className="flex-1 gradient-primary text-primary-foreground text-[10px] h-7 gap-1"
+                            onClick={() => loadTemplate(tpl)}
+                          >
+                            <Play className="w-3 h-3" /> Usar
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="text-[10px] h-7 px-2"
+                            onClick={() => {
+                              if (tabKey === 'templates' && document) {
+                                handleExecuteRealConsultation(tpl);
+                              } else {
+                                setPreviewTemplate(tpl);
+                              }
+                            }}
+                            title={tabKey === 'templates' && document ? "Executar consulta oficial em tempo real" : "Prévia interativa"}
+                          >
+                            <Eye className="w-3.5 h-3.5" />
+                          </Button>
+                          {isAdmin && tabKey !== 'templates' && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="text-[10px] h-7 px-2 hover:text-primary hover:border-primary/30"
+                              onClick={() => handleEditTemplate(tpl)}
+                              title="Personalizar/Editar"
+                            >
+                              <Edit className="w-3.5 h-3.5" />
+                            </Button>
+                          )}
+                          {isAdmin && (tpl.visibility === 'PRIVATE' || user?.backendRole === 'PLATFORM_ADMIN') && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="text-[10px] h-7 px-2 hover:text-destructive hover:border-destructive/30 text-destructive/70"
+                              onClick={() => deleteMutation.mutate(tpl.id)}
+                              title="Excluir"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                      <div className="px-4 py-1.5 border-t border-border/50 bg-muted/20 text-[9px] text-muted-foreground flex justify-between items-center select-none mt-auto">
+                        <span className="font-medium text-primary/80 uppercase">{tpl.visibility === 'PRIVATE' ? 'CONTA PESSOAL' : 'GLOBAL/SISTEMA'}</span>
+                        <span>Atualizado em {tpl.updatedAt || 'Recente'}</span>
+                      </div>
+                    </motion.div>
+                  ))}
+                  {isAdmin && tabKey === 'custom' && (
+                    <motion.button
+                      onClick={() => {
+                        setEditingTemplate(null);
+                        setEditorOpen(true);
+                      }}
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      className="bg-card rounded-xl border-2 border-dashed border-border/80 hover:border-primary/40 shadow-card hover:shadow-elevated transition-all duration-200 p-8 flex flex-col items-center justify-center gap-2.5 text-muted-foreground hover:text-primary group min-h-[190px] w-full"
+                    >
+                      <div className="w-10 h-10 rounded-full bg-muted group-hover:bg-primary/10 flex items-center justify-center transition-colors">
+                        <Plus className="w-5 h-5" />
+                      </div>
+                      <span className="text-sm font-semibold">Novo Template</span>
+                    </motion.button>
+                  )}
                 </div>
-              </div>
-            </ResizablePanel>
-          </ResizablePanelGroup>
-        </motion.div>
-      )}
+              )}
+            </TabsContent>
+          );
+        })}
+      </Tabs>
 
       {/* Editor Modal do Construtor de Templates */}
       {editorOpen && (
         <TemplateBuilderEditor
           open={editorOpen}
-          builderMode={user?.role === 'ADMIN' ? 'admin' : 'user'}
+          builderMode={user?.backendRole === 'PLATFORM_ADMIN' ? 'admin' : 'user'}
           onClose={() => {
             setEditorOpen(false);
             setEditingTemplate(null);
@@ -988,8 +1035,40 @@ export default function NewConsultationPage() {
           template={previewTemplate}
           open={!!previewTemplate}
           onClose={() => setPreviewTemplate(null)}
+          isAdmin={activeTab !== 'templates' && isAdmin}
+          onEditTemplate={handleEditTemplate}
         />
       )}
+
+      {showRealPreview && selectedTemplateForRealPreview && (
+        <TemplatePreviewModal
+          template={selectedTemplateForRealPreview}
+          open={showRealPreview}
+          onClose={() => {
+            setShowRealPreview(false);
+            setSelectedTemplateForRealPreview(null);
+            setRealConsultationData(null);
+          }}
+          customRealData={realConsultationData}
+          customDocument={realDocument}
+          customClientName={realClientName}
+          isRealConsultation={true}
+          isAdmin={false}
+          onEditTemplate={handleEditTemplate}
+        />
+      )}
+
+      <ConsultationLoadingModal
+        open={pollingActive}
+        status={pollingStatus}
+        message={pollingMessage}
+        onClose={() => {
+          setPollingActive(false);
+          if (pollingStatus === 'completed') {
+            setShowRealPreview(true);
+          }
+        }}
+      />
     </div>
   );
 }

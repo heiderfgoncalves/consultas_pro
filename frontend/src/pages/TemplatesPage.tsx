@@ -11,19 +11,21 @@ import ConsultationPreview from '@/components/consultation/ConsultationPreview';
 function TemplatePreviewModal({ template, open, onClose }: { template: SavedTemplate; open: boolean; onClose: () => void }) {
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto p-0">
-        <DialogHeader className="px-6 pt-6 pb-0">
-          <DialogTitle className="flex items-center gap-2">
-            <Eye className="w-5 h-5 text-primary" />
+      <DialogContent className="max-w-[64vw] w-[64vw] h-[86vh] max-h-[86vh] overflow-hidden p-0 bg-background border border-border flex flex-col">
+        <DialogHeader className="px-4 py-2 border-b border-border flex flex-row items-center justify-between shrink-0">
+          <DialogTitle className="flex items-center gap-2 text-xs font-bold text-foreground">
+            <Eye className="w-3.5 h-3.5 text-primary" />
             Prévia — {template.name}
           </DialogTitle>
         </DialogHeader>
-        <div className="p-4">
-          <div className="bg-card rounded-xl border border-border">
+        <div className="p-0 bg-background flex-1 overflow-hidden flex flex-col min-h-0">
+          <div className="overflow-hidden flex-1 flex flex-col min-h-0">
             <ConsultationPreview
               blocks={template.blocks}
               document="403.406.588-51"
               clientName="JULIANO CAMPOS PEREIRA"
+              layout={template.layout}
+              rawItems={template.rawItems}
             />
           </div>
         </div>

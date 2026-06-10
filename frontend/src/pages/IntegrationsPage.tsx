@@ -398,6 +398,26 @@ function FieldTypeModal({ open, onClose, fieldType, onSave, saving }: {
             <Input value={form.description || ''} onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))} placeholder="Registros..." className={inputCls} />
           </div>
           <div className="space-y-1">
+            <label className={labelCls}>Título Customizado (Title)</label>
+            <Input
+              value={form.reportFieldConfig?.title ?? ''}
+              onChange={(e) => {
+                const titleVal = e.target.value;
+                setForm((f) => ({
+                  ...f,
+                  reportFieldConfig: {
+                    version: 1,
+                    fields: f.reportFieldConfig?.fields ?? [],
+                    ...(f.reportFieldConfig || {}),
+                    title: titleVal,
+                  } as any
+                }));
+              }}
+              placeholder="Ex: Título Customizado para o Relatório"
+              className={inputCls}
+            />
+          </div>
+          <div className="space-y-1">
             <label className={labelCls}>Cor (UI)</label>
             <div className="flex gap-1.5">
               {colors.map((c) => (
