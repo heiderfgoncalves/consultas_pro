@@ -123,13 +123,14 @@ export interface Provider {
   baseUrl: string;
   balanceEndpoint: string;
   rechargeEndpoint: string;
-  authType: 'bearer' | 'basic' | 'apikey' | 'custom';
+  authType: 'none' | 'bearer' | 'basic' | 'apikey' | 'custom';
   credentials: { key: string; value: string }[];
   status: 'active' | 'inactive';
   createdAt: string;
   /** IDs das operações saldo/recarga quando vindas da API */
   balanceOperationId?: string;
   rechargeOperationId?: string;
+  custom_variables?: { key: string; value: string }[];
 }
 
 /** Overrides de execução por produto (campos ausentes = herdam do tenant). */
