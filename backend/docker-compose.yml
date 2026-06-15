@@ -2,11 +2,11 @@ version: "3.9"
 
 services:
   postgres:
-    image: postgres:16
+    image: postgres:17
     environment:
-      POSTGRES_DB: consultas_pro
+      POSTGRES_DB: consultas-pro
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_PASSWORD: "@123456a_homol"
     ports:
       - "5432:5432"
     volumes:
