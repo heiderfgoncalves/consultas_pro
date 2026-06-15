@@ -3,21 +3,21 @@ const prisma = new PrismaClient();
 const fs = require('fs');
 
 async function main() {
-  const templateId = 'cmpuh6oue0000u6omv22c0fjb'; // ID de "Import_test_1"
-  
   // 1. Ler o score-section.json atualizado
   const scoreSectionPath = '/consultas-pro-app/docs/plan/score-section.json';
   const scoreSectionData = JSON.parse(fs.readFileSync(scoreSectionPath, 'utf8'));
   
   // 2. Buscar o template atual do banco de dados para backup e mesclagem
-  const dbTemplate = await prisma.template.findUnique({
-    where: { id: templateId }
+  const dbTemplate = await prisma.template.findFirst({
+    where: { name: 'Import_test_1' }
   });
   
   if (!dbTemplate) {
-    console.error('Template não encontrado no banco!');
+    console.error('Template "Import_test_1" não encontrado no banco!');
     return;
   }
+  
+  const templateId = dbTemplate.id;
   
   const currentLayout = typeof dbTemplate.layout === 'string' 
     ? JSON.parse(dbTemplate.layout) 
