@@ -34,6 +34,7 @@ const HELPERS = [
   { name: "formatCpfCnpj(valor)", snippet: "formatCpfCnpj(", desc: "Formata strings em CPF ou CNPJ" },
   { name: "math(expressao)", snippet: "math('", desc: "Avalia expressões matemáticas complexas" },
   { name: "calc(expressao)", snippet: "calc('", desc: "Calcula operações aritméticas básicas" },
+  { name: "round(valor, decimais)", snippet: "round(", desc: "Arredonda o valor com a quantidade de casas decimais definida" },
 ];
 
 const LOGICAL_FUNCTIONS = [

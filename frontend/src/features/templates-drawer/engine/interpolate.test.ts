@@ -60,6 +60,33 @@ describe("interpolate - dedup and engine tests", () => {
     expect(interpolate("{{if(and($SCORE_CREDITO.score >= 0, $SCORE_CREDITO.score <= 200), 'Sim', 'Nao')}}", { SCORE_CREDITO: { score: 150 } })).toBe("Sim");
     expect(interpolate("{{if(and($SCORE_CREDITO.score >= 0, $SCORE_CREDITO.score <= 200), 'Sim', 'Nao')}}", { SCORE_CREDITO: { score: 250 } })).toBe("Nao");
     expect(interpolate("{{if(or($SCORE_CREDITO.score == 350, $SCORE_CREDITO.score == 400), 'Exato', 'Nao')}}", { SCORE_CREDITO: { score: 350 } })).toBe("Exato");
+
+    // Teste 4: Tratamento de nulos em operações lógicas e matemáticas (como 0)
+    const dataNulls = {
+      VAL_A: null,
+      VAL_B: undefined,
+      VAL_C: 15,
+      // Array com valores nulos
+      DIVIDAS: [
+        { valor: 100 },
+        { valor: null },
+        { valor: 200 }
+      ]
+    };
+    
+    // sum de array com nulo deve resultar em 300 e formatar como R$ 300,00
+    expect(interpolate("{{sum(DIVIDAS.valor)}}", dataNulls)).toBe("R$ 300,00");
+    // min de array com nulo deve ser 0
+    expect(interpolate("{{min(DIVIDAS.valor)}}", dataNulls)).toBe("R$ 0,00");
+    // max de array com nulo deve ser 200
+    expect(interpolate("{{max(DIVIDAS.valor)}}", dataNulls)).toBe("R$ 200,00");
+
+    // operações binárias com nulos/indefinidos devem coagir para 0
+    expect(interpolate("{{math($VAL_A + $VAL_C)}}", dataNulls)).toBe("15");
+    expect(interpolate("{{math($VAL_A - $VAL_C)}}", dataNulls)).toBe("-15");
+    expect(interpolate("{{math($VAL_B * $VAL_C)}}", dataNulls)).toBe("0");
+    expect(interpolate("{{if($VAL_A >= 0, 'MaiorIgualZero', 'Menor')}}", dataNulls)).toBe("MaiorIgualZero");
+    expect(interpolate("{{if($VAL_B == 0, 'Zero', 'NaoZero')}}", dataNulls)).toBe("Zero");
   });
 });
 

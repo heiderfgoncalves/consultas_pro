@@ -348,7 +348,7 @@ function resolveMultipleArgs(argsStr: string, data: unknown): unknown[] {
       results.push(num);
       continue;
     }
-    const val = resolveExpression(arg, data);
+    const val = evaluateExpressionRaw(arg, data);
     if (val !== undefined) {
       if (Array.isArray(val)) {
         results.push(...val);
@@ -364,9 +364,8 @@ function sumArray(arr: unknown, field?: string): number {
   const items = Array.isArray(arr) ? arr : (arr != null ? [arr] : []);
   let total = 0;
   for (const item of items) {
-    if (!item) continue;
     if (field) {
-      const val = resolveExpression(field, item);
+      const val = item != null && typeof item === "object" ? resolveExpression(field, item) : undefined;
       total += parseNumber(val);
     } else {
       total += parseNumber(item);
@@ -392,8 +391,9 @@ function minArray(arr: unknown, field?: string): number {
   const items = Array.isArray(arr) ? arr : (arr != null ? [arr] : []);
   if (items.length === 0) return 0;
   const nums = items.map(item => {
-    if (field && item && typeof item === "object") {
-      return parseNumber(resolveExpression(field, item));
+    if (field) {
+      const val = item != null && typeof item === "object" ? resolveExpression(field, item) : undefined;
+      return parseNumber(val);
     }
     return parseNumber(item);
   });
@@ -404,8 +404,9 @@ function maxArray(arr: unknown, field?: string): number {
   const items = Array.isArray(arr) ? arr : (arr != null ? [arr] : []);
   if (items.length === 0) return 0;
   const nums = items.map(item => {
-    if (field && item && typeof item === "object") {
-      return parseNumber(resolveExpression(field, item));
+    if (field) {
+      const val = item != null && typeof item === "object" ? resolveExpression(field, item) : undefined;
+      return parseNumber(val);
     }
     return parseNumber(item);
   });
@@ -615,7 +616,8 @@ function preprocessExpression(expr: string, data: unknown): string {
     const helpers = [
       "sum", "avg", "min", "max", "count", "calc", "math", 
       "formatCurrency", "formatBacenCurrency", "formatCpfCnpj", "json",
-      "toNumber", "asNumber", "toPercent", "asPercent", "toCurrency", "asCurrency", "toDate", "asDate", "toText", "asText"
+      "toNumber", "asNumber", "toPercent", "asPercent", "toCurrency", "asCurrency", "toDate", "asDate", "toText", "asText",
+      "round"
     ];
     if (helpers.includes(trimmedMatch)) return match;
     
@@ -815,7 +817,7 @@ function parseLogicAST(tokens: string[]): any {
       return expr;
     }
 
-    if (/^(if|and|or|sin|cos|tan|math|calc)$/i.test(token)) {
+    if (/^(if|and|or|sin|cos|tan|math|calc|round)$/i.test(token)) {
       if (peek() === '(') {
         consume();
         const args = [];
@@ -854,16 +856,33 @@ function evaluateLogicAST(node: any, data: unknown): any {
     const left = evaluateLogicAST(node.left, data);
     const right = evaluateLogicAST(node.right, data);
     switch (node.op) {
-      case '==': return String(left) === String(right);
-      case '!=': return String(left) !== String(right);
-      case '>': return Number(left) > Number(right);
-      case '<': return Number(left) < Number(right);
-      case '>=': return Number(left) >= Number(right);
-      case '<=': return Number(left) <= Number(right);
-      case '+': return Number(left) + Number(right);
-      case '-': return Number(left) - Number(right);
-      case '*': return Number(left) * Number(right);
-      case '/': return Number(left) / Number(right);
+      case '==': {
+        const isNumL = left === null || left === undefined || !isNaN(Number(left));
+        const isNumR = right === null || right === undefined || !isNaN(Number(right));
+        if (isNumL && isNumR) {
+          return toNumber(left) === toNumber(right);
+        }
+        return String(left ?? '') === String(right ?? '');
+      }
+      case '!=': {
+        const isNumL = left === null || left === undefined || !isNaN(Number(left));
+        const isNumR = right === null || right === undefined || !isNaN(Number(right));
+        if (isNumL && isNumR) {
+          return toNumber(left) !== toNumber(right);
+        }
+        return String(left ?? '') !== String(right ?? '');
+      }
+      case '>': return toNumber(left) > toNumber(right);
+      case '<': return toNumber(left) < toNumber(right);
+      case '>=': return toNumber(left) >= toNumber(right);
+      case '<=': return toNumber(left) <= toNumber(right);
+      case '+': return toNumber(left) + toNumber(right);
+      case '-': return toNumber(left) - toNumber(right);
+      case '*': return toNumber(left) * toNumber(right);
+      case '/': {
+        const d = toNumber(right);
+        return d !== 0 ? toNumber(left) / d : 0;
+      }
     }
   }
 
@@ -893,6 +912,12 @@ function evaluateLogicAST(node: any, data: unknown): any {
     if (node.fn === 'math' || node.fn === 'calc') {
       return evaluateLogicAST(node.args[0], data); // wrapper
     }
+    if (node.fn === 'round') {
+      const val = evaluateLogicAST(node.args[0], data);
+      const decimals = node.args[1] !== undefined ? evaluateLogicAST(node.args[1], data) : 0;
+      const num = toNumber(val);
+      return Number(num.toFixed(Number(decimals)));
+    }
   }
 
   return null;
@@ -920,7 +945,8 @@ function resolveVal(
   const helpers = [
     "formatCurrency", "formatBacenCurrency", "formatCpfCnpj", "json", 
     "sum", "avg", "min", "max", "count", "calc", "math", "dedup",
-    "toNumber", "asNumber", "toPercent", "asPercent", "toCurrency", "asCurrency", "toDate", "asDate", "toText", "asText"
+    "toNumber", "asNumber", "toPercent", "asPercent", "toCurrency", "asCurrency", "toDate", "asDate", "toText", "asText",
+    "round"
   ];
   
   if (helpers.includes(firstWord)) {
@@ -1114,6 +1140,16 @@ function resolveVal(
       return res;
     }
     
+    if (firstWord === "round") {
+      const resolvedArgs = resolveMultipleArgs(argsStr, data);
+      const val = resolvedArgs[0];
+      const decimals = resolvedArgs[1] !== undefined ? Number(resolvedArgs[1]) : 0;
+      const num = toNumber(val);
+      const res = num.toLocaleString("pt-BR", { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
+      opts.logs?.push({ expression, reason: "ok", resolved: res });
+      return res;
+    }
+    
     if (firstWord === "calc" || firstWord === "math") {
       let exprPart = argsStr;
       if ((exprPart.startsWith("'") && exprPart.endsWith("'")) || (exprPart.startsWith('"') && exprPart.endsWith('"'))) {
@@ -1213,7 +1249,9 @@ export function interpolate(
 export function evaluateExpressionRaw(expression: string, data: unknown): unknown {
   const trimmed = expression.trim();
   // Se for apenas um caminho simples de variável, como "cliente.idade", sem helpers ou math
-  const hasHelpers = /\b(sum|count|calc|math|formatCurrency|formatBacenCurrency|formatCpfCnpj|json)\b|\(|\)|\+|-|\*|\//.test(trimmed);
+  // Note que '*' dentro de colchetes '[*]' é um curinga JSONPath, não um operador de multiplicação
+  const cleanForCheck = trimmed.replace(/\[\*\]/g, "");
+  const hasHelpers = /\b(sum|count|calc|math|formatCurrency|formatBacenCurrency|formatCpfCnpj|json)\b|\(|\)|\+|-|\*|\//.test(cleanForCheck);
   if (!hasHelpers) {
     return resolveExpression(trimmed, data);
   }

@@ -26,9 +26,9 @@ export function resolveExpression(path: string, data: unknown, collectAllFallbac
   
   const trimmed = path.trim();
   
-  // Remove prefixo "$" se houver
+  // Remove prefixos "$" se houver (suporta múltiplos cifrões decorrentes de digitação)
   let cleanPath = trimmed;
-  if (cleanPath.startsWith("$")) {
+  while (cleanPath.startsWith("$")) {
     cleanPath = cleanPath.slice(1);
   }
 

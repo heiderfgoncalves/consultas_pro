@@ -203,7 +203,7 @@ function ElementInspector({ element, isIsolated }: { element: TemplateElement; i
 
             {element.type === "table" && (() => {
               const tableData = element.data ?? {};
-              const columns = (tableData.columns as Array<{ label: string; path: string; format?: string; width?: string }>) ?? [];
+              const columns = (tableData.columns as Array<{ label: string; path: string; format?: string; width?: string; emptyFallback?: string }>) ?? [];
               const headerBg = (tableData.headerBg as string) ?? "transparent";
               const headerColor = (tableData.headerColor as string) ?? "inherit";
               const headerSize = (tableData.headerSize as number) ?? 12;
@@ -284,7 +284,7 @@ function ElementInspector({ element, isIsolated }: { element: TemplateElement; i
                             <X className="size-3.5" />
                           </button>
                         </div>
-                        <div className="flex items-center gap-1.5">
+                        <div className="flex items-center gap-1">
                           <select
                             value={c.format ?? "text"}
                             onChange={(e) => {
@@ -292,7 +292,7 @@ function ElementInspector({ element, isIsolated }: { element: TemplateElement; i
                               next[i] = { ...c, format: e.target.value };
                               updateData(element.id, { columns: next });
                             }}
-                            className="flex-1 px-1.5 py-1 border border-border rounded text-[11px] bg-background text-foreground focus:outline-none"
+                            className="flex-[1.5] px-1 py-1 border rounded text-[11px] bg-background text-foreground focus:outline-none"
                           >
                             <option value="text">Texto</option>
                             <option value="currency">Moeda (R$)</option>
@@ -309,7 +309,18 @@ function ElementInspector({ element, isIsolated }: { element: TemplateElement; i
                               updateData(element.id, { columns: next });
                             }}
                             placeholder="Largura (ex: auto, 100px)"
-                            className="flex-1 px-2 py-1 border border-border rounded text-[11px] bg-background text-foreground focus:outline-none"
+                            className="flex-1 px-2 py-1 border rounded text-[11px] bg-background text-foreground focus:outline-none w-16"
+                          />
+                          <input
+                            value={c.emptyFallback ?? ""}
+                            onChange={(e) => {
+                              const next = [...columns];
+                              next[i] = { ...c, emptyFallback: e.target.value };
+                              updateData(element.id, { columns: next });
+                            }}
+                            placeholder="Se vazio (ex: -)"
+                            className="flex-[1.2] px-2 py-1 border border-border rounded text-[11px] bg-background text-foreground focus:outline-none w-20"
+                            title="Texto padrão caso o campo venha sem dados"
                           />
                         </div>
                       </div>
@@ -317,13 +328,36 @@ function ElementInspector({ element, isIsolated }: { element: TemplateElement; i
                     <button
                       onClick={() =>
                         updateData(element.id, {
-                          columns: [...columns, { label: "Nova Coluna", path: "campo" }],
+                          columns: [...columns, { label: "Nova Coluna", path: "campo", emptyFallback: "-" }],
                         })
                       }
                       className="w-full text-xs py-1.5 border border-dashed border-border rounded hover:bg-slate-50 dark:hover:bg-slate-900/40 flex items-center justify-center gap-1 mt-2 text-indigo-600 dark:text-indigo-400 font-semibold cursor-pointer"
                     >
                       + Adicionar Coluna
                     </button>
+                  </div>
+
+                  <div className="space-y-2 border-t border-slate-150 dark:border-slate-800 pt-2.5">
+                    <div className="text-[11px] font-bold text-slate-500 mb-2">Comportamento se Tabela Vazia</div>
+                    <div className="text-[10px] text-slate-450 mb-1">HTML/Texto exibido se a expressão de dados retornar vazia:</div>
+                    <div className="h-[120px] relative">
+                      <Editor
+                        key={`emptyStateHtml-layout-${element.id}`}
+                        height="100%"
+                        language="html"
+                        theme={editorTheme}
+                        value={(tableData.emptyStateHtml as string) ?? ""}
+                        onChange={(v) => updateData(element.id, { emptyStateHtml: v || "" })}
+                        hideHeader={true}
+                        options={{
+                          minimap: { enabled: false },
+                          lineNumbers: "off",
+                          fontSize: 11,
+                          wordWrap: "on",
+                          contextmenu: false,
+                        }}
+                      />
+                    </div>
                   </div>
                 </div>
               );
@@ -547,7 +581,7 @@ function ElementDataEditor({
       );
     case "table": {
       const columns =
-        (data.columns as Array<{ label: string; path: string; format?: string; width?: string }>) ?? [];
+        (data.columns as Array<{ label: string; path: string; format?: string; width?: string; emptyFallback?: string }>) ?? [];
       const headerBg = (data.headerBg as string) ?? "transparent";
       const headerColor = (data.headerColor as string) ?? "inherit";
       const headerSize = (data.headerSize as number) ?? 12;
@@ -591,7 +625,7 @@ function ElementDataEditor({
           <div className="space-y-2 border-t border-border pt-2">
             <div className="text-xs font-semibold text-slate-500 mb-2">Colunas</div>
             {columns.map((c, i) => (
-              <div key={i} className="flex flex-col gap-1 mb-2 p-2 border border-slate-100 rounded bg-slate-50">
+              <div key={i} className="flex flex-col gap-1 mb-2 p-2 border border-slate-100 rounded bg-slate-50 dark:bg-slate-950/20 dark:border-slate-800">
                 <div className="flex items-center gap-1">
                   <input
                     value={c.label}
@@ -601,7 +635,7 @@ function ElementDataEditor({
                       updateData(element.id, { columns: next });
                     }}
                     placeholder="Label"
-                    className="flex-1 px-2 py-1 border rounded text-[11px]"
+                    className="flex-1 px-2 py-1 border rounded text-[11px] bg-background text-foreground"
                   />
                   <input
                     value={c.path}
@@ -611,7 +645,7 @@ function ElementDataEditor({
                       updateData(element.id, { columns: next });
                     }}
                     placeholder="path"
-                    className="flex-1 px-2 py-1 border rounded text-[11px] font-mono"
+                    className="flex-1 px-2 py-1 border rounded text-[11px] font-mono bg-background text-foreground"
                   />
                   <button
                     onClick={() => {
@@ -631,14 +665,14 @@ function ElementDataEditor({
                       next[i] = { ...c, format: e.target.value };
                       updateData(element.id, { columns: next });
                     }}
-                    className="flex-1 px-1 py-1 border rounded text-[11px]"
+                    className="flex-[1.5] px-1 py-1 border rounded text-[11px] bg-background text-foreground focus:outline-none"
                   >
-                    <option value="text">txt</option>
-                    <option value="currency">R$</option>
-                    <option value="date">dt</option>
-                    <option value="cpf">cpf</option>
-                    <option value="cnpj">cnpj</option>
-                    <option value="percent">%</option>
+                    <option value="text">Texto</option>
+                    <option value="currency">Moeda (R$)</option>
+                    <option value="date">Data (dd/mm/aaaa)</option>
+                    <option value="cpf">CPF</option>
+                    <option value="cnpj">CNPJ</option>
+                    <option value="percent">Percentual (%)</option>
                   </select>
                   <input
                     value={c.width ?? "auto"}
@@ -647,8 +681,19 @@ function ElementDataEditor({
                       next[i] = { ...c, width: e.target.value };
                       updateData(element.id, { columns: next });
                     }}
-                    placeholder="Largura (ex: auto, 100px)"
-                    className="flex-1 px-2 py-1 border rounded text-[11px]"
+                    placeholder="Largura"
+                    className="flex-1 px-2 py-1 border rounded text-[11px] bg-background text-foreground focus:outline-none w-16"
+                  />
+                  <input
+                    value={c.emptyFallback ?? ""}
+                    onChange={(e) => {
+                      const next = [...columns];
+                      next[i] = { ...c, emptyFallback: e.target.value };
+                      updateData(element.id, { columns: next });
+                    }}
+                    placeholder="Se vazio"
+                    className="flex-[1.2] px-2 py-1 border rounded text-[11px] bg-background text-foreground focus:outline-none w-20"
+                    title="Texto padrão caso o campo venha sem dados"
                   />
                 </div>
               </div>
@@ -656,13 +701,36 @@ function ElementDataEditor({
             <button
               onClick={() =>
                 updateData(element.id, {
-                  columns: [...columns, { label: "Coluna", path: "campo" }],
+                  columns: [...columns, { label: "Coluna", path: "campo", emptyFallback: "-" }],
                 })
               }
-              className="text-xs px-2 py-1 border rounded hover:bg-slate-50 mt-2"
+              className="text-xs px-2 py-1 border rounded hover:bg-slate-50 dark:hover:bg-slate-900/40 mt-2 flex items-center justify-center gap-1 text-indigo-600 dark:text-indigo-400 font-semibold cursor-pointer"
             >
               + coluna
             </button>
+          </div>
+
+          <div className="space-y-2 border-t border-border pt-2">
+            <div className="text-xs font-semibold text-slate-500 mb-2">Comportamento se Tabela Vazia</div>
+            <div className="text-[10px] text-slate-450 mb-1">HTML/Texto exibido se a expressão de dados retornar vazia:</div>
+            <div className="h-[120px] relative">
+              <Editor
+                key={`emptyStateHtml-data-${element.id}`}
+                height="100%"
+                language="html"
+                theme={editorTheme}
+                value={(data.emptyStateHtml as string) ?? ""}
+                onChange={(v) => updateData(element.id, { emptyStateHtml: v || "" })}
+                hideHeader={true}
+                options={{
+                  minimap: { enabled: false },
+                  lineNumbers: "off",
+                  fontSize: 11,
+                  wordWrap: "on",
+                  contextmenu: false,
+                }}
+              />
+            </div>
           </div>
         </div>
       );

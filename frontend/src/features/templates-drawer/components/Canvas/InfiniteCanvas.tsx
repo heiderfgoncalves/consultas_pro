@@ -8,7 +8,7 @@ import { ElementView } from "./ElementView";
 import { FloatingToolbar } from "./FloatingToolbar";
 import { ContextMenu } from "./ContextMenu";
 import { HoverActions } from "./HoverActions";
-import type { ElementType } from "../../schema/template";
+import type { ElementType, TemplateElement } from "../../schema/template";
 import { Maximize2, Sliders } from "lucide-react";
 
 // Função utilitária para medir a altura ideal do texto usando um clone oculto para evitar flickers no elemento visível do canvas.
@@ -76,7 +76,11 @@ export function InfiniteCanvas({ isIsolated }: { isIsolated?: boolean }) {
   const frames = isIsolated ? [] : mainTemplate.frames;
   const selectedIds = isIsolated ? isolatedStore.selectedIds : mainSelectedIds;
   const viewport = isIsolated ? localViewport : mainViewport;
-  const setViewport = isIsolated ? setLocalViewport : mainSetViewport;
+  const setViewport = isIsolated
+    ? (patch: Partial<CanvasViewport>) => {
+        setLocalViewport((prev) => ({ ...prev, ...patch }));
+      }
+    : mainSetViewport;
 
   const setSelected = isIsolated ? isolatedStore.setSelectedIds : mainSetSelected;
   const toggleSelected = isIsolated ? isolatedStore.toggleSelectedId : mainToggleSelected;
@@ -156,10 +160,13 @@ export function InfiniteCanvas({ isIsolated }: { isIsolated?: boolean }) {
     const down = (e: KeyboardEvent) => {
       if (e.code === "Space") setSpaceHeld(true);
       if (e.key === "Shift") setShiftHeld(true);
+      const activeEl = document.activeElement;
+      const isMonaco = activeEl?.closest(".monaco-editor") || activeEl?.classList.contains("inputarea");
       const isTyping =
-        document.activeElement?.tagName === "INPUT" ||
-        document.activeElement?.tagName === "TEXTAREA" ||
-        (document.activeElement as HTMLElement | null)?.isContentEditable;
+        activeEl?.tagName === "INPUT" ||
+        activeEl?.tagName === "TEXTAREA" ||
+        (activeEl as HTMLElement | null)?.isContentEditable ||
+        !!isMonaco;
       if (
         (e.key === "Delete" || e.key === "Backspace") &&
         selectedIds.length > 0 &&

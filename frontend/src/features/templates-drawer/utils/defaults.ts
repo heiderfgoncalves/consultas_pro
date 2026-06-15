@@ -93,10 +93,11 @@ export function createElement(
         data: {
           arrayPath: "dividas",
           columns: [
-            { label: "Credor", path: "credor" },
-            { label: "Valor", path: "valor", format: "currency" },
-            { label: "Data", path: "data" },
+            { label: "Credor", path: "credor", emptyFallback: "-" },
+            { label: "Valor", path: "valor", format: "currency", emptyFallback: "-" },
+            { label: "Data", path: "data", emptyFallback: "-" },
           ],
+          emptyStateHtml: `<div style="text-align: center; color: #94a3b8; padding: 12px; font-style: italic;">Nenhuma informação para exibir</div>`,
         },
       };
     case "container":

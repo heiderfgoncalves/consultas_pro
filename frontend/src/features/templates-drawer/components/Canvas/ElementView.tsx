@@ -267,6 +267,7 @@ function ElementViewImpl({ element, selected, onSelect, isIsolated = false }: Pr
             path: string;
             format?: string;
             width?: string;
+            emptyFallback?: string;
           }>) ?? [];
         
         const headerBg = (element.data?.headerBg as string) ?? "transparent";
@@ -275,6 +276,7 @@ function ElementViewImpl({ element, selected, onSelect, isIsolated = false }: Pr
         const rowBg = (element.data?.rowBg as string) ?? "transparent";
         const rowColor = (element.data?.rowColor as string) ?? "inherit";
         const rowSize = (element.data?.rowSize as number) ?? 12;
+        const emptyStateHtml = (element.data?.emptyStateHtml as string) ?? "";
 
         const resolved = mode === "preview" ? resolveExpression(path, elementData) : null;
         const rows = Array.isArray(resolved)
@@ -306,40 +308,66 @@ function ElementViewImpl({ element, selected, onSelect, isIsolated = false }: Pr
               </tr>
             </thead>
             <tbody>
-              {rows.map((row, i) => (
-                <tr key={i} style={{ background: rowBg !== "transparent" ? rowBg : undefined }}>
-                  {columns.map((c, j) => {
-                    if (mode === "skeleton")
+              {rows.length === 0 ? (
+                <tr>
+                  <td
+                    colSpan={columns.length}
+                    style={{
+                      padding: 12,
+                      textAlign: "center",
+                      color: "#94a3b8",
+                      fontSize: rowSize,
+                    }}
+                  >
+                    <div
+                      dangerouslySetInnerHTML={{
+                        __html: emptyStateHtml 
+                          ? interpolate(emptyStateHtml, elementData, { fallback: element.binding?.fallback })
+                          : "Nenhuma informação para exibir",
+                      }}
+                    />
+                  </td>
+                </tr>
+              ) : (
+                rows.map((row, i) => (
+                  <tr key={i} style={{ background: rowBg !== "transparent" ? rowBg : undefined }}>
+                    {columns.map((c, j) => {
+                      if (mode === "skeleton")
+                        return (
+                          <td
+                            key={j}
+                            style={{
+                              padding: 6,
+                              borderBottom: "1px solid #f1f5f9",
+                              color: rowColor !== "inherit" ? rowColor : "#64748b",
+                              fontSize: rowSize,
+                            }}
+                          >
+                            {`{{${path}[*].${c.path}}}`}
+                          </td>
+                        );
+                      const v = resolveExpression(c.path, row);
+                      const formatted = formatValue(v, c.format as BindingFormat | undefined);
+                      const displayValue = (v === undefined || v === null || v === "") 
+                        ? (c.emptyFallback ?? "") 
+                        : formatted;
                       return (
                         <td
                           key={j}
                           style={{
                             padding: 6,
                             borderBottom: "1px solid #f1f5f9",
-                            color: rowColor !== "inherit" ? rowColor : "#64748b",
+                            color: rowColor !== "inherit" ? rowColor : undefined,
                             fontSize: rowSize,
                           }}
                         >
-                          {`{{${path}[*].${c.path}}}`}
+                          {displayValue}
                         </td>
                       );
-                    const v = resolveExpression(c.path, row);
-                    return (
-                      <td
-                        key={j}
-                        style={{
-                          padding: 6,
-                          borderBottom: "1px solid #f1f5f9",
-                          color: rowColor !== "inherit" ? rowColor : undefined,
-                          fontSize: rowSize,
-                        }}
-                      >
-                        {formatValue(v, c.format as BindingFormat | undefined)}
-                      </td>
-                    );
-                  })}
-                </tr>
-              ))}
+                    })}
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         );

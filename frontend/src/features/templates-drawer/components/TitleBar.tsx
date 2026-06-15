@@ -33,6 +33,7 @@ export function TitleBar() {
   const dirty = useEditorStore((s) => s.dirty);
   const lastSavedAt = useEditorStore((s) => s.lastSavedAt);
   const markSaved = useEditorStore((s) => s.markSaved);
+  const setSelectedConsultaIds = useEditorStore((s) => s.setSelectedConsultaIds);
   const [now, setNow] = useState(Date.now());
 
   // Integração com Produção & Estado de autenticação
@@ -94,11 +95,17 @@ export function TitleBar() {
   const saveLayoutMutation = useMutation({
     mutationFn: async (vars?: { isAutosave?: boolean }) => {
       let targetId = activeTemplateId;
+      const selectedConsultaIds = useEditorStore.getState().selectedConsultaIds;
+      const templateItems = selectedConsultaIds.map((id, index) => ({
+        providerProductId: id,
+        sortOrder: index,
+      }));
 
       // Se não há um ID ativo, estamos salvando um rascunho local pela primeira vez!
       if (!targetId) {
-        if (defaultItems.length === 0) {
-          throw new Error("Nenhum produto de consulta ativo encontrado no banco para vinculação padrão. Cadastre um produto de consulta primeiro.");
+        const itemsToCreate = templateItems.length > 0 ? templateItems : defaultItems;
+        if (itemsToCreate.length === 0) {
+          throw new Error("Selecione pelo menos uma consulta ativa como fonte para salvar o template.");
         }
 
         if (!vars?.isAutosave) {
@@ -107,7 +114,7 @@ export function TitleBar() {
         const createdTpl = await createTemplateApi(accessToken, {
           name: template.name,
           visibility: "PRIVATE",
-          items: defaultItems,
+          items: itemsToCreate,
         });
 
         if (!createdTpl || !createdTpl.id) {
@@ -130,6 +137,7 @@ export function TitleBar() {
       const res = await patchTemplateLayoutApi(accessToken, targetId, {
         name: template.name,
         layout: payloadTemplate,
+        items: templateItems, // Envia a lista de fontes atualizada para salvar no banco
       });
 
       return { res, isAutosave: vars?.isAutosave };
@@ -184,6 +192,11 @@ export function TitleBar() {
         const parsed = typeof t.layout === "string" ? JSON.parse(t.layout) : t.layout;
         if (parsed && typeof parsed === "object" && Array.isArray(parsed.frames)) {
           load(parsed);
+          if (t.items) {
+            setSelectedConsultaIds(t.items.map((item: any) => item.providerProductId));
+          } else {
+            setSelectedConsultaIds([]);
+          }
           setHasSyncedFromServer(true);
           markSaved();
           toast.success(`Layout do template "${t.name}" sincronizado com o servidor.`);
@@ -192,7 +205,7 @@ export function TitleBar() {
         console.error("Erro ao sincronizar template do servidor:", e);
       }
     }
-  }, [templatesQuery.data, activeTemplateId, hasSyncedFromServer, dirty, load, markSaved]);
+  }, [templatesQuery.data, activeTemplateId, hasSyncedFromServer, dirty, load, markSaved, setSelectedConsultaIds]);
 
   const savedLabel = lastSavedAt
     ? formatRelative(now - lastSavedAt)
@@ -238,7 +251,7 @@ export function TitleBar() {
       );
       if (saveOk) {
         try {
-          await saveLayoutMutation.mutateAsync();
+          await saveLayoutMutation.mutateAsync({});
         } catch (err) {
           return false;
         }
@@ -255,6 +268,7 @@ export function TitleBar() {
     if (targetId === null) {
       setActiveTemplateId(null);
       newTpl();
+      setSelectedConsultaIds([]);
       setHasSyncedFromServer(true);
       toast.info("Você está editando um novo template em branco.");
     } else {
@@ -265,21 +279,33 @@ export function TitleBar() {
           const parsed = typeof t.layout === "string" ? JSON.parse(t.layout) : t.layout;
           if (parsed && typeof parsed === "object" && Array.isArray(parsed.frames)) {
             load(parsed);
+            if (t.items) {
+              setSelectedConsultaIds(t.items.map((item: any) => item.providerProductId));
+            } else {
+              setSelectedConsultaIds([]);
+            }
             setHasSyncedFromServer(true);
             toast.success(`Layout do template "${t.name}" importado.`);
           } else {
             toast.warning(`O template "${t.name}" não possui um layout visual v2 válido.`);
             newTpl();
+            setSelectedConsultaIds([]);
             setHasSyncedFromServer(true);
           }
         } catch {
           toast.error("Erro ao analisar o layout JSON do template.");
           newTpl();
+          setSelectedConsultaIds([]);
           setHasSyncedFromServer(true);
         }
       } else {
         toast.info("Este template está sem layout. Comece a desenhá-lo na tela limpa.");
         newTpl();
+        if (t && t.items) {
+          setSelectedConsultaIds(t.items.map((item: any) => item.providerProductId));
+        } else {
+          setSelectedConsultaIds([]);
+        }
         setHasSyncedFromServer(true);
       }
     }
@@ -442,7 +468,7 @@ export function TitleBar() {
           disabled={saveLayoutMutation.isPending}
           className="h-6.5 px-3 text-white bg-white/15 hover:bg-white/25 border border-white/20 hover:border-white/35 font-bold shadow-xs transition-all cursor-pointer text-[11px] rounded"
           onClick={() => {
-            saveLayoutMutation.mutate();
+            saveLayoutMutation.mutate({});
           }}
         >
           {saveLayoutMutation.isPending ? (

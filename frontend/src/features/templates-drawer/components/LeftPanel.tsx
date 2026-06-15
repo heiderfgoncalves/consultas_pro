@@ -8,8 +8,10 @@ import {
   Trash2, Download, Upload, List, Star, Plus, Copy, ArrowUp, ArrowDown,
   ChevronDown, Heading, User, Coins, Gauge, ShieldAlert, AlertTriangle, Building2, Gavel, AlignJustify, LayoutTemplate,
   Database, RefreshCcw, FileText, Play, Save, Sliders, Loader2, Check, Search, ChevronRight, HelpCircle,
-  Calendar, Key, Hash, CheckSquare, Braces, FolderOpen, ListCollapse, Calculator, Edit3, Sparkles, X, Code2
+  Calendar, Key, Hash, CheckSquare, Braces, FolderOpen, ListCollapse, Calculator, Edit3, Sparkles, X, Code2,
+  History
 } from "lucide-react";
+import { apiRequest } from "@/lib/api";
 import { LEGACY_BLOCKS } from "../utils/legacy-blocks";
 import { FrameInspectorPopover } from "./RightInspector";
 
@@ -39,6 +41,7 @@ import {
 } from "@/components/ui/popover";
 import { PRESET_LIST } from "../utils/frames-presets";
 import { confirmDialog } from "./dialogs/ConfirmDialog";
+import { ManageSourcesDialog } from "./dialogs/ManageSourcesDialog";
 import { toast } from "sonner";
 
 import { useAuthStore } from "@/stores/authStore";
@@ -55,6 +58,8 @@ import {
   getCanonicalFields,
   mapCanonicalToFieldTypes,
   patchCanonicalFieldApi,
+  getTestLogs,
+  mapTestLogs,
 } from "@/api/admin-integrations";
 import type {
   MvpTemplateKey,
@@ -288,6 +293,8 @@ export function LeftPanel() {
   const setSelectedConsultaIds = useEditorStore((s) => s.setSelectedConsultaIds);
   const selectedScenarios = useEditorStore((s) => s.selectedScenarios);
   const setSelectedScenarios = useEditorStore((s) => s.setSelectedScenarios);
+  const updateMetadata = useEditorStore((s) => s.updateMetadata);
+  const [manageSourcesOpen, setManageSourcesOpen] = useState(false);
 
   // Estados adicionais para busca e exibição de variáveis sistêmicas e tipos
   const [searchQuery, setSearchQuery] = useState("");
@@ -439,12 +446,22 @@ export function LeftPanel() {
     enabled: !!accessToken,
   });
 
-  // 3. Query do Pool de Homologação (Mocks)
   const poolQuery = useQuery({
     queryKey: ['templates-mvp-pool-integration'],
     queryFn: () => getTemplateMvpPoolApi(accessToken),
     enabled: !!accessToken,
   });
+
+  // 3.5. Query de Logs de Teste
+  const testLogsQuery = useQuery({
+    queryKey: ['admin-test-logs'],
+    queryFn: () => getTestLogs(accessToken),
+    enabled: !!accessToken,
+  });
+
+  const testLogs = useMemo(() => {
+    return mapTestLogs(testLogsQuery.data ?? []);
+  }, [testLogsQuery.data]);
 
   // 4. Query de Campos Canônicos
   const canonicalFieldsQuery = useQuery({
@@ -715,12 +732,19 @@ export function LeftPanel() {
       const draftResponse = useEditorStore.getState().draftSampleResponses?.[consultaId];
       const isDraftModified = draftResponse && draftResponse !== consultation?.sampleResponse;
 
-      // 1. Rascunho em edição ativa
-      // 2. Cenário explicitamente selecionado
-      // 3. Payload salvo na consulta
-      let rawPayload = isDraftModified 
-        ? draftResponse 
-        : (poolItem?.payload || consultation?.sampleResponse);
+      const selectedTestLogs = (currentLayoutJson.metadata?.selectedTestLogs as Record<string, string>) || {};
+      const selectedLogId = selectedTestLogs[consultaId];
+      const testLog = selectedLogId ? testLogs.find((l) => l.id === selectedLogId) : undefined;
+
+      // 1. Log de teste selecionado pelo dropdown
+      // 2. Rascunho em edição ativa
+      // 3. Cenário explicitamente selecionado
+      // 4. Payload salvo na consulta
+      let rawPayload = testLog
+        ? testLog.responseJson
+        : (isDraftModified 
+            ? draftResponse 
+            : (poolItem?.payload || consultation?.sampleResponse));
       if (rawPayload) {
         try {
           const payloadObj = typeof rawPayload === "string"
@@ -911,7 +935,7 @@ export function LeftPanel() {
         mergeAndApplyPayloads(selectedConsultaIds, selectedScenarios);
       }
     }
-  }, [consultations, poolQuery.data, selectedConsultaIds, selectedScenarios]);
+  }, [consultations, poolQuery.data, selectedConsultaIds, selectedScenarios, currentLayoutJson.metadata?.selectedTestLogs, testLogs]);
 
   // Efeito reativo para sincronizar as variáveis canônicas e dinâmicas na store global do editor
   useEffect(() => {
@@ -1588,103 +1612,64 @@ export function LeftPanel() {
 
           {tab === "pipeline" && (
             <div className="space-y-1.5 text-[10px] pr-1 animate-in fade-in-30 duration-200 flex flex-col h-full min-h-0">
-              {/* Seção 2: Simulação Multi-Consulta */}
-              <div className="border-b border-slate-200 dark:border-slate-800 pb-1.5 space-y-1 shrink-0">
+              {/* Seção 2: Fontes */}
+              <div className="border-b border-slate-200 dark:border-slate-800 pb-1.5 space-y-1.5 shrink-0">
                 <div className="font-bold text-slate-850 dark:text-slate-200 flex items-center gap-1 uppercase text-[8.5px] tracking-wide justify-between">
                   <span className="flex items-center gap-1">
                     <Database className="size-3 text-indigo-500" />
-                    <span>Fontes & Mocks (Simulação)</span>
+                    <span>Fontes de dados</span>
                   </span>
                   
                   {/* Tooltip com descrição */}
                   <div className="relative group flex items-center justify-center shrink-0 cursor-help text-slate-400 hover:text-slate-600 dark:hover:text-slate-350 transition-colors">
                     <HelpCircle className="size-3" />
                     <div className="absolute top-full right-0 mt-1.5 hidden group-hover:block w-48 p-2 rounded-lg bg-slate-900 dark:bg-slate-950 text-[9px] text-slate-200 border border-slate-800 shadow-2xl z-50 font-normal normal-case leading-normal animate-in fade-in-50 duration-150">
-                      Selecione produtos de consulta para simular cenários e mesclar seus retornos brutos.
+                      Produtos de consulta vinculados a este template. Defina a prioridade de execução.
                     </div>
                   </div>
                 </div>
 
-                {providersQuery.isLoading || poolQuery.isLoading ? (
-                  <div className="flex items-center gap-2 text-slate-500 text-[10px] py-2 justify-center">
-                    <Loader2 className="size-3 animate-spin text-indigo-500" /> Carregando produtos...
-                  </div>
-                ) : (
-                  <div className="space-y-1 max-h-[90px] overflow-y-auto pr-1 scrollbar-thin">
-                    {consultations.map((c) => {
-                      const isChecked = selectedConsultaIds.includes(c.id);
-                      const scenarios = poolByProduct[c.id] || [];
-                      const activeScenarioId = selectedScenarios[c.id] || "";
-
+                <div className="space-y-1 max-h-[110px] overflow-y-auto pr-1 scrollbar-thin">
+                  {selectedConsultaIds.length === 0 ? (
+                    <p className="text-[10px] text-slate-400 dark:text-slate-500 italic py-2 text-center bg-slate-50/50 dark:bg-slate-900/20 rounded border border-dashed border-slate-200/60 dark:border-slate-800/40">
+                      Nenhuma fonte vinculada.
+                    </p>
+                  ) : (
+                    selectedConsultaIds.map((id, index) => {
+                      const c = consultations.find((item) => item.id === id);
+                      if (!c) return null;
+                      const isFallback = currentLayoutJson.metadata?.sourcesConfig?.[id]?.isFallback;
                       return (
                         <div
-                          key={c.id}
-                          className="py-0.5 border-b border-slate-150 dark:border-slate-850/40 transition-all duration-150 flex flex-col gap-0.5"
+                          key={id}
+                          className="flex items-center justify-between p-1.5 rounded bg-slate-50 dark:bg-slate-900/50 border border-slate-100 dark:border-slate-800/80 text-[10px]"
                         >
-                          <div className="flex items-center gap-2">
-                            <input
-                              id={`chk-${c.id}`}
-                              type="checkbox"
-                              checked={isChecked}
-                              onChange={(e) => {
-                                let nextIds = [...selectedConsultaIds];
-                                let nextScenarios = { ...selectedScenarios };
-                                if (e.target.checked) {
-                                  nextIds.push(c.id);
-                                } else {
-                                  nextIds = nextIds.filter((id) => id !== c.id);
-                                  delete nextScenarios[c.id];
-                                }
-                                setSelectedConsultaIds(nextIds);
-                                setSelectedScenarios(nextScenarios);
-                              }}
-                              className="rounded border-slate-300 dark:border-slate-700 text-indigo-650 dark:text-indigo-500 focus:ring-indigo-500 size-3 cursor-pointer"
-                            />
-                            <label
-                              htmlFor={`chk-${c.id}`}
-                              className={cn(
-                                "font-bold text-[9.5px] cursor-pointer select-none flex-1 truncate transition-colors",
-                                isChecked ? "text-slate-900 dark:text-slate-100" : "text-slate-500 dark:text-slate-400"
-                              )}
-                            >
+                          <div className="flex items-center gap-1.5 min-w-0 flex-1">
+                            <span className="flex items-center justify-center size-3.5 rounded bg-indigo-500/10 text-indigo-500 font-black text-[9px] shrink-0">
+                              {index + 1}
+                            </span>
+                            <span className="font-semibold text-slate-700 dark:text-slate-300 truncate" title={c.name}>
                               {c.name}
-                            </label>
+                            </span>
                           </div>
-
-                          {isChecked && scenarios.length > 0 && (
-                            <div className="pl-4 pr-px pb-px space-y-0.5 animate-in fade-in-50 duration-200">
-                              <span className="text-[7.5px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block">
-                                Cenário (Mock / Payload)
-                              </span>
-                              <Select
-                                value={activeScenarioId || "__none__"}
-                                onValueChange={(val) => {
-                                  const nextScenarios = { ...selectedScenarios, [c.id]: val };
-                                  setSelectedScenarios(nextScenarios);
-                                  toast.success("Cenário de simulação atualizado e mesclado!");
-                                }}
-                              >
-                                <SelectTrigger className="h-5 text-[9px] bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-800 text-slate-800 dark:text-slate-300 rounded-md shadow-2xs py-0 px-1.5">
-                                  <SelectValue placeholder="Selecione o cenário..." />
-                                </SelectTrigger>
-                                <SelectContent className="bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-850 text-slate-800 dark:text-slate-200 rounded-md">
-                                  <SelectItem value="__none__" className="text-[9px] focus:bg-slate-100 dark:focus:bg-slate-900">
-                                    Nenhum mock (Vazio)
-                                  </SelectItem>
-                                  {scenarios.map((p) => (
-                                    <SelectItem key={p.id} value={p.id} className="text-[9px] focus:bg-slate-100 dark:focus:bg-slate-900">
-                                      {p.document} ({p.hasDebt ? "Restrição" : "Sem Dívidas"})
-                                    </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-                            </div>
+                          {isFallback && (
+                            <span className="px-1 py-0.5 rounded bg-amber-500/10 text-amber-500 text-[7.5px] font-black shrink-0 uppercase tracking-wider scale-90">
+                              Fallback
+                            </span>
                           )}
                         </div>
                       );
-                    })}
-                  </div>
-                )}
+                    })
+                  )}
+                </div>
+
+                <button
+                  onClick={() => setManageSourcesOpen(true)}
+                  className="w-full mt-1 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded font-bold text-[10px] transition-all cursor-pointer flex items-center justify-center gap-1 shadow-sm shrink-0"
+                >
+                  <Sliders className="size-3" />
+                  <span>Gerenciar Fontes</span>
+                </button>
               </div>
 
               {/* ÁRVORE DINÂMICA DE VARIÁVEIS JSON (DADOS) */}
@@ -1984,6 +1969,11 @@ export function LeftPanel() {
 
         </DialogContent>
       </Dialog>
+
+      <ManageSourcesDialog
+        open={manageSourcesOpen}
+        onOpenChange={setManageSourcesOpen}
+      />
     </div>
   );
 }
@@ -2149,6 +2139,13 @@ function JsonVariableNode({ name, value, path, searchQuery }: VariableNodeProps)
   };
 
   const renderIcon = () => {
+    const lowercaseName = name.toLowerCase();
+    if (lowercaseName === "sistema") return <span className="size-1.5 bg-blue-500 rounded-full shrink-0 mx-0.5" />;
+    if (lowercaseName === "cliente" || lowercaseName === "dados_pessoais") return <span className="size-1.5 bg-emerald-500 rounded-full shrink-0 mx-0.5" />;
+    if (lowercaseName === "spc" || lowercaseName === "dividas_spc") return <span className="size-1.5 bg-indigo-500 rounded-full shrink-0 mx-0.5" />;
+    if (lowercaseName === "serasa" || lowercaseName === "dividas_serasa") return <span className="size-1.5 bg-rose-500 rounded-full shrink-0 mx-0.5" />;
+    if (lowercaseName === "boa_vista" || lowercaseName === "dividas_boa_vista") return <span className="size-1.5 bg-amber-500 rounded-full shrink-0 mx-0.5" />;
+
     switch (typeInfo.type) {
       case "id":
         return <Key className="size-3 text-slate-400 shrink-0" title="Identificador único" />;
@@ -2300,80 +2297,15 @@ function JsonVariableTree({ searchQuery }: JsonVariableTreeProps) {
       <div className="max-h-[620px] overflow-y-auto pr-1 scrollbar-thin flex-1">
         <div className="min-w-full w-max space-y-1.5 pb-1">
           {filteredKeys.map((key) => {
-            const friendlyName = FRIENDLY_NAMES[key] || key.charAt(0).toUpperCase() + key.slice(1);
-            let val = dataJson[key];
-            const isObject = typeof val === "object" && val !== null;
-            const isArray = Array.isArray(val);
-            
-            let renderChildrenDirectly = isObject && !isArray;
-            let childKeys = renderChildrenDirectly ? Object.keys(val) : [];
-            let basePath = key;
-
-            // REMOVE A DUPLICIDADE NA EXIBIÇÃO DOS CAMPOS NAS DIVISÓRIAS
-            // Se o valor contiver exatamente um objeto cujo nome é igual à chave pai (case-insensitive),
-            // desembrulhamos esse objeto interno para evitar nós colapsáveis repetidos e redundantes.
-            if (renderChildrenDirectly && childKeys.length === 1 && childKeys[0].toLowerCase() === key.toLowerCase()) {
-              const innerVal = val[childKeys[0]];
-              if (typeof innerVal === "object" && innerVal !== null && !Array.isArray(innerVal)) {
-                val = innerVal;
-                childKeys = Object.keys(innerVal);
-                basePath = `${key}.${childKeys[0]}`;
-              }
-            }
-
+            const val = dataJson[key];
             return (
-              <div key={key} className="py-1 border-b border-slate-150 dark:border-slate-850/60 space-y-0.5 transition-all">
-                <div className="font-bold text-[9.5px] tracking-wide flex items-center justify-between opacity-90 pb-0.5">
-                  <span className={cn(
-                    "font-bold text-[8.5px] uppercase tracking-wider flex items-center gap-1.5",
-                    key === "sistema" ? "text-blue-500 dark:text-blue-400" :
-                    key === "cliente" ? "text-emerald-500 dark:text-emerald-400" :
-                    key === "spc" ? "text-indigo-500 dark:text-indigo-400" :
-                    key === "serasa" ? "text-rose-500 dark:text-rose-400" :
-                    "text-slate-700 dark:text-slate-300"
-                  )}>
-                    <span className={cn(
-                      "size-1 rounded-full shrink-0",
-                      key === "sistema" ? "bg-blue-500" :
-                      key === "cliente" ? "bg-emerald-500" :
-                      key === "spc" ? "bg-indigo-500" :
-                      key === "serasa" ? "bg-rose-500" :
-                      "bg-slate-400"
-                    )} />
-                    {friendlyName}
-                  </span>
-                  <span className="font-mono text-[7.5px] font-medium text-slate-400 dark:text-slate-500 ml-4">
-                    {key}
-                  </span>
-                </div>
-                <div className="pt-0.5 space-y-0.5 pl-1">
-                  {renderChildrenDirectly ? (
-                    childKeys.map((ck) => {
-                      const childPath = `${basePath}.${ck}`;
-                      return (
-                        <JsonVariableNode
-                          key={ck}
-                          name={ck}
-                          value={val[ck]}
-                          path={childPath}
-                          searchQuery={searchQuery}
-                        />
-                      );
-                    })
-                  ) : (
-                    <JsonVariableNode
-                      name={key}
-                      value={val}
-                      path={basePath}
-                      searchQuery={searchQuery}
-                    />
-                  )}
-                  {renderChildrenDirectly && childKeys.length === 0 && (
-                    <p className="text-[9px] text-slate-400 dark:text-slate-500 italic pl-1">
-                      Objeto vazio
-                    </p>
-                  )}
-                </div>
+              <div key={key} className="py-1 border-b border-slate-150/40 dark:border-slate-850/30 transition-all pl-1">
+                <JsonVariableNode
+                  name={key}
+                  value={val}
+                  path={key}
+                  searchQuery={searchQuery}
+                />
               </div>
             );
           })}

@@ -542,6 +542,7 @@ export const useEditorStore = create<EditorState>()(
           activeFrameId: null,
           dirty: false,
           lastSavedAt: null,
+          selectedConsultaIds: [],
         }),
       loadSampleTemplate: () => {
         const t = createSampleTemplate();

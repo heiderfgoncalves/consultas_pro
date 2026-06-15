@@ -722,7 +722,8 @@ function evaluateConsoleExpression(inputExpr: string, data: any, template: any):
   const consoleHelpers = [
     "sum", "avg", "min", "max", "count", "dedup",
     "formatCurrency", "formatBacenCurrency", "formatCpfCnpj", "json",
-    "toNumber", "asNumber", "toPercent", "asPercent", "toCurrency", "asCurrency", "toDate", "asDate", "toText", "asText"
+    "toNumber", "asNumber", "toPercent", "asPercent", "toCurrency", "asCurrency", "toDate", "asDate", "toText", "asText",
+    "round"
   ];
 
   const varRegex = /\$(?:\[\d+\]|\[\*\]|[a-zA-Z0-9_]+)(?:(?:\.[a-zA-Z0-9_]+)|(?:\[\d+\])|(?:\[\*\]))*/g;
@@ -831,6 +832,12 @@ function evaluateConsoleExpression(inputExpr: string, data: any, template: any):
     return JSON.stringify(val, null, 2);
   };
 
+  const round = (val: any, decimals: any = 0) => {
+    const num = parseNumber(val);
+    const d = decimals !== undefined ? Number(decimals) : 0;
+    return Number(num.toFixed(d));
+  };
+
   try {
     const keys = [
       "sum", "avg", "min", "max", "count", 
@@ -839,6 +846,8 @@ function evaluateConsoleExpression(inputExpr: string, data: any, template: any):
       "$formatCurrency", "$formatBacenCurrency", "$formatCpfCnpj", "$json",
       "toNumber", "asNumber", "toPercent", "asPercent", "toCurrency", "asCurrency", "toDate", "asDate", "toText", "asText",
       "$toNumber", "$asNumber", "$toPercent", "$asPercent", "$toCurrency", "$asCurrency", "$toDate", "$asDate", "$toText", "$asText",
+      "round",
+      "$round",
       ...Object.keys(varMap)
     ];
     const args = [
@@ -848,6 +857,8 @@ function evaluateConsoleExpression(inputExpr: string, data: any, template: any):
       formatCurrency, formatBacenCurrency, formatCpfCnpj, json,
       toNumber, toNumber, toPercent, toPercent, toCurrency, toCurrency, toDate, toDate, toText, toText,
       toNumber, toNumber, toPercent, toPercent, toCurrency, toCurrency, toDate, toDate, toText, toText,
+      round,
+      round,
       ...Object.values(varMap)
     ];
     const runner = new Function(...keys, `return (${compiledExpr});`);

@@ -108,6 +108,7 @@ function elementBody(
           path: string;
           format?: string;
           width?: string;
+          emptyFallback?: string;
         }>) ?? [];
       
       const headerBg = (el.data?.headerBg as string) ?? "transparent";
@@ -116,6 +117,7 @@ function elementBody(
       const rowBg = (el.data?.rowBg as string) ?? "transparent";
       const rowColor = (el.data?.rowColor as string) ?? "inherit";
       const rowSize = (el.data?.rowSize as number) ?? 12;
+      const emptyStateHtml = (el.data?.emptyStateHtml as string) ?? "";
 
       let rows: unknown[] = [];
       if (mode === "skeleton") {
@@ -141,23 +143,34 @@ function elementBody(
 
       const rowBgStyle = rowBg !== "transparent" ? `background:${rowBg};` : "";
 
-      const body = rows
-        .map((row) => {
-          const tds = columns
-            .map((c) => {
-              if (mode === "skeleton") {
-                const color = rowColor !== "inherit" ? rowColor : "#94a3b8";
-                return `<td style="padding:6px;border-bottom:1px solid #f1f5f9;color:${color};font-family:monospace;font-size:${rowSize}px">{{${path}[*].${c.path}}}</td>`;
-              }
-              const v = resolveExpression(c.path, row);
-              const formatted = formatValue(v, c.format as BindingFormat | undefined);
-              const color = rowColor !== "inherit" ? `color:${rowColor};` : "";
-              return `<td style="padding:6px;border-bottom:1px solid #f1f5f9;${color}font-size:${rowSize}px">${escapeHtml(formatted)}</td>`;
-            })
-            .join("");
-          return `<tr style="${rowBgStyle}">${tds}</tr>`;
-        })
-        .join("");
+      let body = "";
+      if (rows.length === 0) {
+        const content = emptyStateHtml
+          ? interpolate(emptyStateHtml, data, { fallback: el.binding?.fallback, logs })
+          : "Nenhuma informação para exibir";
+        body = `<tr><td colspan="${columns.length}" style="text-align:center;padding:12px;color:#94a3b8;font-size:${rowSize}px">${content}</td></tr>`;
+      } else {
+        body = rows
+          .map((row) => {
+            const tds = columns
+              .map((c) => {
+                if (mode === "skeleton") {
+                  const color = rowColor !== "inherit" ? rowColor : "#94a3b8";
+                  return `<td style="padding:6px;border-bottom:1px solid #f1f5f9;color:${color};font-family:monospace;font-size:${rowSize}px">{{${path}[*].${c.path}}}</td>`;
+                }
+                const v = resolveExpression(c.path, row);
+                const formatted = formatValue(v, c.format as BindingFormat | undefined);
+                const displayValue = (v === undefined || v === null || v === "")
+                  ? (c.emptyFallback ?? "")
+                  : formatted;
+                const color = rowColor !== "inherit" ? `color:${rowColor};` : "";
+                return `<td style="padding:6px;border-bottom:1px solid #f1f5f9;${color}font-size:${rowSize}px">${escapeHtml(displayValue)}</td>`;
+              })
+              .join("");
+            return `<tr style="${rowBgStyle}">${tds}</tr>`;
+          })
+          .join("");
+      }
       return `<table style="width:100%;border-collapse:collapse"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>`;
     }
     case "list": {
