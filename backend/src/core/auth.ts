@@ -16,12 +16,21 @@ export async function authenticate(request: FastifyRequest, _reply: FastifyReply
       tenantId?: string | null;
     }>();
 
+    const user = await request.server.prisma.user.findUnique({
+      where: { id: (request.user as any).sub },
+      include: { company: true },
+    });
+
+    if (!user || !user.isActive || user.accountStatus !== 'ACTIVE') {
+      throw new UnauthorizedError('Usuário inativo ou não encontrado');
+    }
+
     request.authUser = {
-      userId: (request.user as any).sub,
-      email: (request.user as any).email,
-      role: (request.user as any).role,
-      companyId: (request.user as any).companyId,
-      tenantId: (request.user as any).tenantId,
+      userId: user.id,
+      email: user.email,
+      role: user.role,
+      companyId: user.companyId,
+      tenantId: user.company?.tenantId ?? null,
     };
     return; // Autenticado com sucesso via JWT
   } catch (jwtError) {
