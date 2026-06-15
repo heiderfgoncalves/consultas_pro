@@ -62,12 +62,12 @@ export default function DashboardPage() {
         subtitleClassName="text-muted-foreground text-sm"
       >
         <div className="flex items-center gap-3">
-          <div className="flex items-center justify-center gap-2 px-3 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 text-xs font-semibold shadow-[0_0_15px_rgba(16,185,129,0.08)]">
+          <div className="flex items-center justify-center gap-2 px-3 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 text-xs font-semibold">
             <span className="w-2 h-2 rounded-full bg-emerald-500 dark:bg-emerald-400 animate-pulse" />
             API Status
           </div>
           <Link to="/consulta/nova">
-            <Button className="gradient-primary text-primary-foreground hover:opacity-95 font-semibold text-xs h-9 shadow-[0_4px_20px_rgba(0,194,255,0.15)] flex items-center justify-center gap-1.5 px-4 rounded-lg">
+            <Button className="bg-primary hover:bg-primary/90 text-primary-foreground font-semibold text-xs h-9 flex items-center justify-center gap-1.5 px-4 rounded-lg shadow-none">
               <Plus className="w-4 h-4" /> Nova Consulta
             </Button>
           </Link>
@@ -125,7 +125,7 @@ export default function DashboardPage() {
           initial={{ opacity: 0, y: 15 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.2, duration: 0.4 }}
-          className="lg:col-span-2 bg-card/75 backdrop-blur-md border border-border/80 rounded-2xl p-5 shadow-2xl flex flex-col justify-between"
+          className="lg:col-span-2 bg-card border border-border rounded-xl p-5 shadow-none flex flex-col justify-between"
         >
           <div className="flex justify-between items-center mb-6">
             <div>
@@ -194,7 +194,7 @@ export default function DashboardPage() {
           initial={{ opacity: 0, y: 15 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.25, duration: 0.4 }}
-          className="bg-card/75 backdrop-blur-md border border-border/80 rounded-2xl p-5 shadow-2xl flex flex-col justify-between"
+          className="bg-card border border-border rounded-xl p-5 shadow-none flex flex-col justify-between"
         >
           <div>
             <h3 className="text-sm font-semibold text-foreground mb-1">Consultas por tipo</h3>
@@ -257,7 +257,7 @@ export default function DashboardPage() {
           initial={{ opacity: 0, y: 15 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.3, duration: 0.4 }}
-          className="bg-card/75 backdrop-blur-md border border-border/80 rounded-2xl p-5 shadow-2xl"
+          className="bg-card border border-border rounded-xl p-5 shadow-none"
         >
           <div className="mb-4">
             <h3 className="text-sm font-semibold text-foreground">Acesso rápido</h3>
@@ -267,7 +267,7 @@ export default function DashboardPage() {
           <div className="grid grid-cols-3 gap-3.5">
             <Link to="/consulta/nova" className="group">
               <div className="flex flex-col items-center justify-center p-4 rounded-xl bg-muted/40 border border-border/60 hover:border-primary/40 hover:bg-primary/[0.03] transition-all text-center h-24">
-                <div className="p-2 rounded-xl bg-primary/10 text-primary group-hover:scale-110 transition-transform shadow-inner mb-2">
+                <div className="p-2 rounded-xl bg-primary/10 text-primary group-hover:scale-105 transition-transform mb-2">
                   <Plus className="w-5 h-5" />
                 </div>
                 <span className="text-[11px] font-bold text-foreground tracking-wide">Nova Consulta</span>
@@ -277,7 +277,7 @@ export default function DashboardPage() {
 
             <Link to="/consulta/historico" className="group">
               <div className="flex flex-col items-center justify-center p-4 rounded-xl bg-muted/40 border border-border/60 hover:border-emerald-500/40 hover:bg-emerald-500/[0.03] transition-all text-center h-24">
-                <div className="p-2 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 group-hover:scale-110 transition-transform shadow-inner mb-2">
+                <div className="p-2 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 group-hover:scale-105 transition-transform mb-2">
                   <Clock className="w-5 h-5" />
                 </div>
                 <span className="text-[11px] font-bold text-foreground tracking-wide">Histórico</span>
@@ -287,7 +287,7 @@ export default function DashboardPage() {
 
             <Link to="/equipe" className="group">
               <div className="flex flex-col items-center justify-center p-4 rounded-xl bg-muted/40 border border-border/60 hover:border-amber-500/40 hover:bg-amber-500/[0.03] transition-all text-center h-24">
-                <div className="p-2 rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400 group-hover:scale-110 transition-transform shadow-inner mb-2">
+                <div className="p-2 rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400 group-hover:scale-105 transition-transform mb-2">
                   <Users className="w-5 h-5" />
                 </div>
                 <span className="text-[11px] font-bold text-foreground tracking-wide">Clientes</span>
@@ -297,7 +297,7 @@ export default function DashboardPage() {
 
             <Link to="/financeiro" className="group">
               <div className="flex flex-col items-center justify-center p-4 rounded-xl bg-muted/40 border border-border/60 hover:border-fuchsia-500/40 hover:bg-fuchsia-500/[0.03] transition-all text-center h-24">
-                <div className="p-2 rounded-xl bg-fuchsia-500/10 text-fuchsia-600 dark:text-fuchsia-400 group-hover:scale-110 transition-transform shadow-inner mb-2">
+                <div className="p-2 rounded-xl bg-fuchsia-500/10 text-fuchsia-600 dark:text-fuchsia-400 group-hover:scale-105 transition-transform mb-2">
                   <FileText className="w-5 h-5" />
                 </div>
                 <span className="text-[11px] font-bold text-foreground tracking-wide">Relatórios</span>
@@ -307,7 +307,7 @@ export default function DashboardPage() {
 
             <Link to="/documentacao/api" className="group">
               <div className="flex flex-col items-center justify-center p-4 rounded-xl bg-muted/40 border border-border/60 hover:border-lime-500/40 hover:bg-lime-500/[0.03] transition-all text-center h-24">
-                <div className="p-2 rounded-xl bg-lime-500/10 text-lime-600 dark:text-lime-400 group-hover:scale-110 transition-transform shadow-inner mb-2">
+                <div className="p-2 rounded-xl bg-lime-500/10 text-lime-600 dark:text-lime-400 group-hover:scale-105 transition-transform mb-2">
                   <Code2 className="w-5 h-5" />
                 </div>
                 <span className="text-[11px] font-bold text-foreground tracking-wide">API</span>
@@ -317,7 +317,7 @@ export default function DashboardPage() {
 
             <button onClick={() => openRechargeModal()} className="group text-left w-full h-full">
               <div className="flex flex-col items-center justify-center p-4 rounded-xl bg-muted/40 border border-border/60 hover:border-rose-500/40 hover:bg-rose-500/[0.03] transition-all text-center h-24 cursor-pointer">
-                <div className="p-2 rounded-xl bg-rose-500/10 text-rose-600 dark:text-rose-400 group-hover:scale-110 transition-transform shadow-inner mb-2">
+                <div className="p-2 rounded-xl bg-rose-500/10 text-rose-600 dark:text-rose-400 group-hover:scale-105 transition-transform mb-2">
                   <Headphones className="w-5 h-5" />
                 </div>
                 <span className="text-[11px] font-bold text-foreground tracking-wide">Suporte</span>
@@ -332,7 +332,7 @@ export default function DashboardPage() {
           initial={{ opacity: 0, y: 15 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.35, duration: 0.4 }}
-          className="bg-card/75 backdrop-blur-md border border-border/80 rounded-2xl p-5 shadow-2xl flex flex-col justify-between"
+          className="bg-card border border-border rounded-xl p-5 shadow-none flex flex-col justify-between"
         >
           <div className="flex justify-between items-center mb-4">
             <div>

@@ -31,13 +31,13 @@ export default function TeamPage() {
   const totalConsultations = mockTeamMembers.reduce((s, m) => s + m.consultationsThisMonth, 0);
   const totalSpent = mockTeamMembers.reduce((s, m) => s + m.spentThisMonth, 0);
 
-  // Paleta de gradientes de avatar modernos
-  const avatarGradients = [
-    'from-sky-400 to-blue-500 text-sky-950',
-    'from-emerald-400 to-teal-500 text-emerald-950',
-    'from-purple-400 to-fuchsia-500 text-purple-950',
-    'from-amber-400 to-orange-500 text-amber-950',
-    'from-rose-400 to-pink-500 text-rose-950'
+  // Paleta de cores de avatar minimalistas e modernas
+  const avatarColors = [
+    'bg-sky-50 dark:bg-sky-950/40 text-sky-600 dark:text-sky-400 border border-sky-200/50 dark:border-sky-800/30',
+    'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 border border-emerald-200/50 dark:border-emerald-800/30',
+    'bg-purple-50 dark:bg-purple-950/40 text-purple-600 dark:text-purple-400 border border-purple-200/50 dark:border-purple-800/30',
+    'bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 border border-amber-200/50 dark:border-amber-800/30',
+    'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 border border-indigo-200/50 dark:border-indigo-800/30'
   ];
 
   return (
@@ -51,7 +51,7 @@ export default function TeamPage() {
       >
         <Button
           onClick={() => setShowInviteModal(true)}
-          className="gradient-primary text-primary-foreground hover:opacity-95 font-semibold text-xs h-9 shadow-[0_4px_20px_rgba(0,194,255,0.15)] flex items-center gap-1.5 px-4 rounded-lg"
+          className="bg-primary hover:bg-primary/90 text-primary-foreground font-semibold text-xs h-9 flex items-center gap-1.5 px-4 rounded-lg shadow-none"
         >
           <UserPlus className="w-4 h-4" /> Convidar Usuário
         </Button>
@@ -95,7 +95,7 @@ export default function TeamPage() {
       </div>
 
       {/* Info Banner Glassmorphic */}
-      <div className="bg-primary/5 border border-primary/20 rounded-xl p-4 flex items-start gap-3 shadow-sm">
+      <div className="bg-primary/5 border border-primary/10 rounded-xl p-4 flex items-start gap-3 shadow-none">
         <Shield className="w-5 h-5 text-primary flex-shrink-0 mt-0.5" />
         <div>
           <p className="text-sm font-semibold text-foreground">Saldo compartilhado mestre</p>
@@ -121,7 +121,7 @@ export default function TeamPage() {
         initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.4 }}
-        className="bg-card/75 backdrop-blur-md rounded-2xl border border-border/80 shadow-2xl overflow-hidden"
+        className="bg-card rounded-xl border border-border shadow-none overflow-hidden"
       >
         <div className="overflow-x-auto">
           <table className="w-full">
@@ -139,13 +139,13 @@ export default function TeamPage() {
             <tbody className="divide-y divide-border/50">
               {filtered.map((member, idx) => {
                 const initials = member.name.split(' ').map(n => n[0]).join('').slice(0, 2);
-                const avatarGradient = avatarGradients[idx % avatarGradients.length];
+                const avatarColor = avatarColors[idx % avatarColors.length];
 
                 return (
                   <tr key={member.id} className="hover:bg-muted/20 transition-colors">
                     <td className="px-5 py-4 whitespace-nowrap">
                       <div className="flex items-center gap-3">
-                        <div className={`w-8.5 h-8.5 rounded-full bg-gradient-to-br ${avatarGradient} flex items-center justify-center text-xs font-black shadow-inner`}>
+                        <div className={`w-8.5 h-8.5 rounded-full ${avatarColor} flex items-center justify-center text-xs font-bold shadow-none`}>
                           {initials}
                         </div>
                         <div>
@@ -175,7 +175,7 @@ export default function TeamPage() {
                     <td className="px-5 py-4 text-center whitespace-nowrap">
                       <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[9px] font-bold border uppercase tracking-wider ${
                         member.status === 'active'
-                          ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20 shadow-[0_0_12px_rgba(16,185,129,0.15)]'
+                          ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20'
                           : 'bg-muted text-muted-foreground border-border'
                       }`}>
                         <span className={`w-1.5 h-1.5 rounded-full ${member.status === 'active' ? 'bg-emerald-500 dark:bg-emerald-400 animate-pulse' : 'bg-muted-foreground/60'}`} />
@@ -215,7 +215,7 @@ export default function TeamPage() {
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-card rounded-2xl border border-border shadow-2xl w-full max-w-md p-6"
+              className="bg-card rounded-xl border border-border shadow-md w-full max-w-md p-6"
               onClick={(e) => e.stopPropagation()}
             >
               <div className="flex items-center justify-between mb-4">
@@ -252,9 +252,9 @@ export default function TeamPage() {
                   <div className="flex gap-3">
                     <button
                       onClick={() => setInviteRole('operator')}
-                      className={`flex-1 py-2.5 rounded-xl border text-xs font-bold transition-all ${
+                      className={`flex-1 py-2.5 rounded-lg border text-xs font-bold transition-all ${
                         inviteRole === 'operator'
-                          ? 'border-primary bg-primary/10 text-primary shadow-sm'
+                          ? 'border-primary bg-primary/10 text-primary'
                           : 'border-border bg-muted/25 text-muted-foreground hover:border-border/80'
                       }`}
                     >
@@ -262,9 +262,9 @@ export default function TeamPage() {
                     </button>
                     <button
                       onClick={() => setInviteRole('viewer')}
-                      className={`flex-1 py-2.5 rounded-xl border text-xs font-bold transition-all ${
+                      className={`flex-1 py-2.5 rounded-lg border text-xs font-bold transition-all ${
                         inviteRole === 'viewer'
-                          ? 'border-primary bg-primary/10 text-primary shadow-sm'
+                          ? 'border-primary bg-primary/10 text-primary'
                           : 'border-border bg-muted/25 text-muted-foreground hover:border-border/80'
                       }`}
                     >
@@ -274,10 +274,10 @@ export default function TeamPage() {
                 </div>
 
                 <div className="flex gap-3 pt-4">
-                  <Button variant="outline" onClick={() => setShowInviteModal(false)} className="flex-1 rounded-xl h-10 text-xs font-bold border-border bg-muted/30 hover:bg-muted/50 text-foreground">
+                  <Button variant="outline" onClick={() => setShowInviteModal(false)} className="flex-1 rounded-lg h-10 text-xs font-bold border-border bg-muted/30 hover:bg-muted/50 text-foreground">
                     Cancelar
                   </Button>
-                  <Button onClick={() => setShowInviteModal(false)} className="flex-1 rounded-xl h-10 text-xs font-bold gradient-primary text-primary-foreground hover:opacity-95 shadow-[0_4px_15px_rgba(0,194,255,0.15)]">
+                  <Button onClick={() => setShowInviteModal(false)} className="flex-1 rounded-lg h-10 text-xs font-bold bg-primary hover:bg-primary/90 text-primary-foreground shadow-none">
                     Enviar Convite
                   </Button>
                 </div>

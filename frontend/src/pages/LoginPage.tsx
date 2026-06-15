@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { ArrowRight, Lock, Mail } from 'lucide-react';
+import { ArrowRight, Lock, Mail, Eye, EyeOff } from 'lucide-react';
 import { useAuthStore } from '@/stores/authStore';
 import { ApiError } from '@/lib/api';
 import { toast } from 'sonner';
@@ -11,8 +11,8 @@ import { PageTransition } from '@/components/layout/PageTransition';
 import { useSubTheme } from '@/hooks/use-subtheme';
 import ThemeToggle from '@/components/ThemeToggle';
 import Particles from '@/components/ui/Particles';
-import LaserFlow from '@/components/ui/LaserFlow';
 import { useTheme } from '@/hooks/use-theme';
+import { BackgroundRippleEffect } from '@/components/ui/background-ripple-effect';
 
 export default function LoginPage() {
   const { subTheme } = useSubTheme(); // Inicializa o tema salvo
@@ -72,32 +72,45 @@ export default function LoginPage() {
     <div className="min-h-screen md:h-screen text-foreground relative isolate overflow-hidden flex flex-col md:flex-row bg-background">
       {/* Partículas flutuantes ocupando todo o fundo da página de login */}
       <Particles
-        particleColors={[themeColor]}
-        particleCount={140}
-        particleSpread={9}
-        speed={0.12}
-        particleBaseSize={85}
+        particleColors={isDark ? [themeColor] : ["#cccccc"]}
+        particleCount={isDark ? 140 : 40}
+        particleSpread={isDark ? 9 : 6}
+        speed={isDark ? 0.12 : 0.05}
+        particleBaseSize={isDark ? 85 : 45}
         moveParticlesOnHover={true}
         particleHoverFactor={0.8}
         alphaParticles={true}
         disableRotation={false}
-        className="absolute inset-0 pointer-events-none -z-10"
-      />
-
-      {/* LaserFlow dividindo exatamente os 2 lados da tela de login */}
-      <LaserFlow
-        horizontalBeamOffset={0.0}
-        verticalBeamOffset={-0.5}
-        verticalSizing={12.0}
-        color={themeColor}
-        className="absolute inset-0 pointer-events-none z-0"
+        className="absolute inset-0 pointer-events-none -z-10 opacity-30 dark:opacity-100"
       />
 
       {/* BackgroundFX global por trás de toda a tela */}
       <BackgroundFX />
 
+      {/* Divisor "Pipe" Discreto e Elegante */}
+      <div className="hidden md:block absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[1px] h-3/5 bg-gradient-to-b from-transparent via-hairline/50 dark:via-hairline/25 to-transparent z-10 pointer-events-none" />
+
       {/* Lado Esquerdo - Painel Institucional Premium */}
-      <div className="relative hidden md:flex md:w-1/2 flex-col justify-between p-12 overflow-hidden md:h-screen select-none bg-transparent">
+      <div className="relative hidden md:flex md:w-1/2 flex-col justify-between p-14 md:p-16 overflow-hidden md:h-screen select-none bg-[radial-gradient(circle_at_top_left,rgba(var(--color-brand-rgb),0.12),transparent_50%),radial-gradient(circle_at_bottom_right,rgba(var(--color-brand-rgb),0.03),transparent_60%)] bg-slate-50 dark:bg-[#04060d]">
+        {/* Background Ripple interativo do design antigo */}
+        <div className="absolute inset-0 z-0 opacity-40 dark:opacity-60 pointer-events-auto">
+          <BackgroundRippleEffect
+            cover
+            coverPosition="top-left"
+            rows={13}
+            cols={10}
+            cellSize={60}
+            masked={false}
+            className="[--cell-border-color:rgba(0,0,0,0.04)] dark:[--cell-border-color:rgba(255,255,255,0.06)] [--cell-fill-color:rgba(0,0,0,0.01)] dark:[--cell-fill-color:rgba(255,255,255,0.012)] [--cell-shadow-color:transparent]"
+            gridClassName="opacity-60 dark:opacity-50"
+          />
+        </div>
+
+        {/* Glows circulares de background do design antigo */}
+        <div className="absolute inset-0 z-[1] opacity-30 dark:opacity-40 pointer-events-none">
+          <div className="absolute -top-12 -left-12 w-80 h-80 rounded-full bg-brand/20 dark:bg-brand/15 blur-3xl" />
+          <div className="absolute -bottom-20 -right-20 w-96 h-96 rounded-full bg-brand/10 dark:bg-brand/10 blur-3xl" />
+        </div>
         
         {/* Topo da coluna esquerda (Brand / Logo) */}
         <Link
@@ -174,18 +187,16 @@ export default function LoginPage() {
             </div>
 
             <motion.div
-              initial={{ opacity: 0, y: 12 }}
+              initial={{ opacity: 0, y: 16 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.6, delay: 0.1, ease: [0.2, 0.7, 0.2, 1] }}
-              className="hud-frame hud-corners relative rounded-none p-8 bg-[color-mix(in_srgb,var(--brand)_8%,rgba(5,7,12,0.35))] backdrop-blur-md border border-brand/20 shadow-2xl"
+              transition={{ duration: 0.6, delay: 0.1, ease: [0.16, 1, 0.3, 1] }}
+              className="relative rounded-3xl p-8 md:p-10 bg-white/70 dark:bg-[#070b15]/55 backdrop-blur-2xl border border-black/[0.05] dark:border-white/[0.08] shadow-[0_32px_64px_-16px_rgba(0,0,0,0.06)] dark:shadow-[0_32px_64px_-16px_rgba(0,0,0,0.6)] overflow-hidden"
             >
-              <span className="hud-tl" />
-              <span className="hud-tr" />
-              <span className="hud-bl" />
-              <span className="hud-br" />
+              {/* Brilho radial de fundo sutil na cor da marca (brand) */}
+              <div className="absolute -inset-10 bg-[radial-gradient(circle_at_center,var(--color-brand)_0%,transparent_70%)] opacity-10 dark:opacity-15 blur-3xl pointer-events-none -z-10" />
 
               {/* Botão de Tema no Canto Superior Direito */}
-              <div className="absolute top-4 right-4 z-50">
+              <div className="absolute top-6 right-6 z-50">
                 <ThemeToggle />
               </div>
 
@@ -201,35 +212,43 @@ export default function LoginPage() {
                 Use suas credenciais corporativas para continuar.
               </p>
 
-              <form onSubmit={handleSubmit} className="mt-7 space-y-4">
+              <form onSubmit={handleSubmit} className="mt-8 space-y-5">
                 <Field
+                  id="email"
+                  name="email"
                   icon={<Mail className="h-4 w-4" />}
                   label="E-mail"
                   type="email"
                   value={email}
                   onChange={setEmail}
                   placeholder="voce@empresa.com.br"
+                  autocomplete="username"
+                  required
                 />
                 <Field
+                  id="current-password"
+                  name="password"
                   icon={<Lock className="h-4 w-4" />}
                   label="Senha"
                   type="password"
                   value={password}
                   onChange={setPassword}
                   placeholder="••••••••"
+                  autocomplete="current-password"
+                  required
                 />
 
                 <div className="flex items-center justify-between text-[12px]">
                   <label className="inline-flex items-center gap-2 text-muted-foreground cursor-pointer select-none">
                     <input 
                       type="checkbox" 
-                      className="h-3 w-3 accent-[var(--color-brand)]"
+                      className="h-3.5 w-3.5 rounded border-hairline accent-[var(--color-brand)] focus:ring-0 cursor-pointer"
                       checked={remember}
                       onChange={(e) => setRemember(e.target.checked)}
                     />
                     Manter conectado
                   </label>
-                  <Link to="/recuperar-acesso" className="text-brand hover:underline">
+                  <Link to="/recuperar-acesso" className="text-brand hover:text-brand/85 transition-colors font-medium hover:underline">
                     Esqueci a senha
                   </Link>
                 </div>
@@ -237,7 +256,7 @@ export default function LoginPage() {
                 <button
                   type="submit"
                   disabled={loading}
-                  className="group mt-2 inline-flex w-full items-center justify-center gap-2 rounded-md bg-brand px-4 py-2.5 text-sm font-medium text-primary-foreground shadow-[0_0_36px_-8px_var(--color-brand)] hover:shadow-[0_0_48px_-4px_var(--color-brand)] transition-shadow disabled:opacity-60"
+                  className="group mt-4 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-brand px-4 py-3 text-sm font-medium text-primary-foreground shadow-lg shadow-brand/10 hover:shadow-xl hover:shadow-brand/25 dark:shadow-brand/20 dark:hover:shadow-brand/35 transition-all duration-300 active:scale-[0.98] disabled:opacity-60 disabled:pointer-events-none"
                 >
                   {loading ? (
                     <div className="w-4 h-4 border-2 border-primary-foreground/30 border-t-primary-foreground rounded-full animate-spin" />
@@ -246,15 +265,15 @@ export default function LoginPage() {
                 </button>
               </form>
 
-              <div className="mt-6 flex items-center gap-3 text-[11px] font-mono tracking-[0.18em] uppercase text-muted-foreground">
-                <span className="h-px flex-1 bg-hairline" />
-                <span>OU</span>
-                <span className="h-px flex-1 bg-hairline" />
+              <div className="mt-6 flex items-center gap-3 text-[9px] font-mono tracking-[0.2em] uppercase text-muted-foreground/75">
+                <span className="h-px flex-1 bg-hairline/60" />
+                <span>OU ACESSO DIRETO</span>
+                <span className="h-px flex-1 bg-hairline/60" />
               </div>
 
               <button
                 type="button"
-                className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-md border border-hairline bg-surface/60 px-4 py-2.5 text-sm text-foreground hover:bg-surface backdrop-blur transition-colors"
+                className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-xl border border-hairline/60 bg-surface/10 dark:bg-surface/25 px-4 py-3 text-sm font-medium text-foreground hover:bg-surface/30 dark:hover:bg-surface/40 hover:border-hairline/85 backdrop-blur-md transition-all duration-300 active:scale-[0.98]"
               >
                 Acessar via SSO corporativo
               </button>
@@ -289,6 +308,10 @@ function Field({
   value,
   onChange,
   placeholder,
+  id,
+  name,
+  autocomplete,
+  required = true,
 }: {
   icon: React.ReactNode;
   label: string;
@@ -296,22 +319,47 @@ function Field({
   value: string;
   onChange: (v: string) => void;
   placeholder?: string;
+  id?: string;
+  name?: string;
+  autocomplete?: string;
+  required?: boolean;
 }) {
+  const [showPassword, setShowPassword] = useState(false);
+  const isPassword = type === "password";
+  const inputType = isPassword ? (showPassword ? "text" : "password") : type;
+
   return (
     <label className="block">
-      <span className="font-mono text-[10px] tracking-[0.18em] uppercase text-muted-foreground">
+      <span className="font-mono text-[9px] tracking-[0.2em] uppercase text-muted-foreground/80">
         {label}
       </span>
-      <div className="mt-1.5 group relative flex items-center rounded-md border border-hairline bg-surface/40 backdrop-blur transition-colors focus-within:border-brand/60 focus-within:shadow-[0_0_0_3px_color-mix(in_oklab,var(--color-brand)_18%,transparent)]">
-        <span className="pl-3 text-muted-foreground">{icon}</span>
+      <div className="mt-2 group relative flex items-center rounded-xl border border-hairline bg-surface/20 dark:bg-surface/30 backdrop-blur-md transition-all duration-300 focus-within:border-brand/50 focus-within:ring-4 focus-within:ring-brand/10">
+        <span className="pl-3.5 text-muted-foreground group-focus-within:text-brand transition-colors">{icon}</span>
         <input
-          type={type}
+          id={id}
+          name={name}
+          type={inputType}
           value={value}
           onChange={(e) => onChange(e.target.value)}
           placeholder={placeholder}
-          required
-          className="w-full bg-transparent px-3 py-2.5 text-sm text-foreground placeholder:text-muted-foreground/60 outline-none border-none focus:ring-0"
+          autocomplete={autocomplete}
+          required={required}
+          className="w-full bg-transparent pl-3 pr-10 py-3 text-sm text-foreground placeholder:text-muted-foreground/45 outline-none border-none focus:ring-0"
         />
+        {isPassword && (
+          <button
+            type="button"
+            onClick={() => setShowPassword(!showPassword)}
+            className="absolute right-3.5 text-muted-foreground hover:text-foreground transition-colors p-1 rounded-md focus:outline-none focus:ring-2 focus:ring-brand/20"
+            aria-label={showPassword ? "Ocultar senha" : "Mostrar senha"}
+          >
+            {showPassword ? (
+              <EyeOff className="h-4 w-4" />
+            ) : (
+              <Eye className="h-4 w-4" />
+            )}
+          </button>
+        )}
       </div>
     </label>
   );

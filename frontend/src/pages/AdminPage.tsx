@@ -51,6 +51,7 @@ import {
   revokeAdminInviteApi,
 } from '@/api/admin-panel';
 import { RoleEndpointAccessTab } from '@/components/admin/RoleEndpointAccessTab';
+import { RealtimeConsultationsTab } from '@/components/admin/RealtimeConsultationsTab';
 import { apiBase } from '@/lib/api';
 
 const labelCls = 'text-xs font-medium text-muted-foreground uppercase tracking-wide';
@@ -80,7 +81,7 @@ export default function AdminPage() {
   const [tokensDefaultCompanyId, setTokensDefaultCompanyId] = useState<string | null>(null);
   const [searchParams, setSearchParams] = useSearchParams();
   const [tab, setTab] = useState(() => {
-    return searchParams.get('aba') || 'users';
+    return searchParams.get('aba') || 'realtime-consultations';
   });
 
   useEffect(() => {
@@ -169,6 +170,7 @@ export default function AdminPage() {
 
       <Tabs value={tab} onValueChange={setTabWithUrl} className="space-y-4">
         <TabsList className="h-10 bg-muted/50 p-1 rounded-lg gap-1 flex-wrap h-auto min-h-10">
+          <TabsTrigger value="realtime-consultations" className="text-sm gap-2"><Globe className="w-4 h-4" /> Consultas em Tempo Real</TabsTrigger>
           <TabsTrigger value="users" className="text-sm gap-2"><Users className="w-4 h-4" /> Usuários</TabsTrigger>
           <TabsTrigger value="companies" className="text-sm gap-2"><Building2 className="w-4 h-4" /> Contas</TabsTrigger>
           <TabsTrigger value="tokens" className="text-sm gap-2"><KeyRound className="w-4 h-4" /> Tokens API</TabsTrigger>
@@ -177,6 +179,10 @@ export default function AdminPage() {
           <TabsTrigger value="api-access" className="text-sm gap-2"><Route className="w-4 h-4" /> Acesso API</TabsTrigger>
           <TabsTrigger value="white-label" className="text-sm gap-2"><FileCode className="w-4 h-4" /> Guia White-Label</TabsTrigger>
         </TabsList>
+
+        <TabsContent value="realtime-consultations" className="space-y-3">
+          <RealtimeConsultationsTab accessToken={accessToken} />
+        </TabsContent>
 
         <TabsContent value="users" className="space-y-3">
           <UsersTab
@@ -279,8 +285,42 @@ function UsersTab({
   const patchMut = useMutation({
     mutationFn: ({ id, body }: { id: string; body: Parameters<typeof patchAdminUserApi>[2] }) =>
       patchAdminUserApi(accessToken, id, body),
-    onSuccess: () => {
+    onSuccess: (updatedUser) => {
       toast.success('Usuário atualizado');
+      
+      if (updatedUser.id === user?.id) {
+        const session = {
+          id: updatedUser.id,
+          fullName: updatedUser.fullName,
+          email: updatedUser.email,
+          document: updatedUser.document,
+          phone: updatedUser.phone,
+          role: updatedUser.role,
+          companyId: updatedUser.companyId,
+          accountStatus: updatedUser.accountStatus,
+        };
+        localStorage.setItem('cp_user_json', JSON.stringify(session));
+        
+        useAuthStore.setState({
+          sessionUser: session,
+          user: {
+            id: session.id,
+            name: session.fullName,
+            email: session.email,
+            document: session.document ?? '',
+            phone: session.phone ?? '',
+            accountType: 'master',
+            accessLevel: 0,
+            backendRole: 'PLATFORM_ADMIN',
+            companyName: 'Consultas PRO',
+            balance: user.balance,
+            priceTable: 'Admin',
+          },
+        });
+        
+        void useAuthStore.getState().refreshBalance();
+      }
+
       setEditRow(null);
       invalidateAll();
     },
@@ -478,6 +518,7 @@ function UserFormDialog({
         email,
         document: document || null,
         phone: phone || null,
+        companyId: companyId === '__none__' ? null : companyId,
       };
       if (password.trim()) body.password = password;
       onSubmit(body);
@@ -525,12 +566,12 @@ function UserFormDialog({
           {mode === 'create' ? (
             <div className="space-y-1">
               <label className={labelCls}>Senha inicial</label>
-              <Input value={password} onChange={(e) => setPassword(e.target.value)} type="password" className={inputCls} />
+              <Input value={password} onChange={(e) => setPassword(e.target.value)} type="password" className={inputCls} autoComplete="new-password" />
             </div>
           ) : (
             <div className="space-y-1">
               <label className={labelCls}>Nova senha (opcional)</label>
-              <Input value={password} onChange={(e) => setPassword(e.target.value)} type="password" className={inputCls} placeholder="Deixe em branco para não alterar" />
+              <Input value={password} onChange={(e) => setPassword(e.target.value)} type="password" className={inputCls} placeholder="Deixe em branco para não alterar" autoComplete="new-password" />
             </div>
           )}
           {!(mode === 'edit' && initial?.role === 'PLATFORM_ADMIN') && (

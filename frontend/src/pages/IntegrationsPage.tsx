@@ -17,10 +17,12 @@ import { Navigate, useSearchParams } from 'react-router-dom';
 import {
   Server, Plus, Pencil, Trash2, Database,
   Play, Tag, ChevronDown, ChevronRight, Search, RefreshCcw,
-  Code2, Link2, Save, Hash, Filter, Undo2, Loader2, Layers3, Cog, Sliders,
+  Code2, Link2, Save, Hash, Filter, Undo2, Loader2, Layers3, Cog, Sliders, Braces, Eye,
+  WrapText, Copy,
 } from 'lucide-react';
 import { useIsolatedEditorStore } from '@/features/templates-drawer/store/isolated-editor.store';
 import { IsolatedEditorDialog } from '@/features/templates-drawer/components/IsolatedEditorDialog';
+import { SafeEditor } from '@/features/templates-drawer/components/SafeEditor';
 import { useAuthStore } from '@/stores/authStore';
 import { PageHeader } from '@/components/shared/StatCard';
 import { Button } from '@/components/ui/button';
@@ -97,6 +99,7 @@ type ConsultationTestInput =
   | {
       kind: 'saved';
       productId: string;
+      testDocument?: string;
       bodyTemplate?: unknown;
       queryTemplate?: Record<string, unknown>;
       headersTemplate?: Record<string, unknown>;
@@ -106,6 +109,7 @@ type ConsultationTestInput =
       providerId: string;
       endpointPath: string;
       method: 'GET' | 'POST';
+      testDocument?: string;
       bodyTemplate?: unknown;
       queryTemplate?: Record<string, unknown>;
       headersTemplate?: Record<string, unknown>;
@@ -115,7 +119,8 @@ function parseOptionalBodyTemplateJson(raw: string): { bodyTemplate?: unknown } 
   const t = raw.trim();
   if (!t) return {};
   try {
-    return { bodyTemplate: JSON.parse(t) };
+    const parsedRaw = t.replace(/:\s*`([\s\S]*?)`/g, ': "$1"');
+    return { bodyTemplate: JSON.parse(parsedRaw) };
   } catch {
     toast.error('Corpo da requisição (JSON) inválido');
     throw new Error('INVALID_BODY_JSON');
@@ -197,6 +202,7 @@ function linkedConsultationInitialFilters(
 const emptyProvider: Partial<Provider> = {
   name: '', baseUrl: '', balanceEndpoint: '', rechargeEndpoint: '',
   authType: 'bearer', credentials: [{ key: 'token', value: '' }], status: 'active',
+  custom_variables: [],
 };
 
 function ProviderModal({ open, onClose, provider, onSave, saving }: {
@@ -229,105 +235,196 @@ function ProviderModal({ open, onClose, provider, onSave, saving }: {
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="max-w-md gap-0">
-        <DialogHeader className="pb-3">
-          <DialogTitle className="text-lg font-semibold">{provider ? 'Editar Provedor' : 'Novo Provedor'}</DialogTitle>
-          <DialogDescription className="text-sm text-muted-foreground">Configure o provedor de consultas</DialogDescription>
+      <DialogContent className="max-w-4xl gap-0 p-0 overflow-hidden bg-background border border-border rounded-xl shadow-2xl">
+        <DialogHeader className="p-6 pb-4 border-b border-border">
+          <DialogTitle className="text-xl font-bold flex items-center gap-2 text-foreground">
+            <Server className="size-5 text-indigo-500" />
+            {provider ? 'Editar Provedor' : 'Novo Provedor'}
+          </DialogTitle>
+          <DialogDescription className="text-sm text-muted-foreground">
+            Configure as credenciais de autenticação, endpoints padrão e variáveis de substituição do provedor
+          </DialogDescription>
         </DialogHeader>
-        <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-1 py-2">
-          <div className="space-y-1">
-            <label className={labelCls}>Nome</label>
-            <Input value={form.name || ''} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} placeholder="Ex: Sollos, EHM" className={inputCls} />
-          </div>
-          <div className="space-y-1">
-            <label className={labelCls}>URL Base</label>
-            <Input value={form.baseUrl || ''} onChange={(e) => setForm((f) => ({ ...f, baseUrl: e.target.value }))} placeholder="https://api.provedor.com.br/v1" className={`${inputCls} font-mono`} />
-          </div>
-          <div className="grid grid-cols-2 gap-2">
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-0">
+          {/* Coluna Esquerda: Configurações Técnicas e Credenciais */}
+          <div className="p-6 space-y-4 max-h-[55vh] overflow-y-auto pr-4 scrollbar-thin">
+            <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2 flex items-center gap-1.5">
+              <Cog className="size-3.5" /> Parâmetros de Autenticação
+            </h3>
+            
             <div className="space-y-1">
-              <label className={labelCls}>Endpoint Saldo</label>
-              <Input value={form.balanceEndpoint || ''} onChange={(e) => setForm((f) => ({ ...f, balanceEndpoint: e.target.value }))} placeholder="/account/balance" className={`${inputCls} font-mono`} />
+              <label className={labelCls}>Nome</label>
+              <Input value={form.name || ''} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} placeholder="Ex: Sollos, EHM" className={inputCls} />
             </div>
+
             <div className="space-y-1">
-              <label className={labelCls}>Endpoint Recarga</label>
-              <Input value={form.rechargeEndpoint || ''} onChange={(e) => setForm((f) => ({ ...f, rechargeEndpoint: e.target.value }))} placeholder="/account/recharge" className={`${inputCls} font-mono`} />
+              <label className={labelCls}>URL Base</label>
+              <Input value={form.baseUrl || ''} onChange={(e) => setForm((f) => ({ ...f, baseUrl: e.target.value }))} placeholder="https://api.provedor.com.br/v1" className={`${inputCls} font-mono`} />
             </div>
-          </div>
-          <div className="space-y-1">
-            <label className={labelCls}>Autenticação</label>
-            <Select value={form.authType} onValueChange={(v) => setForm((f) => ({ ...f, authType: v as Provider['authType'] }))}>
-              <SelectTrigger className={selectTriggerCls}><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="bearer">Bearer Token</SelectItem>
-                <SelectItem value="apikey">API Key</SelectItem>
-                <SelectItem value="basic">Basic Auth</SelectItem>
-                <SelectItem value="custom">Custom</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          {provider && (
-            <div
-              className="flex items-center gap-2.5 rounded-md border border-border bg-muted/20 px-3 py-2.5"
-              onClick={(e) => e.stopPropagation()}
-              onKeyDown={(e) => e.stopPropagation()}
-            >
-              <Checkbox
-                id="provider-modal-ativo"
-                checked={form.status !== 'inactive'}
-                onCheckedChange={(v) => setForm((f) => ({ ...f, status: v === true ? 'active' : 'inactive' }))}
-              />
-              <Label htmlFor="provider-modal-ativo" className="cursor-pointer text-sm font-normal text-foreground">
-                Ativo
-              </Label>
-            </div>
-          )}
-          <div className="space-y-1.5">
-            <label className={labelCls}>Credenciais</label>
-            {(form.credentials || []).map((cred, i) => (
-              <div key={i} className="flex gap-1.5">
-                <Input
-                  value={cred.key}
-                  onChange={(e) => {
-                    const creds = [...(form.credentials || [])];
-                    creds[i] = { ...creds[i], key: e.target.value };
-                    setForm((f) => ({ ...f, credentials: creds }));
-                  }}
-                  placeholder="Chave"
-                  className={`${inputCls} flex-1`}
-                />
-                <Input
-                  value={cred.value}
-                  onChange={(e) => {
-                    const creds = [...(form.credentials || [])];
-                    creds[i] = { ...creds[i], value: e.target.value };
-                    setForm((f) => ({ ...f, credentials: creds }));
-                  }}
-                  placeholder="Valor"
-                  className={`${inputCls} flex-1`}
-                  type="password"
-                />
-                <button
-                  type="button"
-                  className="h-9 w-9 flex items-center justify-center rounded border border-border text-muted-foreground hover:text-destructive hover:border-destructive/30 transition-colors flex-shrink-0"
-                  onClick={() => setForm((f) => ({ ...f, credentials: (f.credentials || []).filter((_, j) => j !== i) }))}
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
+
+            <div className="grid grid-cols-2 gap-2">
+              <div className="space-y-1">
+                <label className={labelCls}>Endpoint Saldo</label>
+                <Input value={form.balanceEndpoint || ''} onChange={(e) => setForm((f) => ({ ...f, balanceEndpoint: e.target.value }))} placeholder="/account/balance" className={`${inputCls} font-mono text-xs`} />
               </div>
-            ))}
-            <button
-              type="button"
-              className={`${linkActionCls} text-primary hover:text-primary/80`}
-              onClick={() => setForm((f) => ({ ...f, credentials: [...(f.credentials || []), { key: '', value: '' }] }))}
-            >
-              <Plus className="w-3.5 h-3.5" /> Adicionar
-            </button>
+              <div className="space-y-1">
+                <label className={labelCls}>Endpoint Recarga</label>
+                <Input value={form.rechargeEndpoint || ''} onChange={(e) => setForm((f) => ({ ...f, rechargeEndpoint: e.target.value }))} placeholder="/account/recharge" className={`${inputCls} font-mono text-xs`} />
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <label className={labelCls}>Autenticação</label>
+              <Select value={form.authType} onValueChange={(v) => setForm((f) => ({ ...f, authType: v as Provider['authType'] }))}>
+                <SelectTrigger className={selectTriggerCls}><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Nenhuma</SelectItem>
+                  <SelectItem value="bearer">Bearer Token</SelectItem>
+                  <SelectItem value="apikey">API Key</SelectItem>
+                  <SelectItem value="basic">Basic Auth</SelectItem>
+                  <SelectItem value="custom">Custom</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {provider && (
+              <div
+                className="flex items-center gap-2.5 rounded-md border border-border bg-muted/20 px-3 py-2.5"
+                onClick={(e) => e.stopPropagation()}
+                onKeyDown={(e) => e.stopPropagation()}
+              >
+                <Checkbox
+                  id="provider-modal-ativo"
+                  checked={form.status !== 'inactive'}
+                  onCheckedChange={(v) => setForm((f) => ({ ...f, status: v === true ? 'active' : 'inactive' }))}
+                />
+                <Label htmlFor="provider-modal-ativo" className="cursor-pointer text-sm font-normal text-foreground">
+                  Ativo
+                </Label>
+              </div>
+            )}
+
+            <div className="space-y-2 border-t border-border pt-4">
+              <label className={labelCls}>Campos de Autenticação</label>
+              {(form.credentials || []).map((cred, i) => (
+                <div key={i} className="flex gap-1.5">
+                  <Input
+                    value={cred.key}
+                    onChange={(e) => {
+                      const creds = [...(form.credentials || [])];
+                      creds[i] = { ...creds[i], key: e.target.value };
+                      setForm((f) => ({ ...f, credentials: creds }));
+                    }}
+                    placeholder="Chave"
+                    className={`${inputCls} flex-1`}
+                  />
+                  <Input
+                    value={cred.value}
+                    onChange={(e) => {
+                      const creds = [...(form.credentials || [])];
+                      creds[i] = { ...creds[i], value: e.target.value };
+                      setForm((f) => ({ ...f, credentials: creds }));
+                    }}
+                    placeholder="Valor"
+                    className={`${inputCls} flex-1`}
+                    type="password"
+                  />
+                  <button
+                    type="button"
+                    className="h-9 w-9 flex items-center justify-center rounded border border-border text-muted-foreground hover:text-destructive hover:border-destructive/30 transition-colors flex-shrink-0"
+                    onClick={() => setForm((f) => ({ ...f, credentials: (f.credentials || []).filter((_, j) => j !== i) }))}
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+              ))}
+              <button
+                type="button"
+                className={`${linkActionCls} text-primary hover:text-primary/80 mt-1 flex items-center gap-1 text-xs`}
+                onClick={() => setForm((f) => ({ ...f, credentials: [...(f.credentials || []), { key: '', value: '' }] }))}
+              >
+                <Plus className="w-3.5 h-3.5" /> Adicionar campo técnico
+              </button>
+            </div>
+          </div>
+
+          {/* Coluna Direita: Variáveis Customizadas */}
+          <div className="p-6 bg-muted/20 border-l border-border dark:border-slate-800 space-y-4 max-h-[55vh] flex flex-col min-h-[300px]">
+            <div className="space-y-1 shrink-0">
+              <h3 className="text-xs font-semibold text-indigo-500 uppercase tracking-wider flex items-center gap-1.5">
+                <Braces className="size-4" /> Variáveis de Integração
+              </h3>
+              <p className="text-[11px] text-muted-foreground leading-normal">
+                Adicione chaves de substituição (ex: <code className="font-mono text-indigo-500 bg-indigo-50/50 dark:bg-indigo-950/40 px-1 rounded">URL_PROVEDOR_TOKEN</code>) que serão substituídas com o padrão <code className="font-mono text-indigo-500">{"{{ URL_PROVEDOR_TOKEN }}"}</code> nos corpos de requisição JSON das consultas associadas.
+              </p>
+            </div>
+
+            <div className="flex-1 space-y-2 overflow-y-auto pr-1 scrollbar-thin">
+              {(!form.custom_variables || form.custom_variables.length === 0) ? (
+                <div className="text-center py-8 px-4 bg-background border border-dashed border-border rounded-lg text-muted-foreground flex flex-col items-center justify-center gap-1.5 h-full min-h-[160px]">
+                  <Braces className="size-6 text-indigo-500/50 animate-pulse" />
+                  <p className="text-xs font-medium text-foreground">Nenhuma variável criada</p>
+                  <p className="text-[10px] text-muted-foreground/80 max-w-[200px] leading-relaxed">
+                    Você pode atribuir valores personalizados dinâmicos para utilizar na aba de Consultas.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {form.custom_variables.map((cv, i) => (
+                    <div key={i} className="flex gap-2 items-center">
+                      <Input
+                        value={cv.key}
+                        onChange={(e) => {
+                          const list = [...(form.custom_variables || [])];
+                          list[i] = { ...list[i], key: e.target.value.toUpperCase().replace(/[^A-Z0-9_]/g, '') };
+                          setForm((f) => ({ ...f, custom_variables: list }));
+                        }}
+                        placeholder="NOME_VARIAVEL"
+                        className={`${inputCls} flex-1 font-mono text-xs`}
+                      />
+                      <Input
+                        value={cv.value}
+                        onChange={(e) => {
+                          const list = [...(form.custom_variables || [])];
+                          list[i] = { ...list[i], value: e.target.value };
+                          setForm((f) => ({ ...f, custom_variables: list }));
+                        }}
+                        placeholder="Valor personalizado"
+                        className={`${inputCls} flex-1 text-xs`}
+                      />
+                      <button
+                        type="button"
+                        className="h-9 w-9 flex items-center justify-center rounded border border-border text-muted-foreground hover:text-destructive hover:border-destructive/30 transition-colors flex-shrink-0"
+                        onClick={() => {
+                          const list = (form.custom_variables || []).filter((_, j) => j !== i);
+                          setForm((f) => ({ ...f, custom_variables: list }));
+                        }}
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="pt-2 shrink-0 border-t border-border/50">
+              <button
+                type="button"
+                className="inline-flex items-center gap-1 text-xs text-indigo-500 hover:text-indigo-400 font-medium transition-colors"
+                onClick={() => setForm((f) => ({ ...f, custom_variables: [...(f.custom_variables || []), { key: '', value: '' }] }))}
+              >
+                <Plus className="w-3.5 h-3.5" /> Adicionar Variável
+              </button>
+            </div>
           </div>
         </div>
-        <DialogFooter className="pt-3 gap-2">
+
+        <DialogFooter className="p-6 pt-4 border-t border-border gap-2 bg-muted/10 shrink-0">
           <Button variant="ghost" size="default" onClick={onClose} className="text-sm h-9" disabled={saving}>Cancelar</Button>
-          <Button size="default" className="gradient-primary text-primary-foreground text-sm h-9" onClick={() => void save()} disabled={saving}>
-            {saving ? 'Salvando…' : 'Salvar'}
+          <Button size="default" className="gradient-primary text-primary-foreground text-sm h-9 px-5" onClick={() => void save()} disabled={saving}>
+            {saving ? 'Salvando…' : 'Salvar Provedor'}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -526,6 +623,102 @@ function MinimalExpandSection({
   );
 }
 
+function evaluateSimpleExpression(expr: string, context: Record<string, any>): boolean {
+  const cleanExpr = expr.trim();
+  if (!cleanExpr) return false;
+
+  if (cleanExpr.includes('||')) {
+    return cleanExpr.split('||').some((p) => evaluateSimpleExpression(p, context));
+  }
+
+  if (cleanExpr.includes('&&')) {
+    return cleanExpr.split('&&').every((p) => evaluateSimpleExpression(p, context));
+  }
+
+  if (cleanExpr.includes('==')) {
+    const parts = cleanExpr.split('==').map((s) => s.trim());
+    const leftVal = parts[0].startsWith('$') || parts[0] in context ? (context[parts[0].replace('$', '')] ?? parts[0]) : parts[0].replace(/['"]/g, '');
+    const rightVal = parts[1].startsWith('$') || parts[1] in context ? (context[parts[1].replace('$', '')] ?? parts[1]) : parts[1].replace(/['"]/g, '');
+    return String(leftVal) === String(rightVal);
+  }
+
+  if (cleanExpr.includes('!=')) {
+    const parts = cleanExpr.split('!=').map((s) => s.trim());
+    const leftVal = parts[0].startsWith('$') || parts[0] in context ? (context[parts[0].replace('$', '')] ?? parts[0]) : parts[0].replace(/['"]/g, '');
+    const rightVal = parts[1].startsWith('$') || parts[1] in context ? (context[parts[1].replace('$', '')] ?? parts[1]) : parts[1].replace(/['"]/g, '');
+    return String(leftVal) !== String(rightVal);
+  }
+
+  if (cleanExpr.startsWith('!')) {
+    const varName = cleanExpr.slice(1).trim();
+    const val = varName in context ? context[varName] : varName.replace(/['"]/g, '');
+    return val === 'false' || val === '0' || val === '' || val === 'null' || val === 'undefined' || val === false || val === null || val === undefined;
+  }
+
+  const val = cleanExpr in context ? context[cleanExpr] : cleanExpr.replace(/['"]/g, '');
+  return !(val === 'false' || val === '0' || val === '' || val === 'null' || val === 'undefined' || val === false || val === null || val === undefined);
+}
+
+function renderSimpleMustacheAndCond(template: string, context: Record<string, any>): string {
+  let result = template.replace(/\$\{\{document\}\}/g, '{{document}}');
+
+  // 1. Resolver blocos {{#cond}} expressao | conteudo {{/cond}}
+  const condRegex = /\{\{#cond\}\}([\s\S]*?)\{\{\/cond\}\}/g;
+  result = result.replace(condRegex, (_, innerContent: string) => {
+    const resolvedInner = renderSimpleMustacheAndCond(innerContent, context);
+    const parts = resolvedInner.split('|');
+    if (parts.length < 2) return resolvedInner;
+
+    const expression = parts[0].trim();
+    const content = parts.slice(1).join('|');
+
+    if (evaluateSimpleExpression(expression, context)) {
+      return content;
+    }
+    return '';
+  });
+
+  // 2. Resolver seções verdadeiras {{#prop}} conteudo {{/prop}}
+  const sectionTrueRegex = /\{\{#([A-Za-z0-9_]+)\}\}([\s\S]*?)\{\{\/\1\}\}/g;
+  result = result.replace(sectionTrueRegex, (_, key: string, content: string) => {
+    const value = context[key];
+    const isTrue = value && value !== 'false' && value !== '0';
+    if (isTrue) {
+      return renderSimpleMustacheAndCond(content, context);
+    }
+    return '';
+  });
+
+  // 3. Resolver seções falsas (invertidas) {{^prop}} conteudo {{/prop}}
+  const sectionFalseRegex = /\{\{\^([A-Za-z0-9_]+)\}\}([\s\S]*?)\{\{\/\1\}\}/g;
+  result = result.replace(sectionFalseRegex, (_, key: string, content: string) => {
+    const value = context[key];
+    const isTrue = value && value !== 'false' && value !== '0';
+    if (!isTrue) {
+      return renderSimpleMustacheAndCond(content, context);
+    }
+    return '';
+  });
+
+  // 4. Resolver variáveis simples {{ chave }}
+  const varRegex = /\{\{\s*([A-Za-z0-9_\.]+)\s*\}\}/g;
+  result = result.replace(varRegex, (_, path: string) => {
+    const parts = path.split('.');
+    let current: any = context;
+    for (const part of parts) {
+      if (current && typeof current === 'object') {
+        current = current[part];
+      } else {
+        current = undefined;
+        break;
+      }
+    }
+    return current !== undefined ? String(current) : `{{ ${path} }}`;
+  });
+
+  return result;
+}
+
 const ConsultationEditor = forwardRef(function ConsultationEditor(
   {
     consultation,
@@ -556,6 +749,174 @@ const ConsultationEditor = forwardRef(function ConsultationEditor(
   const [testJson, setTestJson] = useState(consultation.sampleResponse || '');
   const [bodyTemplateJson, setBodyTemplateJson] = useState(consultation.bodyTemplateJson || '');
   const [curlInput, setCurlInput] = useState('');
+  const [testDocument, setTestDocument] = useState('35012345678');
+  const [showPreview, setShowPreview] = useState(false);
+  const [wordWrap, setWordWrap] = useState(false);
+
+  const customVariablesRef = useRef<any[]>([]);
+  const completionDisposableRef = useRef<any>(null);
+
+  const activeProvider = useMemo(() => {
+    return providers.find((p) => p.id === form.providerId);
+  }, [providers, form.providerId]);
+
+  useEffect(() => {
+    customVariablesRef.current = activeProvider?.custom_variables || [];
+  }, [activeProvider]);
+
+  useEffect(() => {
+    return () => {
+      if (completionDisposableRef.current) {
+        completionDisposableRef.current.dispose();
+      }
+    };
+  }, []);
+
+  const handleEditorMount = useCallback((_editor: any, monaco: any) => {
+    if (monaco && monaco.languages && monaco.languages.json) {
+      monaco.languages.json.jsonDefaults.setDiagnosticsOptions({
+        validate: false,
+      });
+    }
+
+    if (completionDisposableRef.current) {
+      completionDisposableRef.current.dispose();
+    }
+
+    completionDisposableRef.current = monaco.languages.registerCompletionItemProvider('json', {
+      triggerCharacters: ['{', '$'],
+      provideCompletionItems: (model: any, position: any) => {
+        if (!model.uri.path.includes('bodyTemplate')) {
+          return { suggestions: [] };
+        }
+
+        const lineContent = model.getLineContent(position.lineNumber);
+        const textBeforeCursor = lineContent.substring(0, position.column - 1);
+
+        let prefix = '';
+        if (textBeforeCursor.endsWith('${{')) {
+          prefix = '${{';
+        } else if (textBeforeCursor.endsWith('{{')) {
+          prefix = '{{';
+        } else if (textBeforeCursor.endsWith('${')) {
+          prefix = '${';
+        } else if (textBeforeCursor.endsWith('{')) {
+          prefix = '{';
+        }
+
+        const range = prefix ? {
+          startLineNumber: position.lineNumber,
+          startColumn: position.column - prefix.length,
+          endLineNumber: position.lineNumber,
+          endColumn: position.column
+        } : {
+          startLineNumber: position.lineNumber,
+          startColumn: position.column,
+          endLineNumber: position.lineNumber,
+          endColumn: position.column
+        };
+
+        const suggestions: any[] = [];
+
+        const systemVars = [
+          { name: 'documento', label: '${{document}}', insertText: '${{document}}', desc: 'CPF ou CNPJ limpo (somente números)' },
+          { name: 'is_cpf', label: '{{is_cpf}}', insertText: '{{is_cpf}}', desc: 'Booleano: true se documento for CPF' },
+          { name: 'is_cnpj', label: '{{is_cnpj}}', insertText: '{{is_cnpj}}', desc: 'Booleano: true se documento for CNPJ' }
+        ];
+
+        for (const v of systemVars) {
+          suggestions.push({
+            label: v.label,
+            kind: monaco.languages.CompletionItemKind.Variable,
+            detail: `Variável de Sistema: ${v.desc}`,
+            documentation: `Substitui dinamicamente pelo ${v.desc} na requisição ativa.`,
+            insertText: v.insertText,
+            range
+          });
+        }
+
+        suggestions.push({
+          label: '{{#cond}}',
+          kind: monaco.languages.CompletionItemKind.Snippet,
+          detail: 'Helper Condicional',
+          documentation: 'Estrutura condicional if/else. Ex: {{#cond}} is_cpf | "tipo": "F" {{/cond}}',
+          insertText: '{{#cond}} ${1:condição} | ${2:conteúdo} {{/cond}}',
+          insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+          range
+        });
+
+        suggestions.push({
+          label: '{{round}}',
+          kind: monaco.languages.CompletionItemKind.Snippet,
+          detail: 'Helper de Arredondamento',
+          documentation: 'Arredonda valores decimais. Ex: {{round($var, 2)}}',
+          insertText: '{{round(${1:variável}, ${2:casas_decimais})}}',
+          insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+          range
+        });
+
+        const customVars = customVariablesRef.current || [];
+        for (const cv of customVars) {
+          if (cv.key && cv.key.trim()) {
+            const keyClean = cv.key.trim();
+            suggestions.push({
+              label: `{{${keyClean}}}`,
+              kind: monaco.languages.CompletionItemKind.Field,
+              detail: `Variável Customizada: ${keyClean}`,
+              documentation: `Valor personalizado: "${cv.value}" definido nas configurações do provedor.`,
+              insertText: `{{${keyClean}}}`,
+              range
+            });
+          }
+        }
+
+        return { suggestions };
+      }
+    });
+  }, []);
+
+  const resolvedBodyPreview = useMemo(() => {
+    if (!bodyTemplateJson) return '';
+
+    // Injetar variáveis customizadas do provedor ativo no contexto
+    const contextObj: Record<string, any> = {};
+    const customVars = activeProvider?.custom_variables || [];
+    for (const cv of customVars) {
+      if (cv.key.trim()) {
+        contextObj[cv.key.trim()] = cv.value;
+      }
+    }
+
+    // Injetar variáveis de sistema simuladas para o preview do documento baseado em testDocument
+    const docClean = testDocument.replace(/\D/g, '');
+    const isCnpj = docClean.length === 14;
+    const isCpf = docClean.length === 11 || (!isCnpj && docClean.length > 0);
+
+    contextObj['document'] = docClean;
+    contextObj['documento'] = docClean;
+    contextObj['is_cpf'] = isCpf;
+    contextObj['is_cnpj'] = isCnpj;
+    contextObj['subject'] = {
+      document: docClean,
+      type: isCpf ? 'CPF' : 'CNPJ',
+    };
+
+    try {
+      return renderSimpleMustacheAndCond(bodyTemplateJson, contextObj);
+    } catch (err) {
+      return 'Erro na renderização: ' + String(err);
+    }
+  }, [bodyTemplateJson, activeProvider, testDocument]);
+
+  const handleCopyCode = useCallback(() => {
+    const code = showPreview ? resolvedBodyPreview : bodyTemplateJson;
+    if (!code) {
+      toast.info("Não há código para copiar!");
+      return;
+    }
+    navigator.clipboard.writeText(code);
+    toast.success("Código copiado!");
+  }, [showPreview, resolvedBodyPreview, bodyTemplateJson]);
   const [paramsSectionOpen, setParamsSectionOpen] = useState(true);
   const [mappingSectionOpen, setMappingSectionOpen] = useState(true);
 
@@ -649,7 +1010,7 @@ const ConsultationEditor = forwardRef(function ConsultationEditor(
     try {
       let result: ApiProviderTestResult;
       if (consultation.id) {
-        result = await onTest({ kind: 'saved', productId: consultation.id, ...extras });
+        result = await onTest({ kind: 'saved', productId: consultation.id, testDocument, ...extras });
       } else {
         const endpoint = (form.endpoint || '').trim();
         if (!form.providerId || !endpoint) {
@@ -661,6 +1022,7 @@ const ConsultationEditor = forwardRef(function ConsultationEditor(
           providerId: form.providerId,
           endpointPath: endpoint,
           method: (form.method || 'POST') as 'GET' | 'POST',
+          testDocument,
           ...extras,
         });
       }
@@ -668,7 +1030,7 @@ const ConsultationEditor = forwardRef(function ConsultationEditor(
     } catch {
       /* onError da mutation */
     }
-  }, [bodyTemplateJson, consultation.id, form.endpoint, form.method, form.providerId, onTest]);
+  }, [bodyTemplateJson, consultation.id, form.endpoint, form.method, form.providerId, testDocument, onTest]);
 
   useEffect(() => {
     if (consultation.id) {
@@ -754,7 +1116,7 @@ const ConsultationEditor = forwardRef(function ConsultationEditor(
                 />
               </PopoverContent>
             </Popover>
-            <div className="grid min-w-0 flex-1 grid-cols-7 gap-2">
+            <div className="grid min-w-0 flex-1 grid-cols-8 gap-2">
               <div className="space-y-1">
                 <label className={labelCls}>Método</label>
                 <Select value={form.method || 'POST'} onValueChange={(v) => setForm((f) => ({ ...f, method: v as 'GET' | 'POST' }))}>
@@ -787,15 +1149,19 @@ const ConsultationEditor = forwardRef(function ConsultationEditor(
                 <label className={labelCls}>Endpoint</label>
                 <Input value={form.endpoint || ''} onChange={(e) => setForm((f) => ({ ...f, endpoint: e.target.value }))} placeholder="/rota" className={`${inputCls} font-mono text-xs`} />
               </div>
+              <div className="min-w-0 space-y-1">
+                <label className={labelCls} title="Documento (CPF ou CNPJ) para simulação de variáveis no preview e teste de execução">Documento (document)</label>
+                <Input value={testDocument} onChange={(e) => setTestDocument(e.target.value)} placeholder="35012345678" className={`${inputCls} font-mono text-xs`} />
+              </div>
               <div className="space-y-1">
                 <label className={`${labelCls} normal-case tracking-normal`} title="Tarifa cobrada pelo provedor (custo admin)">
-                  Preço de custo (R$)
+                  Custo (R$)
                 </label>
                 <Input type="number" step="0.01" value={form.cost ?? 0} onChange={(e) => setForm((f) => ({ ...f, cost: parseFloat(e.target.value) }))} className={inputCls} />
               </div>
               <div className="space-y-1">
                 <label className={`${labelCls} normal-case tracking-normal`} title="Valor debitado do cliente na carteira ao emitir a consulta">
-                  Valor da consulta (R$)
+                  Preço (R$)
                 </label>
                 <Input
                   type="number"
@@ -813,17 +1179,99 @@ const ConsultationEditor = forwardRef(function ConsultationEditor(
           {fullUrlLabel}
         </p>
 
-        <div className="space-y-1.5">
-          <label className={sectionLabelCls}>
-            <Code2 className="h-4 w-4" /> Corpo da requisição (JSON)
-          </label>
-          <textarea
-            value={bodyTemplateJson}
-            onChange={(e) => setBodyTemplateJson(e.target.value)}
-            className="scrollbar-thin h-28 w-full resize-y rounded-md border border-border bg-background p-3 font-mono text-sm leading-relaxed text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
-            placeholder={'{\n  "documento": "{{cpf}}"\n}'}
-            spellCheck={false}
-          />
+        <div className="space-y-2">
+          <div className="flex flex-wrap items-center justify-between gap-2 px-0.5">
+            <label className={sectionLabelCls}>
+              <Code2 className="h-4 w-4" /> Corpo da requisição (JSON)
+            </label>
+            
+            <div className="flex items-center gap-2">
+              {showPreview && activeProvider && (
+                <span className="text-[10px] bg-indigo-50/70 dark:bg-indigo-950/30 text-indigo-600 dark:text-indigo-400 border border-indigo-100/50 dark:border-indigo-900/40 px-2 py-0.5 rounded-md font-mono select-none">
+                  Preview usando: Provedor {activeProvider.name} e Doc {testDocument}
+                </span>
+              )}
+
+              {/* Botão de Quebra de Linha (Word Wrap) */}
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className={`h-8 w-8 p-0 cursor-pointer transition-all ${
+                  wordWrap 
+                    ? 'text-indigo-600 dark:text-indigo-400 bg-indigo-50/50 dark:bg-indigo-950/20 border-indigo-200/20' 
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+                onClick={() => setWordWrap(!wordWrap)}
+                title="Alternar Quebra de Linha (Word Wrap)"
+              >
+                <WrapText className="size-4" />
+              </Button>
+
+              {/* Botão de Copiar Código */}
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-8 w-8 p-0 cursor-pointer text-muted-foreground hover:text-foreground"
+                onClick={handleCopyCode}
+                title="Copiar Código"
+              >
+                <Copy className="size-4" />
+              </Button>
+
+              {/* Botão de Visualização / Preview */}
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className={`h-8 cursor-pointer gap-1.5 px-3 text-xs font-semibold rounded-lg shadow-sm transition-all ${
+                  showPreview 
+                    ? 'bg-indigo-600 hover:bg-indigo-700 text-white border-transparent shadow-indigo-500/20' 
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+                onClick={() => setShowPreview(!showPreview)}
+              >
+                {showPreview ? (
+                  <>
+                    <Code2 className="h-3.5 w-3.5" />
+                    Ver Código / Editar
+                  </>
+                ) : (
+                  <>
+                    <Eye className="h-3.5 w-3.5" />
+                    Visualizar Preview Resolvido
+                  </>
+                )}
+              </Button>
+            </div>
+          </div>
+          
+          <div className="h-[14rem] w-full">
+            <SafeEditor
+              language="json"
+              theme="vs-dark"
+              value={showPreview ? resolvedBodyPreview : bodyTemplateJson}
+              onChange={(v) => {
+                if (!showPreview) {
+                  setBodyTemplateJson(v || '');
+                }
+              }}
+              path={showPreview ? `preview-bodyTemplate-${consultation.id || 'new'}.json` : `bodyTemplate-${consultation.id || 'new'}.json`}
+              onMount={handleEditorMount}
+              hideHeader={true}
+              options={{
+                readOnly: showPreview,
+                minimap: { enabled: false },
+                lineNumbers: 'off',
+                folding: false,
+                glyphMargin: false,
+                lineDecorationsWidth: 0,
+                lineNumbersMinChars: 0,
+                wordWrap: wordWrap ? 'on' : 'off',
+              }}
+            />
+          </div>
         </div>
       </MinimalExpandSection>
 
@@ -1416,8 +1864,24 @@ export default function IntegrationsPage() {
 
   const testMutation = useMutation({
     mutationFn: async (input: ConsultationTestInput) => {
+      const docClean = input.testDocument ? input.testDocument.replace(/\D/g, '') : '';
+      const isCnpj = docClean.length === 14;
+      const isCpf = docClean.length === 11 || (!isCnpj && docClean.length > 0);
+
       const payload: Parameters<typeof testProductApi>[2] = {
-        context: {},
+        context: {
+          document: docClean,
+          documento: docClean,
+          cpf_cnpj: docClean,
+          cpf: isCpf ? docClean : '',
+          cnpj: isCnpj ? docClean : '',
+          is_cpf: isCpf,
+          is_cnpj: isCnpj,
+          subject: {
+            document: docClean,
+            type: isCpf ? 'CPF' : 'CNPJ',
+          }
+        },
         ...(input.bodyTemplate !== undefined ? { bodyTemplate: input.bodyTemplate } : {}),
         ...(input.queryTemplate !== undefined ? { queryTemplate: input.queryTemplate } : {}),
         ...(input.headersTemplate !== undefined ? { headersTemplate: input.headersTemplate } : {}),
@@ -1458,6 +1922,15 @@ export default function IntegrationsPage() {
     setSavingProvider(true);
     try {
       const creds = pairsToCredentials(form.credentials || []);
+      if (form.custom_variables) {
+        const cvObj: Record<string, string> = {};
+        for (const cv of form.custom_variables) {
+          if (cv.key.trim()) {
+            cvObj[cv.key.trim().toUpperCase()] = cv.value;
+          }
+        }
+        (creds as any).custom_variables = cvObj;
+      }
       const isActive = form.status !== 'inactive';
 
       if (providerModal.provider) {
@@ -1584,7 +2057,8 @@ export default function IntegrationsPage() {
         bodyTemplate = null;
       } else {
         try {
-          bodyTemplate = JSON.parse(raw);
+          const parsedRaw = raw.replace(/:\s*`([\s\S]*?)`/g, ': "$1"');
+          bodyTemplate = JSON.parse(parsedRaw);
         } catch {
           toast.error('Corpo da requisição (JSON) inválido');
           return;

@@ -40,7 +40,7 @@ export default function FinancialPage() {
       >
         <div className="flex items-center gap-3">
           <Button
-            className="gradient-primary text-primary-foreground hover:opacity-95 font-semibold text-xs h-9 shadow-[0_4px_20px_rgba(0,194,255,0.15)] flex items-center gap-1.5 px-4 rounded-lg"
+            className="bg-primary hover:bg-primary/90 text-primary-foreground font-semibold text-xs h-9 flex items-center gap-1.5 px-4 rounded-lg shadow-none"
             onClick={() => openRechargeModal()}
           >
             <Wallet className="w-4 h-4" /> Recarregar Saldo
@@ -101,7 +101,7 @@ export default function FinancialPage() {
             initial={{ opacity: 0, y: 15 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.2, duration: 0.4 }}
-            className="bg-card/75 backdrop-blur-md border border-border/80 rounded-2xl shadow-2xl overflow-hidden"
+            className="bg-card border border-border rounded-xl shadow-none overflow-hidden"
           >
             <div className="flex items-center justify-between px-5 py-4 border-b border-border/60">
               <div>
@@ -155,7 +155,7 @@ export default function FinancialPage() {
             initial={{ opacity: 0, y: 15 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.25, duration: 0.4 }}
-            className="bg-card/75 backdrop-blur-md border border-border/80 rounded-2xl shadow-2xl overflow-hidden"
+            className="bg-card border border-border rounded-xl shadow-none overflow-hidden"
           >
             <div className="flex items-center justify-between px-5 py-4 border-b border-border/60">
               <div>
@@ -218,7 +218,7 @@ export default function FinancialPage() {
             initial={{ opacity: 0, y: 15 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.3, duration: 0.4 }}
-            className="bg-card/75 backdrop-blur-md border border-border/80 rounded-2xl p-5 shadow-2xl"
+            className="bg-card border border-border rounded-xl p-5 shadow-none"
           >
             <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider block">Usuários ativos</span>
             <div className="flex items-baseline gap-2.5 mt-2">
@@ -228,11 +228,11 @@ export default function FinancialPage() {
 
             {/* Avatares sobrepostos premium */}
             <div className="flex items-center gap-1.5 mt-4">
-              <div className="flex -space-x-2 overflow-hidden text-[10px] font-black text-white">
-                <div className="inline-block h-7 w-7 rounded-full ring-2 ring-card bg-gradient-to-br from-indigo-500 to-sky-500 flex items-center justify-center">AS</div>
-                <div className="inline-block h-7 w-7 rounded-full ring-2 ring-card bg-gradient-to-br from-emerald-400 to-teal-500 flex items-center justify-center">CM</div>
-                <div className="inline-block h-7 w-7 rounded-full ring-2 ring-card bg-gradient-to-br from-rose-500 to-orange-400 flex items-center justify-center">MS</div>
-                <div className="inline-block h-7 w-7 rounded-full ring-2 ring-card bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center">FR</div>
+              <div className="flex -space-x-2 overflow-hidden text-[10px] font-bold text-foreground">
+                <div className="inline-block h-7 w-7 rounded-full ring-2 ring-card bg-slate-100 dark:bg-slate-800 flex items-center justify-center border border-border/50">AS</div>
+                <div className="inline-block h-7 w-7 rounded-full ring-2 ring-card bg-emerald-50 dark:bg-emerald-955 flex items-center justify-center border border-border/50">CM</div>
+                <div className="inline-block h-7 w-7 rounded-full ring-2 ring-card bg-amber-50 dark:bg-amber-955 flex items-center justify-center border border-border/50">MS</div>
+                <div className="inline-block h-7 w-7 rounded-full ring-2 ring-card bg-indigo-50 dark:bg-indigo-955 flex items-center justify-center border border-border/50">FR</div>
               </div>
               <span className="text-[10px] font-bold text-muted-foreground ml-1">E outros 24 ativos</span>
             </div>
@@ -243,7 +243,7 @@ export default function FinancialPage() {
             initial={{ opacity: 0, y: 15 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.35, duration: 0.4 }}
-            className="bg-card/75 backdrop-blur-md border border-border/80 rounded-2xl p-5 shadow-2xl"
+            className="bg-card border border-border rounded-xl p-5 shadow-none"
           >
             <div className="flex items-center justify-between mb-4">
               <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Roles e permissões</span>
@@ -279,7 +279,7 @@ export default function FinancialPage() {
             initial={{ opacity: 0, y: 15 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.4, duration: 0.4 }}
-            className="bg-card/75 backdrop-blur-md border border-border/80 rounded-2xl p-5 shadow-2xl flex flex-col justify-between"
+            className="bg-card border border-border rounded-xl p-5 shadow-none flex flex-col justify-between"
           >
             <div className="flex items-center justify-between mb-4">
               <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Atividade recente</span>
@@ -288,7 +288,7 @@ export default function FinancialPage() {
             <div className="space-y-4 flex-1">
               {mockActivities.map((activity) => (
                 <div key={activity.id} className="flex items-start gap-3">
-                  <div className={`w-7 h-7 rounded-full bg-gradient-to-br ${activity.color} flex items-center justify-center text-[10px] font-black text-white shadow-inner flex-shrink-0 mt-0.5`}>
+                  <div className="w-7 h-7 rounded-full bg-muted border border-border flex items-center justify-center text-[10px] font-bold text-muted-foreground flex-shrink-0 mt-0.5">
                     {activity.name.slice(0, 2)}
                   </div>
                   <div className="space-y-0.5">
