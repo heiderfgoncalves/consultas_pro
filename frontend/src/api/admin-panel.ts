@@ -314,3 +314,63 @@ export async function putAdminEndpointAccess(
     },
   );
 }
+
+export interface AdminConsultationRow {
+  id: string;
+  subjectDocument: string;
+  subjectType: string;
+  totalCost: string | number;
+  status: string;
+  createdAt: string;
+  errorMessage: string | null;
+  externalUserId: string | null;
+  company: { id: string; name: string } | null;
+  requestedByUser: { id: string; fullName: string; email: string } | null;
+  template: { id: string; name: string } | null;
+  _count: { executions: number; items: number };
+}
+
+export interface AdminConsultationDetail extends AdminConsultationRow {
+  mergedPayload: any;
+  renderPayload: any;
+  executions: {
+    id: string;
+    status: string;
+    usedCache: boolean;
+    providerCost: number | string | null;
+    statusCode: number | null;
+    errorMessage: string | null;
+    startedAt: string | null;
+    completedAt: string | null;
+    createdAt: string;
+    requestPayload: any;
+    rawResponse: any;
+    normalizedPayload: any;
+    provider: { id: string; name: string };
+    product: { id: string; name: string; code: string } | null;
+  }[];
+  items: {
+    id: string;
+    requestedCost: string | number;
+    providerProduct: {
+      id: string;
+      name: string;
+      provider: { id: string; name: string };
+    };
+  }[];
+}
+
+export async function getAdminConsultations(accessToken: string | null) {
+  return apiRequest<AdminConsultationRow[]>('/admin/consultations', {
+    method: 'GET',
+    token: tok(accessToken),
+  });
+}
+
+export async function getAdminConsultationDetail(accessToken: string | null, consultationId: string) {
+  return apiRequest<AdminConsultationDetail>(`/admin/consultations/${consultationId}`, {
+    method: 'GET',
+    token: tok(accessToken),
+  });
+}
+

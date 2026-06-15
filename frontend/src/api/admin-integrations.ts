@@ -131,10 +131,11 @@ const AUTH_MAP: Record<string, Provider['authType']> = {
   API_KEY: 'apikey',
   BASIC_AUTH: 'basic',
   CUSTOM: 'custom',
-  NONE: 'custom',
+  NONE: 'none',
 };
 
 const UI_AUTH_MAP: Record<Provider['authType'], string> = {
+  none: 'NONE',
   bearer: 'BEARER',
   apikey: 'API_KEY',
   basic: 'BASIC_AUTH',
@@ -151,7 +152,9 @@ export function authToApi(t: Provider['authType']): string {
 
 export function credentialsToPairs(creds: unknown): { key: string; value: string }[] {
   if (!creds || typeof creds !== 'object' || Array.isArray(creds)) return [{ key: '', value: '' }];
-  return Object.entries(creds as Record<string, string>).map(([key, value]) => ({ key, value: String(value) }));
+  return Object.entries(creds as Record<string, string>)
+    .filter(([key]) => key !== 'custom_variables')
+    .map(([key, value]) => ({ key, value: String(value) }));
 }
 
 export function pairsToCredentials(pairs: { key: string; value: string }[]): Record<string, string> {
@@ -236,6 +239,18 @@ export function mapCanonicalToFieldTypes(fields: ApiCanonicalField[]): Consultat
 export function mapApiProvider(p: ApiProvider): Provider {
   const balanceOp = p.operations.find((o) => o.operationType === 'BALANCE_CHECK');
   const rechargeOp = p.operations.find((o) => o.operationType === 'RECHARGE');
+
+  let custom_variables: { key: string; value: string }[] = [];
+  if (p.credentials && typeof p.credentials === 'object') {
+    const credsObj = p.credentials as any;
+    if (credsObj.custom_variables && typeof credsObj.custom_variables === 'object') {
+      custom_variables = Object.entries(credsObj.custom_variables).map(([key, value]) => ({
+        key,
+        value: String(value),
+      }));
+    }
+  }
+
   return {
     id: p.id,
     name: p.name,
@@ -244,6 +259,7 @@ export function mapApiProvider(p: ApiProvider): Provider {
     rechargeEndpoint: rechargeOp?.path ?? '',
     authType: authToUi(p.authType),
     credentials: credentialsToPairs(p.credentials),
+    custom_variables,
     status: p.isActive ? 'active' : 'inactive',
     createdAt: p.createdAt.slice(0, 10),
     balanceOperationId: balanceOp?.id,
@@ -290,6 +306,7 @@ export function mapApiProduct(p: ApiProduct, providerId: string): ProviderConsul
       typeof p.bodyTemplate === 'string'
         ? p.bodyTemplate
         : JSON.stringify(p.bodyTemplate, null, 2);
+    bodyTemplateJson = bodyTemplateJson.replace(/:\s*"(\$?\{\{[\s\S]*?\}\})"/g, ': `$1`');
   }
 
   const groupedSessionAssignments: Record<string, ProductSessionFieldAssignment[]> = {};
@@ -511,6 +528,14 @@ export async function getCanonicalFields(accessToken: string | null) {
     token: tok(accessToken),
   });
 }
+
+export async function getUserCanonicalFields(accessToken: string | null) {
+  return apiRequest<ApiCanonicalField[]>('/catalog/canonical-fields', {
+    method: 'GET',
+    token: tok(accessToken),
+  });
+}
+
 
 export async function getTestLogs(accessToken: string | null) {
   return apiRequest<ApiTestLog[]>('/admin/test-logs', { method: 'GET', token: tok(accessToken) });
