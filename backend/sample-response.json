@@ -14,7 +14,7 @@
         },
         {
           "FONTE": "136",
-          "STATUS": "1",
+          "STATUS": "0",
           "CONTEUDO": "41"
         }
       ],
@@ -120,8 +120,8 @@
       "VIZINHOS": "0",
       "AGREGADOS": "0",
       "BENEFICIO": "0",
-      "CCF_BACEN": "1",
-      "ENDERECOS": "1",
+      "CCF_BACEN": "0",
+      "ENDERECOS": "0",
       "INFOBUSCA": "0",
       "CCF_VAREJO": "0",
       "CONTUMACIA": "0",
@@ -159,8 +159,8 @@
       "LEILAO_CONJUGADO": "0",
       "OUTROS_TELEFONES": "0",
       "PENDENCIAS_REFIN": "0",
-      "SOMENTE_ENDERECO": "1",
-      "SOMENTE_TELEFONE": "1",
+      "SOMENTE_ENDERECO": "0",
+      "SOMENTE_TELEFONE": "0",
       "TELEFONE_CELULAR": "0",
       "TITULOS_A_VENCER": "0",
       "VALIDACAO_PF_CNH": "0",
@@ -178,8 +178,8 @@
       "PAGAMENTO_ATRASADO": "0",
       "PONTUALIDADE_PAGTO": "0",
       "PROCURADOS_JUSTICA": "0",
-      "PROTESTO_ANALITICO": "0",
-      "PROTESTO_SINTETICO": "1",
+      "PROTESTO_ANALITICO": "1",
+      "PROTESTO_SINTETICO": "0",
       "TELEFONE_COMERCIAL": "0",
       "CALCULO_VALORIZACAO": "0",
       "CHECK_LIST_VEICULAR": "0",
@@ -244,51 +244,50 @@
       "RELATORIO_JURIDICO_EMPRESARIAL": "0",
       "RELATORIO_JURIDICO_PESSOA_FISICA": "0",
       "PARTICIPACOES_EMPRESAS_CONSULTADAS": "0",
+      "ACOES_JUDICIAIS_HISTORICA_SINTETICA": "0",
       "PERIODO_RELACIONAMENTO_FORNECEDORES": "0",
       "PARTICIPACAO_SOCIO_ADM_OUTRAS_EMPRESAS": "0"
     },
     "INFORMACOES_RETORNO": {
-      "PDF": "https://api.sollosconsultas.com.br/tools/generate-pdf.aspx?file_code=Szf784SjPuXbsbuO3MMt%2fji4df2cev6QovfNwDhfiBQ%3d",
+      "PDF": "https://api.sollosconsultas.com.br/tools/generate-pdf.aspx?file_code=l9vx%2fcXQ7y%2bL5Pf89K%2b%2fNYjcMRxJc8M%2bfOR7TsfjDo4%3d",
       "VERSAO": "20180521",
       "CLIENTE": "HOMOLOGACAO DO SISTEMA",
       "PRODUTO": "1079-COMPLETA BRASIL + SCORE CPF",
       "ENTIDADE": "22",
       "TERMINAL": "",
       "PDF_ALERTA": "O USO DO RETORNO EM PDF DEVE SER AVALIADO COM CUIDADO. O MESMO PODE RETORNAR INFORMACOES SENSIVEIS E INESPERADAS DO SEU PROVEDOR DE CONSULTA (COMO LOGOMARCAS,MARCAS DAGUA, ETC) QUE PODEM SER ACIDENTALMENTE EXIBIDAS AO SEU CLIENTE FINAL. O RESULTADO EM PDF TAMBEM ESTA SUJEITO A ALTERACOES SEM AVISO PREVIO, POR ISSO RECOMENDAMOS SEMPRE A CRIACAO DO SEU PROPRIO LAYOUT DE EXIBICAO.",
-      "REQUISICAO": "c15e6d6563664cc9b7f8e45553ebe894/04042026185349",
-      "SOLICITANTE": "",
-      "CLIENTE_HASH": "7tQ+9M8+Wp8=",
+      "REQUISICAO": "a5eeca3ee4654343946c70ef67323dbe/26052026224815",
+      "SOLICITANTE": "41179215000107",
+      "CLIENTE_HASH": "x7CAml9c8zo=",
       "CHAVE_CONSULTA": "9999999999999",
-      "INFORM_EXTERNO": {
-        "CHAVE_EXTERNA": "3976103",
-        "ENTIDADE_EXTERNA": "42",
-        "REQUISICAO_EXTERNA": "00cb7bb2c396466f8718fbc367fe8a78/04042026185354"
-      },
       "STATUS_RETORNO": {
         "CODIGO": "1",
         "DESCRICAO": "CONSULTA CONCLUIDA COM SUCESSO"
       },
       "TEMPO_RESPOSTA": {
-        "FINAL": "1775339642,46645",
-        "INICIO": "1775339629,60694",
-        "INTERVALO": "12,859"
+        "FINAL": "1779846500,82896",
+        "INICIO": "1779846495,07892",
+        "INTERVALO": "5,75"
       },
-      "WEBHOOK_CALLBACK": "https://api.limpanome.pro//webhook/consultation-provider/sollos/callback",
+      "WEBHOOK_CALLBACK": "",
       "CONTENTS_ORIGINAIS": [
         {
+          "IERR": "1",
           "FONTE": "136",
           "CONTEUDO": "437"
         },
         {
+          "IERR": "1",
           "FONTE": "136",
           "CONTEUDO": "117"
         },
         {
+          "IERR": "1",
           "FONTE": "136",
           "CONTEUDO": "41"
         }
       ],
-      "DATA_HORA_CONSULTA": "04/04/2026 21:34"
+      "DATA_HORA_CONSULTA": "14/06/2026 21:31"
     }
   },
   "VEICULAR": {},
@@ -296,9 +295,9 @@
     "SCORES": {
       "OCORRENCIAS": [
         {
-          "RISCO": "SCORE NAO CALCULADO - INSUFICIENCIA INFORMACOES BASE DE DADOS SERASA EXPERIAN",
-          "SCORE": "30",
-          "TEXTO": "SCORE NAO CALCULADO - INSUFICIENCIA INFORMACOES BASE DE DADOS SERASA EXPERIAN",
+          "RISCO": "A CHANCE DE UM CONSUMIDOR, COM SCORE ENTRE 701 E 800, PAGAR SEUS COMPROMISSOS FINANCEIROS EM 06 MESES E DE 80,31%",
+          "SCORE": "741",
+          "TEXTO": "A CHANCE DE UM CONSUMIDOR, COM SCORE ENTRE 701 E 800, PAGAR SEUS COMPROMISSOS FINANCEIROS EM 06 MESES E DE 80,31%",
           "LAYOUT": "SCSIMPLE2020",
           "EXECUCAO": "NULO",
           "INFORMANTE": "BASE I",
@@ -308,22 +307,7 @@
           "DESCR_PLANO": "NULO",
           "DESCR_SCORE": "SCORE 6 MESES",
           "MODELO_SCORE": "",
-          "PROBABILIDADE_INADIMPLENCIA": "NAO CALCULADO"
-        },
-        {
-          "RISCO": "SCORE NAO CALCULADO - INSUFICIENCIA INFORMACOES BASE DE DADOS SERASA EXPERIAN",
-          "SCORE": "30",
-          "TEXTO": "SCORE NAO CALCULADO - INSUFICIENCIA INFORMACOES BASE DE DADOS SERASA EXPERIAN",
-          "LAYOUT": "SCSIMPLE2020",
-          "EXECUCAO": "NULO",
-          "INFORMANTE": "BASE I",
-          "TIPO_SCORE": "SCORE 6 MESES",
-          "CLASSIF_ABC": "NULO",
-          "CLASSIF_NRO": "NULO",
-          "DESCR_PLANO": "NULO",
-          "DESCR_SCORE": "SCORE 6 MESES",
-          "MODELO_SCORE": "",
-          "PROBABILIDADE_INADIMPLENCIA": "NAO CALCULADO"
+          "PROBABILIDADE_INADIMPLENCIA": "19,69%"
         }
       ],
       "STATUS_RETORNO": {
@@ -332,12 +316,20 @@
       },
       "QUANTIDADE_OCORRENCIAS": "1"
     },
-    "ENDERECO": {
-      "UF": "RS",
-      "CEP": "",
-      "BAIRRO": "CENTRO",
-      "CIDADE": "PELOTAS",
-      "ENDERECO": "PC CORONEL PEDRO OSORIO 52 AP 1101"
+    "PROTESTOS": {
+      "DATA_MAIOR": "",
+      "DATA_ULTIMO": "",
+      "VALOR_MAIOR": "",
+      "VALOR_TOTAL": "0,00",
+      "VALOR_ULTIMO": "",
+      "DATA_PRIMEIRO": "",
+      "STATUS_RETORNO": {
+        "CODIGO": "1",
+        "DESCRICAO": "CONSULTA CONCLUIDA COM SUCESSO"
+      },
+      "VALOR_PRIMEIRO": "",
+      "ULTIMO_PROTESTO": "",
+      "QUANTIDADE_OCORRENCIA": "0"
     },
     "PEND_FINANCEIRAS": {
       "DATA_MAIOR": "",
@@ -355,189 +347,35 @@
       "OCORRENCIAS": [
         {
           "MOEDA": "R$",
-          "VALOR": "231,19",
-          "CREDOR": "BANRISUL",
-          "ORIGEM": "SAO PAULO / SP - PORTO ALEGRE/RS",
-          "CONTRATO": "BBH02100062970699",
-          "ENTIDADE": "",
-          "SUBJUDICE": "",
-          "INFORMANTE": "BASE II",
-          "MODALIDADE": "",
-          "TIPO_DEVEDOR": "COMPRADOR",
-          "DATA_INCLUSAO": "30/03/2026",
-          "DATA_VENCIMENTO": "01/10/2025"
-        },
-        {
-          "MOEDA": "R$",
-          "VALOR": "630,23",
-          "CREDOR": "CREFISA",
-          "ORIGEM": "SAO PAULO / SP - SAO PAULO/SP",
-          "CONTRATO": "0000033240021171",
-          "ENTIDADE": "",
-          "SUBJUDICE": "",
-          "INFORMANTE": "BASE II",
-          "MODALIDADE": "",
-          "TIPO_DEVEDOR": "COMPRADOR",
-          "DATA_INCLUSAO": "30/03/2026",
-          "DATA_VENCIMENTO": "01/09/2021"
-        },
-        {
-          "MOEDA": "R$",
-          "VALOR": "13097,76",
-          "CREDOR": "CREFISA",
-          "ORIGEM": "SAO PAULO / SP - SAO PAULO/SP",
-          "CONTRATO": "0000033240021463",
-          "ENTIDADE": "",
-          "SUBJUDICE": "",
-          "INFORMANTE": "BASE II",
-          "MODALIDADE": "",
-          "TIPO_DEVEDOR": "COMPRADOR",
-          "DATA_INCLUSAO": "30/03/2026",
-          "DATA_VENCIMENTO": "01/06/2021"
-        },
-        {
-          "MOEDA": "R$",
-          "VALOR": "683,13",
-          "CREDOR": "FIDC IPANEMA VI",
-          "ORIGEM": "SAO PAULO / SP - SAO PAULO/SP",
-          "CONTRATO": "603475599979839",
-          "ENTIDADE": "",
-          "SUBJUDICE": "",
-          "INFORMANTE": "BASE II",
-          "MODALIDADE": "",
-          "TIPO_DEVEDOR": "COMPRADOR",
-          "DATA_INCLUSAO": "30/03/2026",
-          "DATA_VENCIMENTO": "24/05/2021"
-        },
-        {
-          "MOEDA": "R$",
-          "VALOR": "235,04",
-          "CREDOR": "BANRISUL",
-          "ORIGEM": "SAO PAULO / SP - PORTO ALEGRE/RS",
-          "CONTRATO": "BBH02100049991283",
-          "ENTIDADE": "",
-          "SUBJUDICE": "",
-          "INFORMANTE": "BASE II",
-          "MODALIDADE": "",
-          "TIPO_DEVEDOR": "COMPRADOR",
-          "DATA_INCLUSAO": "30/03/2026",
-          "DATA_VENCIMENTO": "10/05/2021"
-        },
-        {
-          "MOEDA": "R$",
-          "VALOR": "231,19",
-          "CREDOR": "BANRISUL",
-          "ORIGEM": "- PORTO ALEGRE/RS",
-          "CONTRATO": "BBH02100062970699",
-          "ENTIDADE": "",
-          "SUBJUDICE": "",
-          "INFORMANTE": "BASE I",
-          "MODALIDADE": "",
-          "TIPO_DEVEDOR": "COMPRADOR",
-          "DATA_INCLUSAO": "30/03/2026",
-          "DATA_VENCIMENTO": "01/10/2025"
-        },
-        {
-          "MOEDA": "R$",
-          "VALOR": "630,23",
-          "CREDOR": "CREFISA",
-          "ORIGEM": "- SAO PAULO/SP",
-          "CONTRATO": "0000033240021171",
-          "ENTIDADE": "",
-          "SUBJUDICE": "",
-          "INFORMANTE": "BASE I",
-          "MODALIDADE": "",
-          "TIPO_DEVEDOR": "COMPRADOR",
-          "DATA_INCLUSAO": "30/03/2026",
-          "DATA_VENCIMENTO": "01/09/2021"
-        },
-        {
-          "MOEDA": "R$",
-          "VALOR": "13097,76",
-          "CREDOR": "CREFISA",
-          "ORIGEM": "- SAO PAULO/SP",
-          "CONTRATO": "0000033240021463",
-          "ENTIDADE": "",
-          "SUBJUDICE": "",
-          "INFORMANTE": "BASE I",
-          "MODALIDADE": "",
-          "TIPO_DEVEDOR": "COMPRADOR",
-          "DATA_INCLUSAO": "30/03/2026",
-          "DATA_VENCIMENTO": "01/06/2021"
-        },
-        {
-          "MOEDA": "R$",
-          "VALOR": "683,13",
-          "CREDOR": "FIDC IPANEMA VI",
-          "ORIGEM": "- SAO PAULO/SP",
-          "CONTRATO": "603475599979839",
-          "ENTIDADE": "",
-          "SUBJUDICE": "",
-          "INFORMANTE": "BASE I",
-          "MODALIDADE": "",
-          "TIPO_DEVEDOR": "COMPRADOR",
-          "DATA_INCLUSAO": "30/03/2026",
-          "DATA_VENCIMENTO": "24/05/2021"
-        },
-        {
-          "MOEDA": "R$",
-          "VALOR": "235,04",
-          "CREDOR": "BANRISUL",
-          "ORIGEM": "- PORTO ALEGRE/RS",
-          "CONTRATO": "BBH02100049991283",
-          "ENTIDADE": "",
-          "SUBJUDICE": "",
-          "INFORMANTE": "BASE I",
-          "MODALIDADE": "",
-          "TIPO_DEVEDOR": "COMPRADOR",
-          "DATA_INCLUSAO": "30/03/2026",
-          "DATA_VENCIMENTO": "10/05/2021"
-        },
-        {
-          "MOEDA": "R$",
-          "VALOR": "R$ 79.591,37",
-          "CREDOR": "BANCO SANTANDER S/A",
+          "VALOR": "R$ 193,66",
+          "CREDOR": "NU FINANCEIRA S/A",
           "ORIGEM": "SCPC SAO PAULO - SP",
-          "CONTRATO": "UG114532000031687032",
+          "CONTRATO": "85AC0353C8672795",
           "ENTIDADE": "",
           "SUBJUDICE": "",
           "INFORMANTE": "BASE III",
           "MODALIDADE": "RG-REGISTRADO",
           "TIPO_DEVEDOR": "COMPRADOR",
-          "DATA_INCLUSAO": "19/01/2026",
-          "DATA_VENCIMENTO": "25/12/2025"
+          "DATA_INCLUSAO": "13/10/2024",
+          "DATA_VENCIMENTO": "03/09/2024"
         },
         {
           "MOEDA": "R$",
-          "VALOR": "R$ 630,23",
-          "CREDOR": "CREFISA S/A.CRED.FINANC.INVESTIMENTO",
+          "VALOR": "R$ 1.578,67",
+          "CREDOR": "PROLAGOS S/A",
           "ORIGEM": "SCPC SAO PAULO - SP",
-          "CONTRATO": "0000000000033240021171",
+          "CONTRATO": "0000000036475780",
           "ENTIDADE": "",
           "SUBJUDICE": "",
           "INFORMANTE": "BASE III",
-          "MODALIDADE": "RG-REGISTRADO",
+          "MODALIDADE": "OJ-OUTRAS ATIVIDADES ECONOMICAS",
           "TIPO_DEVEDOR": "COMPRADOR",
-          "DATA_INCLUSAO": "19/01/2026",
-          "DATA_VENCIMENTO": "25/12/2025"
-        },
-        {
-          "MOEDA": "R$",
-          "VALOR": "R$ 13.097,76",
-          "CREDOR": "CREFISA S/A.CRED.FINANC.INVESTIMENTO",
-          "ORIGEM": "SCPC SAO PAULO - SP",
-          "CONTRATO": "0000000000033240021463",
-          "ENTIDADE": "",
-          "SUBJUDICE": "",
-          "INFORMANTE": "BASE III",
-          "MODALIDADE": "RG-REGISTRADO",
-          "TIPO_DEVEDOR": "COMPRADOR",
-          "DATA_INCLUSAO": "19/01/2026",
-          "DATA_VENCIMENTO": "25/12/2025"
+          "DATA_INCLUSAO": "13/10/2024",
+          "DATA_VENCIMENTO": "03/09/2024"
         }
       ],
       "VALOR_MAIOR": "",
-      "VALOR_TOTAL": "123074,06",
+      "VALOR_TOTAL": "1772,33",
       "DATA_PRIMEIRO": "",
       "PERIODO_FINAL": "",
       "STATUS_RETORNO": {
@@ -547,172 +385,50 @@
       "TOTAL_CREDORES": "",
       "VALOR_PRIMEIRO": "",
       "PERIODO_INICIAL": "",
-      "ULTIMO_VENCIMENTO": "30/03/2026",
-      "QUANTIDADE_OCORRENCIA": "13"
-    },
-    "SOMENTE_ENDERECO": {
-      "STATUS_RETORNO": {
-        "CODIGO": "1",
-        "DESCRICAO": "CONSULTA CONCLUIDA COM SUCESSO"
-      },
-      "REGISTRO_LOCALIZADO": "0"
-    },
-    "SOMENTE_TELEFONE": {
-      "DADOS": [
-        {
-          "DDD": "54",
-          "DOCUMENTO": "",
-          "PONTUACAO": "",
-          "TIPO_PESSOA": "",
-          "NUM_TELEFONE": "91457878",
-          "TIPO_TELEFONE": "RESIDENCIAL",
-          "COD_IDENTIFICADAO_TELEFONE": ""
-        },
-        {
-          "DDD": "53",
-          "DOCUMENTO": "",
-          "PONTUACAO": "",
-          "TIPO_PESSOA": "",
-          "NUM_TELEFONE": "984661011",
-          "TIPO_TELEFONE": "MOVEL",
-          "COD_IDENTIFICADAO_TELEFONE": ""
-        }
-      ],
-      "STATUS_RETORNO": {
-        "CODIGO": "1",
-        "DESCRICAO": "CONSULTA CONCLUIDA COM SUCESSO"
-      },
-      "REGISTRO_LOCALIZADO": "1"
-    },
-    "PROTESTO_SINTETICO": {
-      "OCORRENCIAS": [
-        {
-          "UF": "RS",
-          "VALOR": "8567,96",
-          "CREDOR": "",
-          "CEDENTE": "",
-          "COMARCA": "PELOTAS",
-          "ANUENCIA": "NAO POSSUI",
-          "CARTORIO": "01-ROCHA BRITO SERVICO NOTARIAL E REGISTRAL",
-          "ENDERECO": "RUA ALMIRANTE BARROSO, 1292",
-          "TELEFONE": "5330261500",
-          "VALOR_CUSTAS": "0,00",
-          "INFO_CARTORIOS": "",
-          "DATA_OCORRENCIA": "NAO DIVULGADO",
-          "DATA_ATUALIZACAO": "NAO DIVULGADO"
-        },
-        {
-          "UF": "RS",
-          "VALOR": "1066,91",
-          "CREDOR": "",
-          "CEDENTE": "",
-          "COMARCA": "PELOTAS",
-          "ANUENCIA": "NAO POSSUI",
-          "CARTORIO": "02-TABELIONATO DE PROTESTO DE TITULOS DE PELOTAS",
-          "ENDERECO": "AV. DOM JOAQUIM, 1515 SALA 909",
-          "TELEFONE": "5331998709",
-          "VALOR_CUSTAS": "0,00",
-          "INFO_CARTORIOS": "",
-          "DATA_OCORRENCIA": "NAO DIVULGADO",
-          "DATA_ATUALIZACAO": "NAO DIVULGADO"
-        },
-        {
-          "UF": "RS",
-          "VALOR": "2832,21",
-          "CREDOR": "",
-          "CEDENTE": "",
-          "COMARCA": "PELOTAS",
-          "ANUENCIA": "NAO POSSUI",
-          "CARTORIO": "02-TABELIONATO DE PROTESTO DE TITULOS DE PELOTAS",
-          "ENDERECO": "AV. DOM JOAQUIM, 1515 SALA 909",
-          "TELEFONE": "5331998709",
-          "VALOR_CUSTAS": "0,00",
-          "INFO_CARTORIOS": "",
-          "DATA_OCORRENCIA": "NAO DIVULGADO",
-          "DATA_ATUALIZACAO": "NAO DIVULGADO"
-        },
-        {
-          "UF": "RS",
-          "VALOR": "46903,93",
-          "CREDOR": "",
-          "CEDENTE": "",
-          "COMARCA": "PELOTAS",
-          "ANUENCIA": "NAO POSSUI",
-          "CARTORIO": "02-TABELIONATO DE PROTESTO DE TITULOS DE PELOTAS",
-          "ENDERECO": "AV. DOM JOAQUIM, 1515 SALA 909",
-          "TELEFONE": "5331998709",
-          "VALOR_CUSTAS": "0,00",
-          "INFO_CARTORIOS": "",
-          "DATA_OCORRENCIA": "NAO DIVULGADO",
-          "DATA_ATUALIZACAO": "NAO DIVULGADO"
-        }
-      ],
-      "VALOR_TOTAL": "0",
-      "STATUS_RETORNO": {
-        "CODIGO": "1",
-        "DESCRICAO": "CONSULTA CONCLUIDA COM SUCESSO"
-      },
-      "ULTIMO_PROTESTO": "",
-      "QUANTIDADE_OCORRENCIA": "4"
-    },
-    "CH_SEM_FUNDOS_BACEN": {
-      "CPFCNPJ": "",
-      "CORRENTISTA": "",
-      "TIPO_PESSOA": "",
-      "STATUS_RETORNO": {
-        "CODIGO": "1",
-        "DESCRICAO": "CONSULTA CONCLUIDA COM SUCESSO"
-      },
-      "QUANTIDADE_OCORRENCIA": "0"
+      "ULTIMO_VENCIMENTO": "NAO INFORMADO",
+      "QUANTIDADE_OCORRENCIA": "2"
     },
     "PASSAGENS_COMERCIAIS": {
       "OCORRENCIAS": [
         {
-          "DATA_CONSULTA": "31/03/2026",
-          "HORA_CONSULTA": "",
-          "CLIENTE_CONSULTA": "CONSORCIO NACIONAL EMBRACOM LTDA",
-          "TELEFONE_CLIENTE": "",
-          "CIDADE_UF_CLIENTE": ""
-        },
-        {
-          "DATA_CONSULTA": "09/03/2026",
-          "HORA_CONSULTA": "",
-          "CLIENTE_CONSULTA": "CAIXA ECONOMICA FEDERAL",
-          "TELEFONE_CLIENTE": "",
-          "CIDADE_UF_CLIENTE": ""
-        },
-        {
-          "DATA_CONSULTA": "06/03/2026",
-          "HORA_CONSULTA": "",
-          "CLIENTE_CONSULTA": "QUEROQUERO VERDECARD INST DE PAGAMEN",
-          "TELEFONE_CLIENTE": "",
-          "CIDADE_UF_CLIENTE": ""
-        },
-        {
-          "DATA_CONSULTA": "06/03/2026",
-          "HORA_CONSULTA": "",
-          "CLIENTE_CONSULTA": "CASA DO MICROCREDITO",
-          "TELEFONE_CLIENTE": "",
-          "CIDADE_UF_CLIENTE": ""
-        },
-        {
-          "DATA_CONSULTA": "22/01/2026",
+          "DATA_CONSULTA": "18/05/2026",
           "HORA_CONSULTA": "",
           "CLIENTE_CONSULTA": "SP-SNE/ANALISE DE CREDITO",
           "TELEFONE_CLIENTE": "",
           "CIDADE_UF_CLIENTE": ""
         },
         {
-          "DATA_CONSULTA": "07/01/2026",
+          "DATA_CONSULTA": "15/05/2026",
           "HORA_CONSULTA": "",
-          "CLIENTE_CONSULTA": "JUVO BRASIL TECNOLOGIA LTDA",
+          "CLIENTE_CONSULTA": "TIM S A",
           "TELEFONE_CLIENTE": "",
           "CIDADE_UF_CLIENTE": ""
         },
         {
-          "DATA_CONSULTA": "06/01/2026",
+          "DATA_CONSULTA": "14/05/2026",
           "HORA_CONSULTA": "",
-          "CLIENTE_CONSULTA": "BRASCON #M",
+          "CLIENTE_CONSULTA": "NOVERDE TECNOLOGIA PAGAMENTOS S/A",
+          "TELEFONE_CLIENTE": "",
+          "CIDADE_UF_CLIENTE": ""
+        },
+        {
+          "DATA_CONSULTA": "15/04/2026",
+          "HORA_CONSULTA": "",
+          "CLIENTE_CONSULTA": "TIM S A",
+          "TELEFONE_CLIENTE": "",
+          "CIDADE_UF_CLIENTE": ""
+        },
+        {
+          "DATA_CONSULTA": "02/04/2026",
+          "HORA_CONSULTA": "",
+          "CLIENTE_CONSULTA": "SP-SNE/ANALISE DE CREDITO",
+          "TELEFONE_CLIENTE": "",
+          "CIDADE_UF_CLIENTE": ""
+        },
+        {
+          "DATA_CONSULTA": "15/03/2026",
+          "HORA_CONSULTA": "",
+          "CLIENTE_CONSULTA": "TIM S A",
           "TELEFONE_CLIENTE": "",
           "CIDADE_UF_CLIENTE": ""
         }
@@ -721,12 +437,12 @@
         "CODIGO": "1",
         "DESCRICAO": "CONSULTA CONCLUIDA COM SUCESSO"
       },
-      "QUANTIDADE_OCORRENCIA": "7"
+      "QUANTIDADE_OCORRENCIA": "6"
     },
     "DADOS_RECEITA_FEDERAL": {
       "NOME": "NOME (DEMONSTRACAO)",
-      "SEXO": "FEMININO",
-      "EMAIL": "ROSANAMENDES2020@GMAIL.COM",
+      "SEXO": "",
+      "EMAIL": "",
       "NOME_MAE": "NOME DA MAE (DEMONSTRACAO)",
       "TIPO_PESSOA": "FISICA",
       "RAZAO_SOCIAL": "",
@@ -734,10 +450,10 @@
         "CODIGO": "1",
         "DESCRICAO": "CONSULTA CONCLUIDA COM SUCESSO"
       },
-      "DATA_ATUALIZACAO": "02/04/2026",
-      "SITUACAO_RECEITA": "REGULAR",
+      "DATA_ATUALIZACAO": "",
+      "SITUACAO_RECEITA": "",
       "NATUREZA_JURIDICA": "",
-      "DATA_NASCIMENTO_FUNDACAO": "09/11/1959",
+      "DATA_NASCIMENTO_FUNDACAO": "26/01/1982",
       "ATIVIDADE_ECONOMICA_PRINCIPAL": ""
     }
   }
