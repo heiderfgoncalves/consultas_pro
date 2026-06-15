@@ -7,6 +7,7 @@ import { env } from '../config/env';
 import { callProviderProduct } from '../modules/providers/provider-client.service';
 import { normalizeProviderPayload } from '../modules/providers/normalization.service';
 import { mergeNormalizedPayloads } from '../modules/providers/merge.service';
+import { buildCanonicalRenderPayload } from '../modules/providers/canonical-builder.service';
 import {
   applyProductOverrides,
   computeRetryDelayMs,
@@ -173,12 +174,57 @@ async function processConsultation(consultationId: string) {
         : 'Todas as execuções falharam';
   }
 
+  let renderPayload = mergedPayload;
+
+  try {
+    const products = consultation.items.map((item) => {
+      const p = item.providerProduct;
+      return {
+        id: p.id,
+        typeItemFilters: p.typeItemFilters,
+        mappings: p.mappings.map((m) => ({
+          isActive: m.isActive,
+          sourcePath: m.sourcePath,
+          canonicalField: {
+            pathKey: m.canonicalField.pathKey,
+            label: m.canonicalField.label,
+            dataType: m.canonicalField.dataType,
+          },
+        })),
+      };
+    });
+
+    const dbExecutions = await prisma.consultationExecution.findMany({
+      where: {
+        consultationId: consultation.id,
+        status: 'SUCCESS',
+      },
+      select: {
+        productId: true,
+        rawResponse: true,
+      },
+    });
+
+    const executions = dbExecutions
+      .filter((exec) => exec.productId !== null)
+      .map((exec) => ({
+        productId: exec.productId as string,
+        rawResponse: exec.rawResponse as unknown,
+      }));
+
+    if (executions.length > 0) {
+      renderPayload = await buildCanonicalRenderPayload(executions, products);
+    }
+  } catch (error) {
+    logger.error({ consultationId: consultation.id, error }, 'failed_to_build_canonical_render_payload');
+  }
+
   await prisma.consultation.update({
     where: { id: consultation.id },
     data: {
       status,
       mergedPayload: mergedPayload as never,
-      renderPayload: mergedPayload as never,
+      renderPayload: renderPayload as never,
       completedAt: new Date(),
       errorMessage: finalError,
     },
