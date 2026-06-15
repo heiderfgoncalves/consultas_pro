@@ -5,7 +5,8 @@ export function renderTemplateObject<T = unknown>(input: T, context: Record<stri
   if (input === null || input === undefined) return input;
 
   if (typeof input === 'string') {
-    return Mustache.render(input, context) as T;
+    const cleanedInput = input.replace(/\$\{\{document\}\}/g, '{{document}}');
+    return Mustache.render(cleanedInput, context) as T;
   }
 
   if (Array.isArray(input)) {
