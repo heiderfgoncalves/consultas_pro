@@ -1177,4 +1177,65 @@ export async function registerAdminRoutes(app: FastifyInstance) {
 
     return ok(reply, updated, 201);
   });
+
+  app.get('/admin/consultations', adminOnly, async (_request, reply) => {
+    const consultations = await app.prisma.consultation.findMany({
+      select: {
+        id: true,
+        subjectDocument: true,
+        subjectType: true,
+        totalCost: true,
+        status: true,
+        createdAt: true,
+        errorMessage: true,
+        externalUserId: true,
+        company: { select: { id: true, name: true } },
+        requestedByUser: { select: { id: true, fullName: true, email: true } },
+        template: { select: { id: true, name: true } },
+        _count: { select: { executions: true, items: true } }
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 100,
+    });
+    return ok(reply, consultations);
+  });
+
+  app.get('/admin/consultations/:id', adminOnly, async (request, reply) => {
+    const params = request.params as { id: string };
+    const consultation = await app.prisma.consultation.findUnique({
+      where: { id: params.id },
+      include: {
+        requestedByUser: { select: { id: true, fullName: true, email: true } },
+        company: { select: { id: true, name: true } },
+        template: { select: { id: true, name: true } },
+        executions: {
+          include: {
+            provider: { select: { id: true, name: true } },
+            product: {
+              include: {
+                mappings: {
+                  include: {
+                    canonicalField: true
+                  }
+                }
+              }
+            }
+          }
+        },
+        items: {
+          include: {
+            providerProduct: {
+              include: { provider: true }
+            }
+          }
+        }
+      }
+    });
+
+    if (!consultation) {
+      return reply.status(404).send({ success: false, error: { code: 'NOT_FOUND', message: 'Consulta não encontrada' } });
+    }
+
+    return ok(reply, consultation);
+  });
 }

@@ -30,6 +30,7 @@ export async function registerConsultationRoutes(app: FastifyInstance) {
         ? { companyId: request.authUser.companyId }
         : { requestedByUserId: request.authUser!.userId },
       include: {
+        template: { select: { id: true, name: true } },
         items: {
           include: {
             providerProduct: {
@@ -64,19 +65,48 @@ export async function registerConsultationRoutes(app: FastifyInstance) {
     const consultation = await app.prisma.consultation.findUnique({
       where: { id: params.id },
       include: {
+        template: { select: { id: true, name: true, layout: true, logo: true } },
         items: {
+          orderBy: { sortOrder: 'asc' },
           include: {
             providerProduct: {
-              include: { provider: true, consultationType: true },
+              include: {
+                provider: true,
+                consultationType: true,
+              },
             },
           },
         },
-        executions: true,
+        executions: {
+          select: {
+            id: true,
+            status: true,
+            errorMessage: true,
+            normalizedPayload: true,
+            rawResponse: true,
+            startedAt: true,
+            completedAt: true,
+            providerCost: true,
+            statusCode: true,
+            product: { select: { id: true, name: true, code: true } },
+            provider: { select: { id: true, name: true, slug: true } },
+          },
+        },
       },
     });
 
     return ok(reply, consultation);
   });
+
+  app.get('/catalog/canonical-fields', {
+    preHandler: [authenticate, requireEndpointAccess('api.consultations.list')],
+  }, async (_request, reply) => {
+    const fields = await app.prisma.canonicalFieldCatalog.findMany({
+      orderBy: { pathKey: 'asc' },
+    });
+    return ok(reply, fields);
+  });
+
 
   app.get('/widget.js', async (_request, reply) => {
     const fs = require('fs');

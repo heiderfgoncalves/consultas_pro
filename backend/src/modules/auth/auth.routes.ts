@@ -9,6 +9,7 @@ import {
   login,
   registerCompanyOwner,
   registerStandaloneUser,
+  sanitizeUser,
 } from './auth.service';
 import { sha256 } from '../../lib/hash';
 
@@ -93,7 +94,16 @@ export async function registerAuthRoutes(app: FastifyInstance) {
   });
 
   app.get('/auth/me', { preHandler: [authenticate] }, async (request, reply) => {
-    return ok(reply, request.authUser);
+    if (!request.authUser?.userId) {
+      return reply.status(401).send({ success: false, error: { code: 'UNAUTHORIZED', message: 'Não autenticado' } });
+    }
+    const user = await app.prisma.user.findUnique({
+      where: { id: request.authUser.userId },
+    });
+    if (!user) {
+      return reply.status(401).send({ success: false, error: { code: 'UNAUTHORIZED', message: 'Usuário não encontrado' } });
+    }
+    return ok(reply, sanitizeUser(user));
   });
 
   app.post('/auth/invite/preview', async (request, reply) => {
