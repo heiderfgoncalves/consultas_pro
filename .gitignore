@@ -35,3 +35,10 @@ frontend/debug*.ts
 
 # Backups and zips in stand-alone
 consultas-pro-lp-stand-alone/*.zip
+
+# Temporary and local scratch files
+backend/src/check_db.ts
+backend/src/scratch_check.ts
+docs/database/*.dump
+docs/Consultas PRO*
+
