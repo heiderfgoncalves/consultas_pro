@@ -56,6 +56,7 @@ interface AuthState {
   logout: () => void;
   switchProfile: (level: AccessLevel) => void;
   hydrate: () => Promise<void>;
+  refreshBalance: () => Promise<void>;
 }
 
 const previewProfiles: Record<Exclude<AccessLevel, 0>, Omit<User, 'backendRole'>> = {
@@ -173,6 +174,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       previewAccessLevel: session.role === 'PLATFORM_ADMIN' ? preview : roleToAccessLevel(session.role),
       user: buildUser(session, session.role === 'PLATFORM_ADMIN' ? preview : 0),
     });
+
+    await get().refreshBalance();
   },
 
   logout: () => {
@@ -223,10 +226,15 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     }
 
     try {
-      await apiRequest<unknown>('/auth/me', {
+      const updatedUser = await apiRequest<SessionUser>('/auth/me', {
         method: 'GET',
         token,
       });
+      session = {
+        ...updatedUser,
+        role: updatedUser.role as BackendRole,
+      };
+      setStoredUserJson(JSON.stringify(session));
     } catch (e) {
       if (e instanceof ApiError && (e.status === 401 || e.status === 403)) {
         get().logout();
@@ -248,6 +256,27 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       previewAccessLevel: session.role === 'PLATFORM_ADMIN' ? preview : roleToAccessLevel(session.role),
       user: buildUser(session, session.role === 'PLATFORM_ADMIN' ? preview : 0),
     });
+
+    await get().refreshBalance();
+  },
+
+  refreshBalance: async () => {
+    const { user, accessToken } = get();
+    if (!user || !accessToken) return;
+    try {
+      const data = await apiRequest<{ balance: number | string; ledgerEnabled: boolean }>('/finance/me/balance', {
+        method: 'GET',
+        token: accessToken,
+      });
+      set({
+        user: {
+          ...user,
+          balance: typeof data.balance === 'string' ? parseFloat(data.balance) : data.balance,
+        },
+      });
+    } catch (error) {
+      console.error('Erro ao atualizar saldo:', error);
+    }
   },
 }));
 
