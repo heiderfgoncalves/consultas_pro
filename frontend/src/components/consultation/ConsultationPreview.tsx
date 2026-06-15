@@ -201,7 +201,7 @@ export default function ConsultationPreview({
   const [htmlOutput, setHtmlOutput] = React.useState<string | null>(null);
   const { resolvedTheme } = useTheme();
   const isDark = resolvedTheme === 'dark';
-  const [zoom, setZoom] = React.useState<number>(1.1);
+  const [zoom, setZoom] = React.useState<number>(1.0);
 
   const handleZoomIn = () => setZoom(prev => Math.min(2.0, Number((prev + 0.1).toFixed(2))));
   const handleZoomOut = () => setZoom(prev => Math.max(0.5, Number((prev - 0.1).toFixed(2))));

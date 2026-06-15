@@ -1,4 +1,5 @@
 import { motion, useScroll, useTransform } from "framer-motion";
+import { useTheme } from "@/hooks/use-theme";
 
 /**
  * Global animated background.
@@ -6,6 +7,9 @@ import { motion, useScroll, useTransform } from "framer-motion";
  * Bottom: progressively denser tech grid + scanlines as user scrolls.
  */
 export function BackgroundFX() {
+  const { theme, resolvedTheme } = useTheme();
+  const isDark = resolvedTheme === "dark" || theme === "dark";
+
   const { scrollYProgress } = useScroll();
   // Institutional → Tech transition
   const gridOpacity = useTransform(scrollYProgress, [0, 0.35, 1], [0.04, 0.12, 0.22]);
@@ -18,8 +22,9 @@ export function BackgroundFX() {
       <div
         className="absolute inset-0"
         style={{
-          background:
-            "radial-gradient(120% 80% at 50% -10%, oklch(0.22 0.06 256 / 0.65) 0%, transparent 55%), radial-gradient(80% 60% at 100% 110%, oklch(0.2 0.08 250 / 0.45) 0%, transparent 60%), var(--color-background)",
+          background: isDark
+            ? "radial-gradient(120% 80% at 50% -10%, oklch(0.22 0.06 256 / 0.65) 0%, transparent 55%), radial-gradient(80% 60% at 100% 110%, oklch(0.2 0.08 250 / 0.45) 0%, transparent 60%), var(--color-background)"
+            : "radial-gradient(120% 80% at 50% -10%, oklch(0.94 0.03 250 / 0.4) 0%, transparent 55%), radial-gradient(80% 60% at 100% 110%, oklch(0.96 0.02 250 / 0.3) 0%, transparent 60%), var(--color-background)",
         }}
       />
 
@@ -33,8 +38,9 @@ export function BackgroundFX() {
             left: "50%",
             top: "-300px",
             x: "-50%",
-            background:
-              "radial-gradient(circle, oklch(0.7 0.18 250 / 0.45) 0%, transparent 65%)",
+            background: isDark
+              ? "radial-gradient(circle, oklch(0.7 0.18 250 / 0.45) 0%, transparent 65%)"
+              : "radial-gradient(circle, oklch(0.93 0.04 250 / 0.45) 0%, transparent 65%)",
             filter: "blur(80px)",
           }}
           animate={{ y: [0, 30, 0], scale: [1, 1.06, 1] }}
@@ -47,8 +53,9 @@ export function BackgroundFX() {
             height: 600,
             right: "-150px",
             top: "20%",
-            background:
-              "radial-gradient(circle, oklch(0.75 0.16 235 / 0.35) 0%, transparent 65%)",
+            background: isDark
+              ? "radial-gradient(circle, oklch(0.75 0.16 235 / 0.35) 0%, transparent 65%)"
+              : "radial-gradient(circle, oklch(0.94 0.04 235 / 0.35) 0%, transparent 65%)",
             filter: "blur(90px)",
           }}
           animate={{ y: [0, -40, 0], x: [0, -20, 0] }}
@@ -61,8 +68,9 @@ export function BackgroundFX() {
             height: 500,
             left: "-120px",
             top: "55%",
-            background:
-              "radial-gradient(circle, oklch(0.65 0.2 265 / 0.32) 0%, transparent 65%)",
+            background: isDark
+              ? "radial-gradient(circle, oklch(0.65 0.2 265 / 0.32) 0%, transparent 65%)"
+              : "radial-gradient(circle, oklch(0.92 0.04 265 / 0.32) 0%, transparent 65%)",
             filter: "blur(90px)",
           }}
           animate={{ y: [0, 30, 0], x: [0, 20, 0] }}
@@ -75,8 +83,9 @@ export function BackgroundFX() {
         className="absolute inset-0"
         style={{
           opacity: gridOpacity,
-          backgroundImage:
-            "linear-gradient(to right, oklch(1 0 0 / 0.5) 1px, transparent 1px), linear-gradient(to bottom, oklch(1 0 0 / 0.5) 1px, transparent 1px)",
+          backgroundImage: isDark
+            ? "linear-gradient(to right, oklch(1 0 0 / 0.5) 1px, transparent 1px), linear-gradient(to bottom, oklch(1 0 0 / 0.5) 1px, transparent 1px)"
+            : "linear-gradient(to right, oklch(0 0 0 / 0.05) 1px, transparent 1px), linear-gradient(to bottom, oklch(0 0 0 / 0.05) 1px, transparent 1px)",
           backgroundSize: "56px 56px",
           maskImage:
             "radial-gradient(ellipse 80% 60% at 50% 50%, black 40%, transparent 90%)",
@@ -90,8 +99,9 @@ export function BackgroundFX() {
         className="absolute inset-0"
         style={{
           opacity: scanlineOpacity,
-          backgroundImage:
-            "repeating-linear-gradient(0deg, oklch(1 0 0 / 0.06) 0px, oklch(1 0 0 / 0.06) 1px, transparent 1px, transparent 3px)",
+          backgroundImage: isDark
+            ? "repeating-linear-gradient(0deg, oklch(1 0 0 / 0.06) 0px, oklch(1 0 0 / 0.06) 1px, transparent 1px, transparent 3px)"
+            : "repeating-linear-gradient(0deg, oklch(0 0 0 / 0.035) 0px, oklch(0 0 0 / 0.035) 1px, transparent 1px, transparent 3px)",
         }}
       />
 

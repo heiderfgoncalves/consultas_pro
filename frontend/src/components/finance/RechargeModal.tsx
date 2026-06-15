@@ -1,18 +1,19 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Wallet, CreditCard, QrCode, CheckCircle } from 'lucide-react';
+import { Wallet, CreditCard, QrCode, CheckCircle, Shield } from 'lucide-react';
 import { useAuthStore } from '@/stores/authStore';
 import { useRechargeModalStore } from '@/stores/rechargeModalStore';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { apiRequest } from '@/lib/api';
 
 const quickAmounts = [50, 100, 200, 500];
 
 export default function RechargeModal() {
   const navigate = useNavigate();
-  const { user } = useAuthStore();
+  const { user, sessionUser, refreshBalance } = useAuthStore();
   const open = useRechargeModalStore((s) => s.open);
   const setOpen = useRechargeModalStore((s) => s.setOpen);
 
@@ -20,6 +21,11 @@ export default function RechargeModal() {
   const [customAmount, setCustomAmount] = useState('');
   const [method, setMethod] = useState<'pix' | 'card'>('pix');
   const [step, setStep] = useState<'select' | 'success'>('select');
+  const [activeTab, setActiveTab] = useState<'payment' | 'admin'>('payment');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [adminDescription, setAdminDescription] = useState('Recarga administrativa (cortesia)');
+  const [successViaAdmin, setSuccessViaAdmin] = useState(false);
 
   const finalAmount = customAmount ? parseFloat(customAmount) : amount;
 
@@ -29,8 +35,42 @@ export default function RechargeModal() {
       setAmount(100);
       setCustomAmount('');
       setMethod('pix');
+      setActiveTab('payment');
+      setLoading(false);
+      setError(null);
+      setAdminDescription('Recarga administrativa (cortesia)');
+      setSuccessViaAdmin(false);
     }
   }, [open]);
+
+  const handleAdminRecharge = async () => {
+    if (!sessionUser?.companyId) {
+      setError('Sua conta de administrador não possui uma empresa associada no banco.');
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      await apiRequest(`/admin/companies/${sessionUser.companyId}/credit`, {
+        method: 'POST',
+        body: JSON.stringify({
+          amount: finalAmount,
+          description: adminDescription,
+        }),
+      });
+
+      await refreshBalance();
+      setSuccessViaAdmin(true);
+      setStep('success');
+    } catch (err: any) {
+      console.error(err);
+      setError(err?.message || 'Falha ao processar recarga administrativa.');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -44,7 +84,7 @@ export default function RechargeModal() {
               <h2 className="text-xl font-bold text-foreground mb-2">Recarga realizada</h2>
               <p className="text-sm text-muted-foreground mb-6">
                 R$ {finalAmount.toFixed(2)} foram adicionados ao seu saldo via{' '}
-                {method === 'pix' ? 'PIX' : 'cartão de crédito'}.
+                {successViaAdmin ? 'crédito administrativo (grátis)' : method === 'pix' ? 'PIX' : 'cartão de crédito'}.
               </p>
               <div className="flex flex-col sm:flex-row gap-2 justify-center">
                 <Button variant="outline" onClick={() => setOpen(false)} className="w-full sm:w-auto">
@@ -75,99 +115,206 @@ export default function RechargeModal() {
               </div>
             </DialogHeader>
 
+            {user?.backendRole === 'PLATFORM_ADMIN' && (
+              <div className="flex border-b border-border bg-muted/20 px-6">
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('payment')}
+                  className={`flex-1 py-3 text-sm font-semibold border-b-2 transition-all ${
+                    activeTab === 'payment'
+                      ? 'border-primary text-primary'
+                      : 'border-transparent text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  Pagamento
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('admin')}
+                  className={`flex-1 py-3 text-sm font-semibold border-b-2 transition-all flex items-center justify-center gap-2 ${
+                    activeTab === 'admin'
+                      ? 'border-primary text-primary'
+                      : 'border-transparent text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  <Shield className="w-4 h-4" /> Admin (Grátis)
+                </button>
+              </div>
+            )}
+
             <motion.div
+              key={activeTab}
               initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
               className="p-6 space-y-6"
             >
-              <div>
-                <label className="text-sm font-medium text-foreground mb-3 block">Valor da recarga</label>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3 mb-3">
-                  {quickAmounts.map((v) => (
-                    <button
-                      key={v}
-                      type="button"
-                      onClick={() => {
-                        setAmount(v);
-                        setCustomAmount('');
-                      }}
-                      className={`py-3 rounded-xl text-sm font-semibold transition-all ${
-                        amount === v && !customAmount
-                          ? 'gradient-primary text-primary-foreground shadow-glow'
-                          : 'bg-muted text-foreground border border-border hover:border-primary/30'
-                      }`}
-                    >
-                      R$ {v}
-                    </button>
-                  ))}
-                </div>
-                <div className="relative">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground font-medium">
-                    R$
-                  </span>
-                  <Input
-                    type="number"
-                    placeholder="Outro valor"
-                    value={customAmount}
-                    onChange={(e) => setCustomAmount(e.target.value)}
-                    className="pl-10 h-11"
-                  />
-                </div>
-              </div>
+              {activeTab === 'admin' ? (
+                <>
+                  <div>
+                    <label className="text-sm font-medium text-foreground mb-3 block">Valor da recarga administrativa</label>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3 mb-3">
+                      {[100, 500, 1000, 5000].map((v) => (
+                        <button
+                          key={v}
+                          type="button"
+                          onClick={() => {
+                            setAmount(v);
+                            setCustomAmount('');
+                          }}
+                          className={`py-3 rounded-xl text-sm font-semibold transition-all ${
+                            amount === v && !customAmount
+                              ? 'gradient-primary text-primary-foreground shadow-glow'
+                              : 'bg-muted text-foreground border border-border hover:border-primary/30'
+                          }`}
+                        >
+                          R$ {v}
+                        </button>
+                      ))}
+                    </div>
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground font-medium">
+                        R$
+                      </span>
+                      <Input
+                        type="number"
+                        placeholder="Outro valor"
+                        value={customAmount}
+                        onChange={(e) => setCustomAmount(e.target.value)}
+                        className="pl-10 h-11"
+                      />
+                    </div>
+                  </div>
 
-              <div>
-                <label className="text-sm font-medium text-foreground mb-3 block">Método de pagamento</label>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {[
-                    { value: 'pix' as const, label: 'PIX', icon: QrCode, desc: 'Aprovação instantânea' },
-                    { value: 'card' as const, label: 'Cartão de crédito', icon: CreditCard, desc: 'Visa, Master, Elo' },
-                  ].map((m) => (
-                    <button
-                      key={m.value}
-                      type="button"
-                      onClick={() => setMethod(m.value)}
-                      className={`flex items-center gap-3 p-4 rounded-xl border transition-all text-left ${
-                        method === m.value
-                          ? 'border-primary bg-primary/5 shadow-glow'
-                          : 'border-border hover:border-primary/30'
-                      }`}
-                    >
-                      <div
-                        className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${
-                          method === m.value ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground'
-                        }`}
-                      >
-                        <m.icon className="w-5 h-5" />
-                      </div>
-                      <div className="min-w-0">
-                        <p className="text-sm font-semibold text-foreground">{m.label}</p>
-                        <p className="text-xs text-muted-foreground">{m.desc}</p>
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              </div>
+                  <div>
+                    <label className="text-sm font-medium text-foreground mb-2 block">Descrição do crédito</label>
+                    <Input
+                      type="text"
+                      placeholder="Ex: Recarga cortesia para testes"
+                      value={adminDescription}
+                      onChange={(e) => setAdminDescription(e.target.value)}
+                      className="h-11"
+                    />
+                  </div>
 
-              <div className="border-t border-border pt-4 space-y-4">
-                <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Valor</span>
-                  <span className="font-semibold text-foreground">R$ {finalAmount.toFixed(2)}</span>
-                </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Novo saldo</span>
-                  <span className="font-semibold text-success">
-                    R$ {((user?.balance || 0) + finalAmount).toFixed(2)}
-                  </span>
-                </div>
-                <Button
-                  type="button"
-                  onClick={() => setStep('success')}
-                  className="w-full h-11 gradient-primary text-primary-foreground font-medium"
-                  disabled={!finalAmount || finalAmount <= 0 || Number.isNaN(finalAmount)}
-                >
-                  Confirmar recarga
-                </Button>
-              </div>
+                  {error && (
+                    <div className="text-sm font-medium text-destructive bg-destructive/10 border border-destructive/20 rounded-xl p-3">
+                      {error}
+                    </div>
+                  )}
+
+                  <div className="border-t border-border pt-4 space-y-4">
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">Valor a adicionar</span>
+                      <span className="font-semibold text-foreground">R$ {finalAmount.toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">Novo saldo estimado</span>
+                      <span className="font-semibold text-success">
+                        R$ {((user?.balance || 0) + finalAmount).toFixed(2)}
+                      </span>
+                    </div>
+                    <Button
+                      type="button"
+                      onClick={handleAdminRecharge}
+                      className="w-full h-11 gradient-primary text-primary-foreground font-medium flex items-center justify-center gap-2"
+                      disabled={loading || !finalAmount || finalAmount <= 0 || Number.isNaN(finalAmount)}
+                    >
+                      {loading ? 'Processando...' : 'Confirmar recarga (Grátis)'}
+                    </Button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div>
+                    <label className="text-sm font-medium text-foreground mb-3 block">Valor da recarga</label>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3 mb-3">
+                      {quickAmounts.map((v) => (
+                        <button
+                          key={v}
+                          type="button"
+                          onClick={() => {
+                            setAmount(v);
+                            setCustomAmount('');
+                          }}
+                          className={`py-3 rounded-xl text-sm font-semibold transition-all ${
+                            amount === v && !customAmount
+                              ? 'gradient-primary text-primary-foreground shadow-glow'
+                              : 'bg-muted text-foreground border border-border hover:border-primary/30'
+                          }`}
+                        >
+                          R$ {v}
+                        </button>
+                      ))}
+                    </div>
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground font-medium">
+                        R$
+                      </span>
+                      <Input
+                        type="number"
+                        placeholder="Outro valor"
+                        value={customAmount}
+                        onChange={(e) => setCustomAmount(e.target.value)}
+                        className="pl-10 h-11"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="text-sm font-medium text-foreground mb-3 block">Método de pagamento</label>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      {[
+                        { value: 'pix' as const, label: 'PIX', icon: QrCode, desc: 'Aprovação instantânea' },
+                        { value: 'card' as const, label: 'Cartão de crédito', icon: CreditCard, desc: 'Visa, Master, Elo' },
+                      ].map((m) => (
+                        <button
+                          key={m.value}
+                          type="button"
+                          onClick={() => setMethod(m.value)}
+                          className={`flex items-center gap-3 p-4 rounded-xl border transition-all text-left ${
+                            method === m.value
+                              ? 'border-primary bg-primary/5 shadow-glow'
+                              : 'border-border hover:border-primary/30'
+                          }`}
+                        >
+                          <div
+                            className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${
+                              method === m.value ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground'
+                            }`}
+                          >
+                            <m.icon className="w-5 h-5" />
+                          </div>
+                          <div className="min-w-0">
+                            <p className="text-sm font-semibold text-foreground">{m.label}</p>
+                            <p className="text-xs text-muted-foreground">{m.desc}</p>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="border-t border-border pt-4 space-y-4">
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">Valor</span>
+                      <span className="font-semibold text-foreground">R$ {finalAmount.toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">Novo saldo</span>
+                      <span className="font-semibold text-success">
+                        R$ {((user?.balance || 0) + finalAmount).toFixed(2)}
+                      </span>
+                    </div>
+                    <Button
+                      type="button"
+                      onClick={() => setStep('success')}
+                      className="w-full h-11 gradient-primary text-primary-foreground font-medium"
+                      disabled={!finalAmount || finalAmount <= 0 || Number.isNaN(finalAmount)}
+                    >
+                      Confirmar recarga
+                    </Button>
+                  </div>
+                </>
+              )}
             </motion.div>
           </>
         )}

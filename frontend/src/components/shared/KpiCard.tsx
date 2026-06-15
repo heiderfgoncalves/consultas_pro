@@ -33,18 +33,9 @@ export default function KpiCard({
       initial={{ opacity: 0, y: 15 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay, duration: 0.4 }}
-      className="bg-card/75 backdrop-blur-md border border-border/80 rounded-2xl p-5 shadow-elevated flex flex-col justify-between h-40 hover:border-border transition-all group overflow-hidden relative"
-      style={{
-        // Define uma borda ligeiramente colorida no hover baseada na cor de acento do card
-        '--hover-border-color': `${chartColor}40`,
-      } as React.CSSProperties}
+      whileHover={{ borderColor: chartColor }}
+      className="bg-card border border-border/80 rounded-xl p-5 shadow-none flex flex-col justify-between h-40 transition-colors duration-200 group overflow-hidden relative"
     >
-      {/* Backlight / Glow Premium no canto superior direito */}
-      <div
-        className="absolute -top-10 -right-10 w-28 h-24 rounded-full blur-3xl opacity-15 pointer-events-none transition-all duration-500 group-hover:opacity-25"
-        style={{ backgroundColor: chartColor }}
-      />
-
       <div className="flex justify-between items-start">
         <div className="space-y-1.5 z-10">
           {/* Título */}
@@ -75,14 +66,13 @@ export default function KpiCard({
           ) : null}
         </div>
 
-        {/* Ícone no topo direito com vidro colorido e brilho sutil */}
+        {/* Ícone no topo direito com vidro colorido */}
         <div
-          className="p-2.5 rounded-xl border transition-all duration-300 z-10 group-hover:scale-110 group-hover:rotate-1"
+          className="p-2.5 rounded-xl border transition-all duration-300 z-10 group-hover:scale-105"
           style={{
-            backgroundColor: `${chartColor}12`, // ~7% de opacidade
-            borderColor: `${chartColor}25`,     // ~15% de opacidade
+            backgroundColor: `${chartColor}10`, // ~6% de opacidade
+            borderColor: `${chartColor}20`,     // ~12% de opacidade
             color: chartColor,
-            boxShadow: `0 4px 15px -2px ${chartColor}20`,
           }}
         >
           <Icon className="w-4.5 h-4.5" />

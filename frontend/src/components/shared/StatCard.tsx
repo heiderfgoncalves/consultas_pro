@@ -34,7 +34,7 @@ export default function StatCard({ title, value, subtitle, icon: Icon, variant =
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay, duration: 0.3 }}
-      className={`rounded-xl border p-5 shadow-card hover:shadow-elevated transition-shadow ${variantStyles[variant]}`}
+      className={`rounded-xl border p-5 shadow-none transition-shadow ${variantStyles[variant]}`}
     >
       <div className="flex items-start justify-between">
         <div className="space-y-1">

@@ -1,10 +1,14 @@
 import { Outlet, Navigate, useLocation } from 'react-router-dom';
+import { useEffect } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import AppSidebar from './AppSidebar';
 import TopBar from './TopBar';
 import RechargeModal from '@/components/finance/RechargeModal';
 import { useAuthStore } from '@/stores/authStore';
 import { useSubTheme } from '@/hooks/use-subtheme';
 import { PageTransition } from '@/components/layout/PageTransition';
+import { getUserCanonicalFields, mapCanonicalToFieldTypes } from '@/api/admin-integrations';
+import { registerCanonicalTypesMetadata } from '@/features/templates-drawer/engine/resolveExpression';
 
 function isFullScreenPath(pathname: string) {
   return pathname === '/documentacao/api' || 
@@ -13,10 +17,32 @@ function isFullScreenPath(pathname: string) {
 }
 
 export default function AuthenticatedLayout() {
-  const { hydrated, isAuthenticated } = useAuthStore();
+  const { hydrated, isAuthenticated, accessToken } = useAuthStore();
   const { pathname } = useLocation();
   const hideTopBar = isFullScreenPath(pathname);
   const isTemplatesDrawer = pathname === '/admin/templates-drawer';
+
+  const { data: canonicalFieldsRaw = [] } = useQuery({
+    queryKey: ['global-canonical-fields'],
+    queryFn: () => getUserCanonicalFields(accessToken),
+    enabled: !!isAuthenticated && !!accessToken,
+  });
+
+  useEffect(() => {
+    if (canonicalFieldsRaw && canonicalFieldsRaw.length > 0) {
+      const fieldTypes = mapCanonicalToFieldTypes(canonicalFieldsRaw);
+      const meta: Record<string, { chave: string; label: string; title?: string }> = {};
+      for (const ft of fieldTypes) {
+        meta[ft.key] = {
+          chave: ft.key,
+          label: ft.label,
+          title: ft.reportFieldConfig?.title,
+        };
+      }
+      registerCanonicalTypesMetadata(meta);
+    }
+  }, [canonicalFieldsRaw]);
+
 
   if (!hydrated) {
     if (isTemplatesDrawer) {

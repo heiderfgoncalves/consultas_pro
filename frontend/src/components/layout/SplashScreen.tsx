@@ -1,9 +1,13 @@
 import { useEffect, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
+import { useTheme } from "@/hooks/use-theme";
 
 const KEY = "consultas_pro_splash_seen_v1";
 
 export function SplashScreen() {
+  const { theme, resolvedTheme } = useTheme();
+  const isDark = resolvedTheme === "dark" || theme === "dark";
+
   // Exibir apenas no primeiro carregamento de uma sessão.
   const [show, setShow] = useState(false);
 
@@ -33,8 +37,9 @@ export function SplashScreen() {
           <div
             className="absolute inset-0"
             style={{
-              background:
-                "radial-gradient(60% 50% at 50% 50%, oklch(0.7 0.18 250 / 0.35) 0%, transparent 70%), hsl(var(--background))",
+              background: isDark
+                ? "radial-gradient(60% 50% at 50% 50%, oklch(0.7 0.18 250 / 0.35) 0%, transparent 70%), hsl(var(--background))"
+                : "radial-gradient(60% 50% at 50% 50%, oklch(0.92 0.03 250 / 0.15) 0%, transparent 70%), hsl(var(--background))",
             }}
           />
           <motion.div
