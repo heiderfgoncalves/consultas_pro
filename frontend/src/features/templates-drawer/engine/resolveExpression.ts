@@ -6,6 +6,8 @@ export interface CanonicalTypeMetadata {
 
 let canonicalTypesMetadata: Record<string, CanonicalTypeMetadata> = {};
 
+const protocolCache = new WeakMap<object, string>();
+
 export function registerCanonicalTypesMetadata(meta: Record<string, CanonicalTypeMetadata>) {
   const normalized: Record<string, CanonicalTypeMetadata> = {};
   for (const key of Object.keys(meta)) {
@@ -52,13 +54,52 @@ export function resolveExpression(path: string, data: unknown, collectAllFallbac
       const dObj = data as Record<string, unknown>;
       if (dObj.template && typeof dObj.template === "object") {
         const tObj = dObj.template as Record<string, unknown>;
-        if (tObj.protocol !== undefined) return tObj.protocol;
+        if (tObj.protocol !== undefined && typeof tObj.protocol === "string" && tObj.protocol.trim() !== "") {
+          return tObj.protocol;
+        }
       }
-      if (dObj.protocol !== undefined) return dObj.protocol;
-      if (dObj.hash !== undefined) return dObj.hash;
-      if (dObj.id !== undefined) return dObj.id;
+      if (dObj.protocol !== undefined && typeof dObj.protocol === "string" && dObj.protocol.trim() !== "") {
+        return dObj.protocol;
+      }
+      if (dObj.hash !== undefined && typeof dObj.hash === "string" && dObj.hash.trim() !== "") {
+        return dObj.hash;
+      }
+      if (dObj.id !== undefined && typeof dObj.id === "string" && dObj.id.trim() !== "") {
+        return dObj.id;
+      }
+
+      // Check if we already cached a protocol for this specific data reference
+      if (protocolCache.has(dObj)) {
+        return protocolCache.get(dObj)!;
+      }
+
+      // Try generating a consistent protocol based on the document if present
+      let doc = "";
+      if (dObj.cliente && typeof dObj.cliente === "object") {
+        const cli = dObj.cliente as Record<string, unknown>;
+        if (typeof cli.documento === "string") doc = cli.documento;
+      }
+      if (!doc && typeof dObj.clientCpf === "string") doc = dObj.clientCpf;
+      if (!doc && typeof dObj.subjectDocument === "string") doc = dObj.subjectDocument;
+
+      let generated = "";
+      if (doc) {
+        const cleanDoc = doc.replace(/\D/g, "").slice(0, 8);
+        if (cleanDoc.length > 0) {
+          generated = `REQ-${cleanDoc.padEnd(8, "0")}`;
+        }
+      }
+
+      if (!generated) {
+        // Fallback: Gerado na hora, estável para esta referência de dados
+        generated = `REQ-${Math.floor(10000000 + Math.random() * 90000000)}`;
+      }
+
+      protocolCache.set(dObj, generated);
+      return generated;
     }
-    return "REQ-91632956";
+    // Caso sem objeto de dados estruturado, gera um aleatório sob o padrão REQ-xxxxxxxx
+    return `REQ-${Math.floor(10000000 + Math.random() * 90000000)}`;
   }
 
   if (cleanPath === "template.company") {

@@ -239,7 +239,13 @@ describe("resolveExpression - Core engine tests", () => {
 
     // Caso 3: Fallbacks dinâmicos caso os campos não existam de forma alguma
     expect(resolveExpression("template.date", dataVazia)).toMatch(/\d{2}\/\d{2}\/\d{4} \d{2}:\d{2}/);
-    expect(resolveExpression("template.protocol", dataVazia)).toBe("REQ-91632956");
+    
+    const firstCall = resolveExpression("template.protocol", dataVazia);
+    expect(firstCall).toMatch(/^REQ-\d{8}$/);
+    
+    const secondCall = resolveExpression("template.protocol", dataVazia);
+    expect(firstCall).toBe(secondCall); // Deve ser estável pela referência do objeto
+    
     expect(resolveExpression("template.company", dataVazia)).toBe("CONSULTAS PRO");
 
     // Caso 4: Suporte a prefixos '$'
