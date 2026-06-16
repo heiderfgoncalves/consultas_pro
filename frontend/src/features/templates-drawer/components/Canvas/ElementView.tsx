@@ -279,11 +279,22 @@ function ElementViewImpl({ element, selected, onSelect, isIsolated = false }: Pr
         const emptyStateHtml = (element.data?.emptyStateHtml as string) ?? "";
 
         const resolved = mode === "preview" ? resolveExpression(path, elementData) : null;
-        const rows = Array.isArray(resolved)
-          ? resolved
-          : mode === "preview"
-            ? []
-            : Array.from({ length: 2 }, () => null);
+        let rows: any[] = [];
+        if (mode === "preview") {
+          if (Array.isArray(resolved)) {
+            rows = resolved;
+          } else if (resolved && typeof resolved === "object") {
+            if ("linhas" in resolved && Array.isArray((resolved as any).linhas)) {
+              rows = (resolved as any).linhas;
+            } else {
+              rows = [resolved];
+            }
+          } else {
+            rows = [];
+          }
+        } else {
+          rows = Array.from({ length: 2 }, () => null);
+        }
         return (
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
             <thead>

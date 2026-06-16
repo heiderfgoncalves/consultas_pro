@@ -831,10 +831,14 @@ export function LeftPanel() {
       }
     }
 
-    // 2.5. Executar Deduplicação Global/Cross-Type se houver múltiplos tipos de dívidas
-    const activeDebtTypes = ["DIVIDAS_SPC", "DIVIDAS_SERASA", "DIVIDAS_BOA_VISTA"].filter(
-      (key) => mergedPayload[key] && Array.isArray(mergedPayload[key]) && mergedPayload[key].length > 0
-    );
+    // 2.5. Executar Deduplicação Global/Cross-Type de forma dinâmica para todos os tipos tabulares
+    const activeDebtTypes = Object.keys(mergedPayload).filter((key) => {
+      const val = mergedPayload[key];
+      if (!val) return false;
+      if (Array.isArray(val)) return val.length > 0;
+      if (typeof val === 'object' && Array.isArray(val.linhas)) return val.linhas.length > 0;
+      return false;
+    });
 
     if (activeDebtTypes.length > 1) {
       const rowInfo = new Map<string, {
@@ -847,7 +851,10 @@ export function LeftPanel() {
       const typeKeysInOrder = activeDebtTypes;
 
       for (const ftKey of activeDebtTypes) {
-        const typeData = mergedPayload[ftKey];
+        const typeDataVal = mergedPayload[ftKey];
+        const rows = Array.isArray(typeDataVal)
+          ? typeDataVal
+          : (typeDataVal && typeof typeDataVal === 'object' && Array.isArray(typeDataVal.linhas) ? typeDataVal.linhas : []);
         let dedupKeys: string[] = [];
         const dedupKeyToCanonical = new Map<string, string>();
 
@@ -877,7 +884,7 @@ export function LeftPanel() {
         if (dedupKeys.length > 0) {
           dedupKeys = [...new Set(dedupKeys)];
           rowInfo.set(ftKey, {
-            rows: typeData,
+            rows,
             dedupKeys,
             dedupKeyToCanonical,
           });
@@ -886,14 +893,23 @@ export function LeftPanel() {
 
       const byTypeObj: Record<string, any> = {};
       for (const ftKey of activeDebtTypes) {
-        byTypeObj[ftKey] = mergedPayload[ftKey];
+        const val = mergedPayload[ftKey];
+        byTypeObj[ftKey] = Array.isArray(val) ? val : (val && typeof val === 'object' ? val.linhas : val);
       }
 
       const cleaned = buildByTypeWithGlobalDedupRemoved(byTypeObj, typeKeysInOrder, rowInfo);
 
       for (const ftKey of activeDebtTypes) {
         if (cleaned[ftKey]) {
-          mergedPayload[ftKey] = cleaned[ftKey];
+          const originalVal = mergedPayload[ftKey];
+          if (Array.isArray(originalVal)) {
+            mergedPayload[ftKey] = cleaned[ftKey];
+          } else if (originalVal && typeof originalVal === 'object' && 'linhas' in originalVal) {
+            mergedPayload[ftKey] = {
+              ...originalVal,
+              linhas: cleaned[ftKey]
+            };
+          }
         }
       }
     }

@@ -32,6 +32,49 @@ export function resolveExpression(path: string, data: unknown, collectAllFallbac
     cleanPath = cleanPath.slice(1);
   }
 
+  // System variables fallback resolution (template.date, template.protocol, template.company)
+  if (cleanPath === "template.date") {
+    if (data && typeof data === "object") {
+      const dObj = data as Record<string, unknown>;
+      if (dObj.template && typeof dObj.template === "object") {
+        const tObj = dObj.template as Record<string, unknown>;
+        if (tObj.date !== undefined) return tObj.date;
+      }
+      if (dObj.consultationDate !== undefined) return dObj.consultationDate;
+      if (dObj.createdAt !== undefined) return dObj.createdAt;
+    }
+    const now = new Date();
+    return now.toLocaleDateString("pt-BR") + " " + now.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+  }
+
+  if (cleanPath === "template.protocol") {
+    if (data && typeof data === "object") {
+      const dObj = data as Record<string, unknown>;
+      if (dObj.template && typeof dObj.template === "object") {
+        const tObj = dObj.template as Record<string, unknown>;
+        if (tObj.protocol !== undefined) return tObj.protocol;
+      }
+      if (dObj.protocol !== undefined) return dObj.protocol;
+      if (dObj.hash !== undefined) return dObj.hash;
+      if (dObj.id !== undefined) return dObj.id;
+    }
+    return "REQ-91632956";
+  }
+
+  if (cleanPath === "template.company") {
+    if (data && typeof data === "object") {
+      const dObj = data as Record<string, unknown>;
+      if (dObj.template && typeof dObj.template === "object") {
+        const tObj = dObj.template as Record<string, unknown>;
+        if (tObj.company !== undefined) return tObj.company;
+      }
+      if (dObj.companyName !== undefined) return dObj.companyName;
+      if (dObj.company !== undefined) return dObj.company;
+      if (dObj.empresa !== undefined) return dObj.empresa;
+    }
+    return "CONSULTAS PRO";
+  }
+
   // Se começar com ".", resolve a propriedade em todas as subchaves do objeto de dados
   if (cleanPath.startsWith(".")) {
     const subPath = cleanPath.slice(1);
@@ -292,6 +335,12 @@ export function resolveExpression(path: string, data: unknown, collectAllFallbac
   // Regra especial para o score de simulação híbrido (objeto e valor de pontuação legado)
   if (trimmed === "score" && current && typeof current === "object" && "pontuacao" in current) {
     return (current as Record<string, unknown>).pontuacao;
+  }
+
+  // Interceptar objetos envelopadores de preview mapeado (ex: { linhas, totaisCalculados })
+  // para retornar a lista de linhas diretamente se nenhum subcaminho foi solicitado.
+  if (current && typeof current === "object" && "linhas" in current && Array.isArray((current as any).linhas)) {
+    return (current as any).linhas;
   }
 
   return current;

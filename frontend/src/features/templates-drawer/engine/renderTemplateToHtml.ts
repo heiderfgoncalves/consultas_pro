@@ -128,7 +128,17 @@ function elementBody(
         ];
       } else {
         const resolved = resolveExpression(path, data);
-        rows = Array.isArray(resolved) ? resolved : [];
+        if (Array.isArray(resolved)) {
+          rows = resolved;
+        } else if (resolved && typeof resolved === "object") {
+          if ("linhas" in resolved && Array.isArray((resolved as any).linhas)) {
+            rows = (resolved as any).linhas;
+          } else {
+            rows = [resolved];
+          }
+        } else {
+          rows = [];
+        }
       }
 
       const head = columns

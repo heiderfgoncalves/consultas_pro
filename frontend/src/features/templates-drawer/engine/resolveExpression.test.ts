@@ -196,4 +196,53 @@ describe("resolveExpression - Core engine tests", () => {
     // Testar caminhos normais que continuam resolvendo mesmo com metadados registrados
     expect(resolveExpression("DIVIDAS_SPC.valor", mockData)).toBe(1500.50);
   });
+
+  it("deve retornar o array de linhas diretamente se o objeto for um envelopador de preview contendo 'linhas' e nenhum subcaminho subsequente for solicitado", () => {
+    // Quando chamar o envelopador diretamente, deve interceptar e retornar as linhas
+    expect(resolveExpression("DIVIDAS_SPC", mockData)).toEqual([
+      { credor: "Banco A", valor: 500.50, status: "Aberto" },
+      { credor: "Lojista B", valor: 1000.00, status: "Aberto" }
+    ]);
+
+    // Chamar com cifrão
+    expect(resolveExpression("$DIVIDAS_SERASA", mockData)).toEqual([
+      { credor: "Cartão C", valor: 2400.00, status: "Aberto" }
+    ]);
+  });
+
+  it("deve resolver variáveis de sistema virtuais template.date, template.protocol e template.company", () => {
+    const dataComTemplate = {
+      template: {
+        date: "10/10/2026 12:00",
+        protocol: "REQ-999999",
+        company: "EMPRESA DE TESTE"
+      }
+    };
+
+    const dataComCamposRaiz = {
+      consultationDate: "12/12/2026 15:30",
+      protocol: "REQ-888888",
+      companyName: "EMPRESA RAIZ"
+    };
+
+    const dataVazia = {};
+
+    // Caso 1: Dados explícitos dentro de objeto 'template'
+    expect(resolveExpression("template.date", dataComTemplate)).toBe("10/10/2026 12:00");
+    expect(resolveExpression("template.protocol", dataComTemplate)).toBe("REQ-999999");
+    expect(resolveExpression("template.company", dataComTemplate)).toBe("EMPRESA DE TESTE");
+
+    // Caso 2: Resolução a partir de campos alternativos na raiz
+    expect(resolveExpression("template.date", dataComCamposRaiz)).toBe("12/12/2026 15:30");
+    expect(resolveExpression("template.protocol", dataComCamposRaiz)).toBe("REQ-888888");
+    expect(resolveExpression("template.company", dataComCamposRaiz)).toBe("EMPRESA RAIZ");
+
+    // Caso 3: Fallbacks dinâmicos caso os campos não existam de forma alguma
+    expect(resolveExpression("template.date", dataVazia)).toMatch(/\d{2}\/\d{2}\/\d{4} \d{2}:\d{2}/);
+    expect(resolveExpression("template.protocol", dataVazia)).toBe("REQ-91632956");
+    expect(resolveExpression("template.company", dataVazia)).toBe("CONSULTAS PRO");
+
+    // Caso 4: Suporte a prefixos '$'
+    expect(resolveExpression("$template.date", dataComTemplate)).toBe("10/10/2026 12:00");
+  });
 });
