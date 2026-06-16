@@ -216,7 +216,11 @@ export default function ConsultationPreview({
     setPdfLoading(true);
     try {
       const consultationDate = new Date().toLocaleDateString('pt-BR') + ' ' + new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-      const protocol = docInput ? `REQ-${docInput.replace(/\D/g, '').slice(0, 8)}` : 'REQ-91632956';
+      const protocol = realData?.protocol ||
+                       (realData as any)?.template?.protocol ||
+                       realData?.hash ||
+                       realData?.id ||
+                       (docInput ? `REQ-${docInput.replace(/\D/g, '').slice(0, 8)}` : `REQ-${Math.floor(10000000 + Math.random() * 90000000)}`);
       const mergedData = {
         ...(realData || {}),
         cliente: {
@@ -414,7 +418,11 @@ ${parentStyles}
     // Importamos dinamicamente para evitar ciclo ou usar diretamente
     import('@/features/templates-drawer/engine/renderTemplateToHtml').then(({ renderTemplateToHtml }) => {
       const consultationDate = new Date().toLocaleDateString('pt-BR') + ' ' + new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-      const protocol = docInput ? `REQ-${docInput.replace(/\D/g, '').slice(0, 8)}` : 'REQ-91632956';
+      const protocol = realData?.protocol ||
+                       (realData as any)?.template?.protocol ||
+                       realData?.hash ||
+                       realData?.id ||
+                       (docInput ? `REQ-${docInput.replace(/\D/g, '').slice(0, 8)}` : `REQ-${Math.floor(10000000 + Math.random() * 90000000)}`);
       const mergedData = {
         ...(realData || {}),
         cliente: {

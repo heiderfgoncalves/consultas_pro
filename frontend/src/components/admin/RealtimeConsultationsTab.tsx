@@ -324,9 +324,12 @@ export function RealtimeConsultationsTab({ accessToken }: { accessToken: string 
         'CLIENTE ANALISADO';
 
       const consultationDate = new Date().toLocaleDateString('pt-BR') + ' ' + new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-      const protocol = detail.subjectDocument
-        ? `REQ-${detail.subjectDocument.replace(/\D/g, '').slice(0, 8)}`
-        : `REQ-${detail.id.slice(0, 8).toUpperCase()}`;
+      const protocol = realData?.protocol ||
+                       (realData as any)?.template?.protocol ||
+                       realData?.hash ||
+                       (detail.subjectDocument
+                         ? `REQ-${detail.subjectDocument.replace(/\D/g, '').slice(0, 8)}`
+                         : `REQ-${detail.id.slice(0, 8).toUpperCase()}`);
 
       const mergedData = {
         ...realData,
