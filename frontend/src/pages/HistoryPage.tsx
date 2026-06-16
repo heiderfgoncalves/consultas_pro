@@ -81,9 +81,12 @@ export default function HistoryPage() {
         'CLIENTE ANALISADO';
 
       const consultationDate = new Date().toLocaleDateString('pt-BR') + ' ' + new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-      const protocol = item.subjectDocument
-        ? `REQ-${item.subjectDocument.replace(/\D/g, '').slice(0, 8)}`
-        : `REQ-${item.id.slice(0, 8).toUpperCase()}`;
+      const protocol = realData?.protocol ||
+                       (realData as any)?.template?.protocol ||
+                       realData?.hash ||
+                       (item.subjectDocument
+                         ? `REQ-${item.subjectDocument.replace(/\D/g, '').slice(0, 8)}`
+                         : `REQ-${item.id.slice(0, 8).toUpperCase()}`);
       
       const mergedData = {
         ...realData,
