@@ -773,6 +773,13 @@ export function parseTypeItemFiltersRecord(raw: unknown): Record<string, TypeIte
   return Object.keys(out).length > 0 ? out : undefined;
 }
 
+function isMappedPreviewZipWrapper(v: any): boolean {
+  if (v == null || typeof v !== 'object' || Array.isArray(v)) return false;
+  const rows = v.linhas;
+  if (!Array.isArray(rows)) return false;
+  return rows.every((el) => el != null && typeof el === 'object' && !Array.isArray(el));
+}
+
 export function buildTypeKeyedData(params: {
   sampleResponse: string;
   trechoMappings: FieldMapping[];
@@ -900,6 +907,15 @@ export function buildTypeKeyedData(params: {
   }
 
   if (zipped) {
+    const isTabular = trechoMappings.some(m => m.jsonPath && m.jsonPath.includes('[*]'));
+    if (isTabular) {
+      if (Array.isArray(zipped)) {
+        return zipped;
+      }
+      if (zipped && typeof zipped === 'object' && !isMappedPreviewZipWrapper(zipped)) {
+        return [zipped];
+      }
+    }
     return zipped as any;
   }
 
@@ -1068,10 +1084,14 @@ export async function buildCanonicalRenderPayload(
     }
   }
 
-  // 3. Executar Deduplicação Global/Cross-Type se houver múltiplos tipos de dívidas
-  const activeDebtTypes = ['DIVIDAS_SPC', 'DIVIDAS_SERASA', 'DIVIDAS_BOA_VISTA'].filter(
-    (key) => mergedPayload[key] && Array.isArray(mergedPayload[key]) && mergedPayload[key].length > 0
-  );
+  // 3. Executar Deduplicação Global/Cross-Type de forma dinâmica para todos os tipos tabulares
+  const activeDebtTypes = Object.keys(mergedPayload).filter((key) => {
+    const val = mergedPayload[key];
+    if (!val) return false;
+    if (Array.isArray(val)) return val.length > 0;
+    if (typeof val === 'object' && Array.isArray(val.linhas)) return val.linhas.length > 0;
+    return false;
+  });
 
   if (activeDebtTypes.length > 1) {
     const rowInfo = new Map<
@@ -1087,7 +1107,10 @@ export async function buildCanonicalRenderPayload(
     const typeKeysInOrder = activeDebtTypes;
 
     for (const ftKey of activeDebtTypes) {
-      const typeData = mergedPayload[ftKey] as Record<string, unknown>[];
+      const typeDataVal = mergedPayload[ftKey];
+      const rows = Array.isArray(typeDataVal) 
+        ? typeDataVal 
+        : (typeDataVal && typeof typeDataVal === 'object' && Array.isArray(typeDataVal.linhas) ? typeDataVal.linhas : []);
       let dedupKeys: string[] = [];
       const dedupKeyToCanonical = new Map<string, string>();
 
@@ -1123,7 +1146,7 @@ export async function buildCanonicalRenderPayload(
       if (dedupKeys.length > 0) {
         dedupKeys = [...new Set(dedupKeys)];
         rowInfo.set(ftKey, {
-          rows: typeData,
+          rows,
           dedupKeys,
           dedupKeyToCanonical,
         });
