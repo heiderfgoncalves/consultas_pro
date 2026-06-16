@@ -158,6 +158,13 @@ async function processConsultation(consultationId: string) {
   }
 
   const mergedPayload = mergeNormalizedPayloads(normalizedPayloads);
+
+  // Gerar um protocolo dinâmico único de 8 dígitos para a requisição
+  const protocol = `REQ-${Math.floor(10000000 + Math.random() * 90000000)}`;
+  if (mergedPayload && typeof mergedPayload === 'object') {
+    (mergedPayload as Record<string, unknown>).protocol = protocol;
+  }
+
   const status =
     failedCount === 0
       ? 'COMPLETED'
@@ -214,6 +221,10 @@ async function processConsultation(consultationId: string) {
 
     if (executions.length > 0) {
       renderPayload = await buildCanonicalRenderPayload(executions, products);
+    }
+
+    if (renderPayload && typeof renderPayload === 'object') {
+      (renderPayload as Record<string, unknown>).protocol = protocol;
     }
   } catch (error) {
     logger.error({ consultationId: consultation.id, error }, 'failed_to_build_canonical_render_payload');
