@@ -80,18 +80,23 @@ export default function HistoryPage() {
         item.subjectDocument ||
         'CLIENTE ANALISADO';
 
+      const consultationDate = new Date().toLocaleDateString('pt-BR') + ' ' + new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+      const protocol = item.subjectDocument
+        ? `REQ-${item.subjectDocument.replace(/\D/g, '').slice(0, 8)}`
+        : `REQ-${item.id.slice(0, 8).toUpperCase()}`;
+      
       const mergedData = {
         ...realData,
         cliente: { nome: clientName, documento: item.subjectDocument || '' },
         clientName,
         clientCpf: item.subjectDocument || '',
-        consultationDate:
-          new Date().toLocaleDateString('pt-BR') +
-          ' ' +
-          new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
-        protocol: item.subjectDocument
-          ? `PROT-${item.subjectDocument.replace(/\D/g, '').slice(-6)}`
-          : `PROT-${item.id.slice(0, 6).toUpperCase()}`,
+        consultationDate,
+        protocol,
+        template: {
+          date: consultationDate,
+          protocol,
+          company: user?.companyName || 'CONSULTAS PRO',
+        },
       };
 
       const { renderTemplateToHtml } = await import(
@@ -138,17 +143,22 @@ export default function HistoryPage() {
       }
 
       const logo = item.template?.logo
-        ? `<img src="${item.template.logo}" style="height:32px;object-fit:contain;position:absolute;top:16px;right:16px" />`
+        ? `<img src="${item.template.logo}" style="max-height:32px;width:auto;position:absolute;top:16px;right:16px;z-index:10;" />`
         : '';
 
+      const parentStyles = Array.from(document.querySelectorAll('style, link[rel="stylesheet"]'))
+        .map(el => el.outerHTML)
+        .join('\n');
+
       const fullHtml = `<!doctype html><html><head><meta charset="utf-8"/>
+${parentStyles}
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Geist:wght@100..900&family=Inter:wght@100..900&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/lucide@0.462.0/dist/umd/lucide.min.js"></script>
 <style>
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { background: #fff; font-family: 'Geist', 'Inter', sans-serif; color: #0f172a; }
+  * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Geist', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif !important; }
+  body { background: #fff; color: #0f172a; }
   .page { position: relative; overflow: hidden; }
   i[data-lucide] svg, svg.lucide { width: 100%; height: 100%; }
 </style></head><body>${logo}${pagesHtml}
@@ -168,14 +178,17 @@ export default function HistoryPage() {
       frame.srcdoc = fullHtml;
       frame.onload = async () => {
         try {
+          const iframeDoc = frame.contentDocument;
+          if (!iframeDoc) throw new Error('iframe sem documento');
+
           // Aguarda fontes e Lucide renderizarem
-          await new Promise(res => setTimeout(res, 800));
+          if (iframeDoc.fonts) {
+            await iframeDoc.fonts.ready;
+          }
+          await new Promise(res => setTimeout(res, 500));
 
           const { default: html2canvas } = await import('html2canvas');
           const { jsPDF } = await import('jspdf');
-
-          const iframeDoc = frame.contentDocument;
-          if (!iframeDoc) throw new Error('iframe sem documento');
 
           const pages = iframeDoc.querySelectorAll<HTMLElement>('section.page');
           const pagesToCapture = pages.length > 0 ? Array.from(pages) : [iframeDoc.body];
@@ -795,20 +808,6 @@ export default function HistoryPage() {
                 <div className="flex items-center justify-between px-6 py-4 border-t border-border/60 bg-muted/20 rounded-b-2xl shrink-0">
                   <p className="text-[10px] text-muted-foreground font-mono">ID: {viewDetail.id}</p>
                   <div className="flex gap-2">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="text-xs h-8 rounded-lg border-border gap-1.5"
-                      onClick={() => downloadPdf(viewDetail)}
-                      disabled={pdfLoading}
-                    >
-                      {pdfLoading ? (
-                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                      ) : (
-                        <Printer className="w-3.5 h-3.5" />
-                      )}
-                      {pdfLoading ? 'Gerando...' : 'Baixar PDF'}
-                    </Button>
                     {isAdmin && (
                       <Button
                         size="sm"

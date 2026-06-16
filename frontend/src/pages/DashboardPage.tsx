@@ -1,56 +1,202 @@
+import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
   Search, History, Users, FileText, Code2, Headphones,
-  ArrowUpRight, Plus, Activity, Clock, CheckCircle2, AlertTriangle, Wallet
+  ArrowUpRight, Plus, Activity, Clock, CheckCircle2, AlertTriangle, Wallet, Loader2
 } from 'lucide-react';
 import {
   ResponsiveContainer, AreaChart, Area, PieChart, Pie, Cell, Tooltip, XAxis, YAxis
 } from 'recharts';
 import { useAuthStore } from '@/stores/authStore';
 import { openRechargeModal } from '@/stores/rechargeModalStore';
-import { mockHistory } from '@/stores/consultationStore';
-import { PageHeader } from '@/components/shared/StatCard';
+import { PageHeader, EmptyState } from '@/components/shared/StatCard';
 import KpiCard from '@/components/shared/KpiCard';
 import { Button } from '@/components/ui/button';
-
-// Dados para os mini-gráficos dos cards superiores
-const miniChartData1 = [
-  { val: 100 }, { val: 120 }, { val: 115 }, { val: 140 }, { val: 135 }, { val: 165 }, { val: 158 }, { val: 185 }, { val: 190 }, { val: 210 }
-];
-const miniChartData2 = [
-  { val: 95.2 }, { val: 96.1 }, { val: 95.8 }, { val: 97.4 }, { val: 97.1 }, { val: 98.2 }, { val: 98.0 }, { val: 98.5 }, { val: 98.4 }, { val: 98.7 }
-];
-const miniChartData3 = [
-  { val: 210 }, { val: 195 }, { val: 188 }, { val: 172 }, { val: 165 }, { val: 158 }, { val: 162 }, { val: 155 }, { val: 150 }, { val: 152 }
-];
-const miniChartData4 = [
-  { val: 28000 }, { val: 31000 }, { val: 30500 }, { val: 34000 }, { val: 36000 }, { val: 39500 }, { val: 42000 }, { val: 44800 }, { val: 46200 }, { val: 48732 }
-];
-
-// Dados do gráfico de evolução diária (Consultas por Dia - últimos 30 dias)
-const evolutionData = [
-  { name: '01 Mai', valor: 650 },
-  { name: '05 Mai', valor: 880 },
-  { name: '11 Mai', valor: 750 },
-  { name: '16 Mai', valor: 1100 },
-  { name: '21 Mai', valor: 980 },
-  { name: '26 Mai', valor: 1250 },
-  { name: '31 Mai', valor: 1284 }
-];
-
-// Dados do gráfico de rosca (Consultas por Tipo)
-const donutData = [
-  { name: 'CPF', value: 58.7, rawValue: 7538, color: '#00c2ff' },
-  { name: 'CNPJ', value: 24.1, rawValue: 3094, color: '#00e676' },
-  { name: 'Placa', value: 8.6, rawValue: 1104, color: '#ff9100' },
-  { name: 'Telefone', value: 5.3, rawValue: 681, color: '#ffd600' },
-  { name: 'Outros', value: 3.3, rawValue: 425, color: '#d500f9' }
-];
-
+import { apiRequest } from '@/lib/api';
 
 export default function DashboardPage() {
-  const { user } = useAuthStore();
+  const { user, refreshBalance } = useAuthStore();
+  const [consultations, setConsultations] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const fetchDashboardData = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      await refreshBalance();
+      const data = await apiRequest<any[]>('/consultations');
+      setConsultations(data);
+    } catch (err: any) {
+      console.error('Erro ao buscar dados do dashboard:', err);
+      setError(err?.message || 'Falha ao carregar os dados reais.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchDashboardData();
+  }, []);
+
+  // KPIs
+  const totalRealizadas = consultations.length;
+  const completedConsultations = consultations.filter(c => c.status === 'COMPLETED');
+  const successRate = totalRealizadas > 0 
+    ? (completedConsultations.length / totalRealizadas) * 100 
+    : 100;
+  const pendingCount = consultations.filter(c => 
+    ['PROCESSING', 'QUEUED', 'DRAFT'].includes(c.status)
+  ).length;
+
+  // Mini gráficos dos cartões baseados nos últimos 7 dias
+  const getMiniChartData = (type: 'consultas' | 'sucesso' | 'pendencias' | 'saldo') => {
+    const dates: string[] = [];
+    const groups: { [key: string]: number } = {};
+    
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      const label = d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+      dates.push(label);
+      groups[label] = 0;
+    }
+    
+    if (type === 'consultas') {
+      consultations.forEach(c => {
+        const label = new Date(c.createdAt).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+        if (groups[label] !== undefined) groups[label]++;
+      });
+      return dates.map(d => ({ val: groups[d] }));
+    }
+    
+    if (type === 'sucesso') {
+      const successGroups: { [key: string]: { completed: number, total: number } } = {};
+      dates.forEach(d => { successGroups[d] = { completed: 0, total: 0 }; });
+      
+      consultations.forEach(c => {
+        const label = new Date(c.createdAt).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+        if (successGroups[label] !== undefined) {
+          successGroups[label].total++;
+          if (c.status === 'COMPLETED') successGroups[label].completed++;
+        }
+      });
+      return dates.map(d => {
+        const item = successGroups[d];
+        const rate = item.total > 0 ? (item.completed / item.total) * 100 : 100;
+        return { val: rate };
+      });
+    }
+    
+    if (type === 'pendencias') {
+      consultations.forEach(c => {
+        const label = new Date(c.createdAt).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+        if (groups[label] !== undefined && ['PROCESSING', 'QUEUED', 'DRAFT'].includes(c.status)) {
+          groups[label]++;
+        }
+      });
+      return dates.map(d => ({ val: groups[d] }));
+    }
+
+    if (type === 'saldo') {
+      // Retorna uma curva simulada amigável para o saldo com base no saldo atual
+      const currentBalance = user?.balance ?? 0;
+      return [
+        { val: currentBalance * 0.9 },
+        { val: currentBalance * 0.92 },
+        { val: currentBalance * 0.91 },
+        { val: currentBalance * 0.95 },
+        { val: currentBalance * 0.98 },
+        { val: currentBalance * 0.99 },
+        { val: currentBalance }
+      ];
+    }
+    
+    return [];
+  };
+
+  // Dados do gráfico de evolução diária (Consultas por Dia - últimos 30 dias)
+  const getEvolutionData = () => {
+    const groups: { [key: string]: number } = {};
+    const dates: string[] = [];
+    
+    for (let i = 29; i >= 0; i--) {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      const label = d.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' }).replace('.', '');
+      dates.push(label);
+      groups[label] = 0;
+    }
+    
+    consultations.forEach(c => {
+      const label = new Date(c.createdAt)
+        .toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })
+        .replace('.', '');
+      if (groups[label] !== undefined) {
+        groups[label]++;
+      }
+    });
+    
+    return dates.map(date => ({
+      name: date,
+      valor: groups[date]
+    }));
+  };
+
+  // Dados do gráfico de rosca (Consultas por Tipo)
+  const getDonutData = () => {
+    if (consultations.length === 0) {
+      return [
+        { name: 'Sem dados', value: 100, rawValue: 0, color: '#64748b' }
+      ];
+    }
+    
+    const countType: { [key: string]: number } = {
+      CPF: 0,
+      CNPJ: 0,
+      Outros: 0
+    };
+    
+    consultations.forEach(c => {
+      const type = (c.subjectType || '').toUpperCase();
+      if (type === 'CPF') countType.CPF++;
+      else if (type === 'CNPJ') countType.CNPJ++;
+      else countType.Outros++;
+    });
+    
+    const total = consultations.length;
+    
+    return [
+      { name: 'CPF', value: Math.round((countType.CPF / total) * 1000) / 10, rawValue: countType.CPF, color: '#00c2ff' },
+      { name: 'CNPJ', value: Math.round((countType.CNPJ / total) * 1000) / 10, rawValue: countType.CNPJ, color: '#00e676' },
+      { name: 'Outros', value: Math.round((countType.Outros / total) * 1000) / 10, rawValue: countType.Outros, color: '#ffd600' }
+    ].filter(item => item.rawValue > 0);
+  };
+
+  const donutData = getDonutData();
+
+  if (loading) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-4">
+        <Loader2 className="w-10 h-10 text-primary animate-spin" />
+        <p className="text-sm text-muted-foreground font-medium">Carregando painel de controle...</p>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="p-6 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-500 max-w-lg mx-auto mt-12 space-y-4 text-center">
+        <AlertTriangle className="w-12 h-12 mx-auto text-rose-500" />
+        <h3 className="text-base font-bold">Erro ao Carregar Dashboard</h3>
+        <p className="text-sm text-muted-foreground">{error}</p>
+        <Button onClick={fetchDashboardData} className="bg-rose-500 text-white hover:bg-rose-600 font-bold text-xs h-9 px-4 rounded-lg">
+          Tentar Novamente
+        </Button>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6 w-full">
@@ -78,42 +224,42 @@ export default function DashboardPage() {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <KpiCard
           title="Consultas Realizadas"
-          value="12.842"
-          change="+24,8% vs período anterior"
+          value={totalRealizadas.toLocaleString('pt-BR')}
+          change="Dados atualizados em tempo real"
           isPositive={true}
           icon={Activity}
           chartColor="#00c2ff"
-          chartData={miniChartData1}
+          chartData={getMiniChartData('consultas')}
           delay={0}
         />
         <KpiCard
           title="Taxa de Sucesso"
-          value="98,7%"
-          change="+1,3% vs período anterior"
+          value={`${successRate.toFixed(1)}%`}
+          change="Consultas concluídas com sucesso"
           isPositive={true}
           icon={CheckCircle2}
           chartColor="#00e676"
-          chartData={miniChartData2}
+          chartData={getMiniChartData('sucesso')}
           delay={0.05}
         />
         <KpiCard
           title="Pendências"
-          value="152"
-          change="-8,2% vs período anterior"
-          isPositive={false}
+          value={String(pendingCount)}
+          change="Consultas em processamento"
+          isPositive={pendingCount === 0}
           icon={AlertTriangle}
           chartColor="#ffd600"
-          chartData={miniChartData3}
+          chartData={getMiniChartData('pendencias')}
           delay={0.1}
         />
         <KpiCard
-          title="Receita Total"
-          value="R$ 48.732,19"
-          change="+18,6% vs período anterior"
+          title="Saldo em Carteira"
+          value={`R$ ${(user?.balance ?? 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`}
+          change="Saldo disponível para consultas"
           isPositive={true}
           icon={Wallet}
           chartColor="#d500f9"
-          chartData={miniChartData4}
+          chartData={getMiniChartData('saldo')}
           delay={0.15}
         />
       </div>
@@ -134,14 +280,12 @@ export default function DashboardPage() {
             </div>
             <select className="bg-background border border-border text-foreground text-xs rounded-lg px-2.5 py-1.5 outline-none focus:border-primary/50 cursor-pointer">
               <option>Últimos 30 dias</option>
-              <option>Últimos 7 dias</option>
-              <option>Este mês</option>
             </select>
           </div>
 
           <div className="h-64 w-full">
             <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={evolutionData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+              <AreaChart data={getEvolutionData()} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                 <defs>
                   <linearGradient id="chartGradient" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="5%" stopColor="#00c2ff" stopOpacity={0.35} />
@@ -232,7 +376,7 @@ export default function DashboardPage() {
 
             {/* Texto Centralizado na Rosca */}
             <div className="absolute flex flex-col items-center justify-center">
-              <span className="text-2xl font-black text-foreground tracking-tight">12.842</span>
+              <span className="text-2xl font-black text-foreground tracking-tight">{totalRealizadas}</span>
               <span className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider">Total</span>
             </div>
           </div>
@@ -345,31 +489,42 @@ export default function DashboardPage() {
           </div>
 
           <div className="divide-y divide-border/60 flex-1 flex flex-col justify-center">
-            {mockHistory.slice(0, 3).map((item) => (
-              <div key={item.id} className="flex items-center justify-between py-3 hover:bg-muted/10 transition-colors rounded-lg px-2 -mx-2">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 rounded-lg bg-muted border border-border/60 flex items-center justify-center">
-                    <Search className="w-4 h-4 text-muted-foreground" />
+            {consultations.length === 0 ? (
+              <div className="py-6 text-center text-xs text-muted-foreground">Nenhuma consulta realizada.</div>
+            ) : (
+              consultations.slice(0, 3).map((item) => {
+                const dateStr = new Date(item.createdAt).toLocaleString('pt-BR');
+                const templateNameStr = item.template?.name || (item.items?.map((i: any) => i.providerProduct?.name).join(', ') || 'Consulta Personalizada');
+                const totalCostNum = Number(item.totalCost);
+                const statusKey = item.status === 'COMPLETED' ? 'completed' : (item.status === 'PROCESSING' || item.status === 'QUEUED' ? 'processing' : 'error');
+
+                return (
+                  <div key={item.id} className="flex items-center justify-between py-3 hover:bg-muted/10 transition-colors rounded-lg px-2 -mx-2">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 rounded-lg bg-muted border border-border/60 flex items-center justify-center">
+                        <Search className="w-4 h-4 text-muted-foreground" />
+                      </div>
+                      <div>
+                        <p className="text-xs font-bold text-foreground tracking-wide truncate max-w-[180px]">{templateNameStr}</p>
+                        <p className="text-[10px] font-mono text-muted-foreground mt-0.5">{item.subjectDocument} · {dateStr}</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <span className="text-xs font-extrabold text-foreground">R$ {totalCostNum.toFixed(2)}</span>
+                      <span className={`px-2.5 py-0.5 rounded-full text-[9px] font-bold border uppercase tracking-wider flex items-center justify-center ${
+                        statusKey === 'completed'
+                          ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20'
+                          : statusKey === 'processing'
+                            ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20 animate-pulse'
+                            : 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20'
+                      }`}>
+                        {statusKey === 'completed' ? 'Sucesso' : statusKey === 'processing' ? 'Processando' : 'Erro'}
+                      </span>
+                    </div>
                   </div>
-                  <div>
-                    <p className="text-xs font-bold text-foreground tracking-wide">{item.templateName}</p>
-                    <p className="text-[10px] font-mono text-muted-foreground mt-0.5">{item.document} · {item.date}</p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-3">
-                  <span className="text-xs font-extrabold text-foreground">R$ {item.totalPrice.toFixed(2)}</span>
-                  <span className={`px-2.5 py-0.5 rounded-full text-[9px] font-bold border uppercase tracking-wider flex items-center justify-center ${
-                    item.status === 'completed'
-                      ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20'
-                      : item.status === 'processing'
-                        ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20 animate-pulse'
-                        : 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20'
-                  }`}>
-                    {item.status === 'completed' ? 'Sucesso' : item.status === 'processing' ? 'Processando' : 'Erro'}
-                  </span>
-                </div>
-              </div>
-            ))}
+                );
+              })
+            )}
           </div>
         </motion.div>
       </div>
