@@ -209,6 +209,10 @@ export async function previewMerge(app: FastifyInstance, input: {
 
   const mergedPayload = mergeNormalizedPayloads(payloads);
 
+  if (mergedPayload && typeof mergedPayload === 'object' && !(mergedPayload as any).protocol) {
+    (mergedPayload as any).protocol = `REQ-${Math.floor(10000000 + Math.random() * 90000000)}`;
+  }
+
   const log = await app.prisma.mergeLog.create({
     data: {
       createdById: input.actorUserId,
