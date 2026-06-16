@@ -168,6 +168,15 @@ export function buildTypeKeyedDataForDrawer(params: {
   }
 
   if (zipped) {
+    const isTabular = trechoMappings.some(m => m.jsonPath && m.jsonPath.includes('[*]'));
+    if (isTabular) {
+      if (Array.isArray(zipped)) {
+        return zipped;
+      }
+      if (zipped && typeof zipped === 'object' && !isMappedPreviewZipWrapper(zipped)) {
+        return [zipped];
+      }
+    }
     return zipped as Record<string, unknown> | Record<string, unknown>[];
   }
 
