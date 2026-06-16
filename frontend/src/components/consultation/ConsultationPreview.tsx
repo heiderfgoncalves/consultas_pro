@@ -4,7 +4,9 @@ import TemplateRenderer from './TemplateRenderer';
 import type { TemplateDocument, TemplateNode } from '@/types/template-document';
 import { buildExpressionContextFromConsultation } from '@/lib/templateSectionUtils';
 import { useTheme } from '@/hooks/use-theme';
-import { ZoomIn, ZoomOut } from 'lucide-react';
+import { ZoomIn, ZoomOut, Download, Loader2 } from 'lucide-react';
+import { useAuthStore } from '@/stores/authStore';
+
 
 const LUCIDE_STYLE = `
   <style>
@@ -198,14 +200,174 @@ export default function ConsultationPreview({
   layout,
   rawItems,
 }: ConsultationPreviewProps) {
+  const { user } = useAuthStore();
   const [htmlOutput, setHtmlOutput] = React.useState<string | null>(null);
   const { resolvedTheme } = useTheme();
   const isDark = resolvedTheme === 'dark';
   const [zoom, setZoom] = React.useState<number>(1.0);
+  const [pdfLoading, setPdfLoading] = React.useState<boolean>(false);
 
   const handleZoomIn = () => setZoom(prev => Math.min(2.0, Number((prev + 0.1).toFixed(2))));
   const handleZoomOut = () => setZoom(prev => Math.max(0.5, Number((prev - 0.1).toFixed(2))));
   const handleResetZoom = () => setZoom(1.0);
+
+  const handleDownloadPdf = async () => {
+    if (pdfLoading) return;
+    setPdfLoading(true);
+    try {
+      const consultationDate = new Date().toLocaleDateString('pt-BR') + ' ' + new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+      const protocol = docInput ? `REQ-${docInput.replace(/\D/g, '').slice(0, 8)}` : 'REQ-91632956';
+      const mergedData = {
+        ...(realData || {}),
+        cliente: {
+          nome: clientName || (realData as any)?.cliente?.nome || 'JULIANO CAMPOS PEREIRA',
+          documento: docInput || (realData as any)?.cliente?.documento || '000.000.000-00',
+        },
+        clientName: clientName || (realData as any)?.clientName || (realData as any)?.cliente?.nome || 'JULIANO CAMPOS PEREIRA',
+        clientCpf: docInput || (realData as any)?.clientCpf || (realData as any)?.cliente?.documento || '000.000.000-00',
+        consultationDate,
+        protocol,
+        template: {
+          date: consultationDate,
+          protocol,
+          company: user?.companyName || 'CONSULTAS PRO',
+        },
+      };
+
+      const { renderTemplateToHtml } = await import('@/features/templates-drawer/engine/renderTemplateToHtml');
+
+      let pagesHtml = '';
+      let pageWidth = 794;
+      let pageHeight = 1123;
+
+      if (isModernLayout && layout) {
+        const modernTemplate = layout as any;
+        modernTemplate.frames.forEach((f: any) => {
+          try {
+            const result = renderTemplateToHtml(modernTemplate, f.id, mergedData);
+            pagesHtml += `<section class="page" style="width:${f.width}px;height:${f.height}px;background:${f.background || '#fff'};position:relative;overflow:hidden;box-sizing:border-box;">${result.html}</section>`;
+            pageWidth = f.width;
+            pageHeight = f.height;
+          } catch (e: any) {
+            pagesHtml += `<div class="error">Erro no frame ${f.name || ''}: ${e.message}</div>`;
+          }
+        });
+      } else if (isNewEngine && rawItems) {
+        rawItems.forEach((item) => {
+          const productLayout = item.providerProduct?.templateLayout;
+          if (productLayout && productLayout.frames && productLayout.frames.length > 0) {
+            try {
+              const result = renderTemplateToHtml(productLayout, productLayout.frames[0].id, mergedData);
+              pagesHtml += `<section class="page" style="width:${productLayout.frames[0].width}px;height:${productLayout.frames[0].height}px;background:${productLayout.frames[0].background || '#fff'};position:relative;overflow:hidden;box-sizing:border-box;">${result.html}</section>`;
+              pageWidth = productLayout.frames[0].width;
+              pageHeight = productLayout.frames[0].height;
+            } catch (e: any) {
+              pagesHtml += `<div class="error">Erro: ${e.message}</div>`;
+            }
+          }
+        });
+      }
+
+      if (!pagesHtml) {
+        // Fallback clássico
+        pagesHtml = `<section class="page" style="width:794px;min-height:1123px;padding:48px;background:#fff;position:relative;overflow:hidden;box-sizing:border-box;">
+          <h1 style="font-size:22px;font-weight:800;margin:0 0 8px">${(layout as any)?.name || 'Relatório'}</h1>
+          <p style="font-size:13px;color:#64748b;margin:0 0 24px">Documento: ${docInput || 'Não informado'}</p>
+          <pre style="font-size:10px;background:#f1f5f9;padding:16px;border-radius:8px;overflow:auto;white-space:pre-wrap">${JSON.stringify(realData, null, 2)}</pre>
+        </section>`;
+      }
+
+      const logoHtml = logo
+        ? `<img src="${logo}" style="max-height:32px;width:auto;position:absolute;top:16px;right:16px;z-index:10;" />`
+        : '';
+
+      const parentStyles = Array.from(document.querySelectorAll('style, link[rel="stylesheet"]'))
+        .map(el => el.outerHTML)
+        .join('\n');
+
+      const fullHtml = `<!doctype html><html><head><meta charset="utf-8"/>
+${parentStyles}
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@100..900&family=Inter:wght@100..900&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/lucide@0.462.0/dist/umd/lucide.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Geist', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif !important; }
+  body { background: #fff; color: #0f172a; }
+  .page { position: relative; overflow: hidden; }
+  i[data-lucide] svg, svg.lucide { width: 100%; height: 100%; }
+</style></head><body>${logoHtml}${pagesHtml}
+<script>if(typeof lucide!=='undefined'){lucide.createIcons();}</script>
+</body></html>`;
+
+      const existingFrame = document.getElementById('__pdf-render-frame') as HTMLIFrameElement | null;
+      if (existingFrame) existingFrame.remove();
+
+      const frame = document.createElement('iframe');
+      frame.id = '__pdf-render-frame';
+      frame.style.cssText = `position:fixed;top:0;left:-9999px;width:${pageWidth}px;height:${pageHeight}px;border:none;z-index:-1;opacity:0.01;pointer-events:none;`;
+      document.body.appendChild(frame);
+
+      frame.srcdoc = fullHtml;
+      frame.onload = async () => {
+        try {
+          const iframeDoc = frame.contentDocument;
+          if (!iframeDoc) throw new Error('iframe sem documento');
+
+          if (iframeDoc.fonts) {
+            await iframeDoc.fonts.ready;
+          }
+          await new Promise(res => setTimeout(res, 500));
+
+          const { default: html2canvas } = await import('html2canvas');
+          const { jsPDF } = await import('jspdf');
+
+          const pages = iframeDoc.querySelectorAll<HTMLElement>('section.page');
+          const pagesToCapture = pages.length > 0 ? Array.from(pages) : [iframeDoc.body];
+
+          const pdf = new jsPDF({
+            orientation: pageWidth > pageHeight ? 'landscape' : 'portrait',
+            unit: 'px',
+            format: [pageWidth, pageHeight],
+            compress: true,
+          });
+
+          for (let i = 0; i < pagesToCapture.length; i++) {
+            const el = pagesToCapture[i] as HTMLElement;
+            const canvas = await html2canvas(el, {
+              scale: 2,
+              useCORS: true,
+              allowTaint: true,
+              backgroundColor: '#ffffff',
+              width: el.offsetWidth || pageWidth,
+              height: el.offsetHeight || pageHeight,
+              windowWidth: el.offsetWidth || pageWidth,
+              windowHeight: el.offsetHeight || pageHeight,
+            });
+
+            if (i > 0) pdf.addPage();
+            const imgData = canvas.toDataURL('image/jpeg', 0.92);
+            const pdfW = pdf.internal.pageSize.getWidth();
+            const pdfH = pdf.internal.pageSize.getHeight();
+            pdf.addImage(imgData, 'JPEG', 0, 0, pdfW, pdfH);
+          }
+
+          const docName = (layout as any)?.name || 'Relatorio';
+          const safeDoc = docInput?.replace(/\D/g, '') || 'sem-doc';
+          pdf.save(`${docName}-${safeDoc}.pdf`);
+        } catch (e: any) {
+          console.error('Erro ao gerar PDF:', e);
+        } finally {
+          frame.remove();
+          setPdfLoading(false);
+        }
+      };
+    } catch (err: any) {
+      console.error('Erro ao preparar PDF:', err);
+      setPdfLoading(false);
+    }
+  };
+
 
 
 
@@ -251,6 +413,8 @@ export default function ConsultationPreview({
 
     // Importamos dinamicamente para evitar ciclo ou usar diretamente
     import('@/features/templates-drawer/engine/renderTemplateToHtml').then(({ renderTemplateToHtml }) => {
+      const consultationDate = new Date().toLocaleDateString('pt-BR') + ' ' + new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+      const protocol = docInput ? `REQ-${docInput.replace(/\D/g, '').slice(0, 8)}` : 'REQ-91632956';
       const mergedData = {
         ...(realData || {}),
         cliente: {
@@ -259,8 +423,13 @@ export default function ConsultationPreview({
         },
         clientName: clientName || (realData as any)?.clientName || (realData as any)?.cliente?.nome || 'JULIANO CAMPOS PEREIRA',
         clientCpf: docInput || (realData as any)?.clientCpf || (realData as any)?.cliente?.documento || '000.000.000-00',
-        consultationDate: new Date().toLocaleDateString('pt-BR') + ' ' + new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
-        protocol: docInput ? `PROT-${docInput.replace(/\D/g, '').slice(-6)}` : 'PROT-000000',
+        consultationDate,
+        protocol,
+        template: {
+          date: consultationDate,
+          protocol,
+          company: user?.companyName || 'CONSULTAS PRO',
+        },
       };
 
       if (isModernLayout && layout) {
@@ -331,22 +500,26 @@ export default function ConsultationPreview({
       ? '0 10px 25px -5px rgba(0, 0, 0, 0.4), 0 8px 10px -6px rgba(0, 0, 0, 0.4)' 
       : '0 10px 25px -5px rgba(15, 23, 42, 0.08), 0 8px 10px -6px rgba(15, 23, 42, 0.08)';
 
+    const parentStyles = Array.from(document.querySelectorAll('style, link[rel="stylesheet"]'))
+      .map(el => el.outerHTML)
+      .join('\n');
+
     const iframeSrcDoc = `
       <!doctype html>
       <html>
         <head>
           <meta charset="utf-8"/>
+          ${parentStyles}
           <link rel="preconnect" href="https://fonts.googleapis.com">
           <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
           <link href="https://fonts.googleapis.com/css2?family=Geist:wght@100..900&family=Geist+Mono:wght@100..900&family=Inter:wght@100..900&family=JetBrains+Mono:wght@100..900&display=swap" rel="stylesheet">
           <script src="https://cdn.jsdelivr.net/npm/lucide@0.462.0/dist/umd/lucide.min.js"></script>
           <style>
-            * { box-sizing: border-box; }
+            * { box-sizing: border-box; font-family: 'Geist', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif !important; }
             body { 
               margin: 0; 
               padding: 20px; 
               background: ${bgIframe}; 
-              font-family: 'Geist', 'Inter', sans-serif; 
               color: ${colorIframe}; 
               display: flex;
               justify-content: center;
@@ -428,13 +601,34 @@ export default function ConsultationPreview({
           >
             <ZoomIn className="w-3.5 h-3.5" />
           </button>
+
+          <div className="w-px h-4 bg-border/60 mx-1" />
+
+          <button
+            onClick={handleDownloadPdf}
+            className="flex items-center gap-1 px-2.5 py-1 rounded-full hover:bg-primary/10 text-primary transition-colors text-xs font-semibold"
+            disabled={pdfLoading}
+            title="Baixar como PDF"
+          >
+            {pdfLoading ? (
+              <>
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                <span className="text-[10px] font-medium">Gerando...</span>
+              </>
+            ) : (
+              <>
+                <Download className="w-3.5 h-3.5" />
+                <span className="text-[10px] font-medium">Baixar PDF</span>
+              </>
+            )}
+          </button>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="bg-card rounded-xl shadow-xs overflow-hidden">
+    <div className="relative bg-card rounded-xl shadow-xs overflow-hidden">
       <TemplateRenderer
         document={templateDoc}
         mode="preview"
@@ -450,6 +644,28 @@ export default function ConsultationPreview({
         logo={logo}
         onLogoChange={onLogoChange}
       />
+
+      {/* Botão de PDF Flutuante para o modo clássico */}
+      <div className="absolute bottom-5 right-5 z-10 flex items-center gap-1.5 px-2.5 py-1.5 rounded-full border shadow-lg backdrop-blur-md transition-all duration-300 bg-background/80 border-border/40 text-foreground hover:border-border/80">
+        <button
+          onClick={handleDownloadPdf}
+          className="flex items-center gap-1 px-2.5 py-1 rounded-full hover:bg-primary/10 text-primary transition-colors text-xs font-semibold"
+          disabled={pdfLoading}
+          title="Baixar como PDF"
+        >
+          {pdfLoading ? (
+            <>
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              <span className="text-[10px] font-medium">Gerando...</span>
+            </>
+          ) : (
+            <>
+              <Download className="w-3.5 h-3.5" />
+              <span className="text-[10px] font-medium">Baixar PDF</span>
+            </>
+          )}
+        </button>
+      </div>
     </div>
   );
 }

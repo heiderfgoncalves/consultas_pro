@@ -323,18 +323,23 @@ export function RealtimeConsultationsTab({ accessToken }: { accessToken: string 
         detail.subjectDocument ||
         'CLIENTE ANALISADO';
 
+      const consultationDate = new Date().toLocaleDateString('pt-BR') + ' ' + new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+      const protocol = detail.subjectDocument
+        ? `REQ-${detail.subjectDocument.replace(/\D/g, '').slice(0, 8)}`
+        : `REQ-${detail.id.slice(0, 8).toUpperCase()}`;
+
       const mergedData = {
         ...realData,
         cliente: { nome: clientName, documento: detail.subjectDocument || '' },
         clientName,
         clientCpf: detail.subjectDocument || '',
-        consultationDate:
-          new Date().toLocaleDateString('pt-BR') +
-          ' ' +
-          new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
-        protocol: detail.subjectDocument
-          ? `PROT-${detail.subjectDocument.replace(/\D/g, '').slice(-6)}`
-          : `PROT-${detail.id.slice(0, 6).toUpperCase()}`,
+        consultationDate,
+        protocol,
+        template: {
+          date: consultationDate,
+          protocol,
+          company: detail.company?.name || 'CONSULTAS PRO',
+        },
       };
 
       const { renderTemplateToHtml } = await import(
@@ -381,17 +386,22 @@ export function RealtimeConsultationsTab({ accessToken }: { accessToken: string 
       }
 
       const logo = detail.template?.logo
-        ? `<img src="${detail.template.logo}" style="height:32px;object-fit:contain;position:absolute;top:16px;right:16px" />`
+        ? `<img src="${detail.template.logo}" style="max-height:32px;width:auto;position:absolute;top:16px;right:16px;z-index:10;" />`
         : '';
 
+      const parentStyles = Array.from(document.querySelectorAll('style, link[rel="stylesheet"]'))
+        .map(el => el.outerHTML)
+        .join('\n');
+
       const fullHtml = `<!doctype html><html><head><meta charset="utf-8"/>
+${parentStyles}
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Geist:wght@100..900&family=Inter:wght@100..900&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/lucide@0.462.0/dist/umd/lucide.min.js"></script>
 <style>
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { background: #fff; font-family: 'Geist', 'Inter', sans-serif; color: #0f172a; }
+  * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Geist', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif !important; }
+  body { background: #fff; color: #0f172a; }
   .page { position: relative; overflow: hidden; }
   i[data-lucide] svg, svg.lucide { width: 100%; height: 100%; }
 </style></head><body>${logo}${pagesHtml}
@@ -406,13 +416,16 @@ export function RealtimeConsultationsTab({ accessToken }: { accessToken: string 
       frame.srcdoc = fullHtml;
       frame.onload = async () => {
         try {
-          await new Promise(res => setTimeout(res, 800));
+          const iframeDoc = frame.contentDocument;
+          if (!iframeDoc) throw new Error('iframe sem documento');
+
+          if (iframeDoc.fonts) {
+            await iframeDoc.fonts.ready;
+          }
+          await new Promise(res => setTimeout(res, 500));
 
           const { default: html2canvas } = await import('html2canvas');
           const { jsPDF } = await import('jspdf');
-
-          const iframeDoc = frame.contentDocument;
-          if (!iframeDoc) throw new Error('iframe sem documento');
 
           const pages = iframeDoc.querySelectorAll<HTMLElement>('section.page');
           const pagesToCapture = pages.length > 0 ? Array.from(pages) : [iframeDoc.body];
