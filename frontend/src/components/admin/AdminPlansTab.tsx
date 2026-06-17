@@ -26,6 +26,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { cn } from '@/lib/utils';
+import { apiRequest } from '@/lib/api';
 
 interface Plan {
   id: string;
@@ -105,28 +106,16 @@ export function AdminPlansTab({ accessToken }: AdminPlansTabProps) {
   const fetchData = async () => {
     try {
       setLoading(true);
-      const headers = {
-        'Authorization': `Bearer ${accessToken || localStorage.getItem('token')}`,
-      };
 
-      const [plansRes, subsRes, leadsRes] = await Promise.all([
-        fetch('/api/admin/plans', { headers }),
-        fetch('/api/admin/subscriptions', { headers }),
-        fetch('/api/admin/plans/leads', { headers }),
+      const [plansData, subsData, leadsData] = await Promise.all([
+        apiRequest<Plan[]>('/admin/plans'),
+        apiRequest<any[]>('/admin/subscriptions'),
+        apiRequest<any[]>('/admin/plans/leads'),
       ]);
 
-      if (plansRes.ok) {
-        const plansData = await plansRes.json();
-        setPlans(plansData.data || []);
-      }
-      if (subsRes.ok) {
-        const subsData = await subsRes.json();
-        setSubscriptions(subsData.data || []);
-      }
-      if (leadsRes.ok) {
-        const leadsData = await leadsRes.json();
-        setLeads(leadsData.data || []);
-      }
+      setPlans(plansData || []);
+      setSubscriptions(subsData || []);
+      setLeads(leadsData || []);
     } catch (error) {
       console.error('Erro ao buscar dados administrativos de planos:', error);
       toast.error('Erro ao carregar dados de planos e faturamentos.');
@@ -156,12 +145,8 @@ export function AdminPlansTab({ accessToken }: AdminPlansTabProps) {
 
     setUpdating(true);
     try {
-      const res = await fetch(`/api/admin/plans/${editingPlan.id}`, {
+      await apiRequest<any>(`/admin/plans/${editingPlan.id}`, {
         method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${accessToken || localStorage.getItem('token')}`,
-        },
         body: JSON.stringify({
           name: editName,
           price: editPrice,
@@ -173,17 +158,12 @@ export function AdminPlansTab({ accessToken }: AdminPlansTabProps) {
         }),
       });
 
-      if (res.ok) {
-        toast.success('Plano atualizado com sucesso!');
-        setEditingPlan(null);
-        fetchData();
-      } else {
-        const err = await res.json();
-        toast.error(err.error?.message || 'Erro ao atualizar plano');
-      }
-    } catch (error) {
+      toast.success('Plano atualizado com sucesso!');
+      setEditingPlan(null);
+      fetchData();
+    } catch (error: any) {
       console.error('Erro ao atualizar plano:', error);
-      toast.error('Falha de rede ao salvar plano.');
+      toast.error(error.message || 'Erro ao atualizar plano');
     } finally {
       setUpdating(false);
     }

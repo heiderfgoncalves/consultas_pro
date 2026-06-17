@@ -15,7 +15,7 @@
     --popover: 0 0% 100%;
     --popover-foreground: 240 10% 3.9%;
 
-    --primary: 212 100% 48%;
+    --primary: 174 100% 41%;
     --primary-foreground: 0 0% 100%;
 
     --secondary: 240 4.8% 95.9%;
@@ -41,20 +41,20 @@
 
     --border: 240 5.9% 94%;
     --input: 240 5.9% 94%;
-    --ring: 212 100% 48%;
+    --ring: 174 100% 41%;
 
     --radius: 0.5rem;
-    --brand: oklch(0.68 0.18 250);
-    --brand-glow: oklch(0.78 0.16 245);
+    --brand: oklch(0.65 0.15 190);
+    --brand-glow: oklch(0.75 0.13 185);
 
     --sidebar-background: 240 4.8% 95.9%;
     --sidebar-foreground: 240 5.3% 26.1%;
-    --sidebar-primary: 212 100% 48%;
+    --sidebar-primary: 174 100% 41%;
     --sidebar-primary-foreground: 0 0% 100%;
     --sidebar-accent: 240 4.8% 90%;
     --sidebar-accent-foreground: 240 5.9% 10%;
     --sidebar-border: 240 5.9% 90%;
-    --sidebar-ring: 212 100% 48%;
+    --sidebar-ring: 174 100% 41%;
     --sidebar-muted: 240 3.8% 46.1%;
 
     --surface: oklch(0.96 0.005 256);
@@ -64,7 +64,7 @@
     --glass-bg-1: oklch(0.98 0.005 256 / 0.97);
     --glass-bg-2: oklch(0.94 0.005 256 / 0.92);
     --hud-shadow: 0 -16px 40px -12px oklch(0.6 0.01 240 / 0.1), 0 24px 60px -16px oklch(0.6 0.01 240 / 0.14);
-    --grid-color: rgba(0, 0, 0, 0.05);
+    --grid-color: rgba(0, 0, 0, 0.018);
   }
 
   /* Noite "viva" de extrema elegância: Cinza profundo ("Midnight Tech") estilo Compozy */
@@ -78,8 +78,8 @@
     --popover: 240 10% 5.9%;
     --popover-foreground: 0 0% 98%;
 
-    --primary: 212 95% 56%;
-    --primary-foreground: 222 40% 8%;
+    --primary: 174 90% 43%;
+    --primary-foreground: 180 50% 8%;
 
     --secondary: 240 3.7% 15.9%;
     --secondary-foreground: 0 0% 98%;
@@ -104,19 +104,19 @@
 
     --border: 240 3.7% 13%; /* Borda super sutil e escura */
     --input: 240 3.7% 12%;
-    --ring: 212 95% 56%;
+    --ring: 174 90% 43%;
 
     --sidebar-background: 240 10% 2.5%; /* Barra lateral mais escura estilo console */
     --sidebar-foreground: 240 5% 80%;
-    --sidebar-primary: 212 95% 56%;
-    --sidebar-primary-foreground: 222 40% 8%;
+    --sidebar-primary: 174 90% 43%;
+    --sidebar-primary-foreground: 180 50% 8%;
     --sidebar-accent: 240 3.7% 10%;
     --sidebar-accent-foreground: 0 0% 98%;
     --sidebar-border: 240 3.7% 8%;
-    --sidebar-ring: 212 95% 56%;
+    --sidebar-ring: 174 90% 43%;
     --sidebar-muted: 240 5% 60%;
-    --brand: oklch(0.7 0.18 250);
-    --brand-glow: oklch(0.8 0.16 245);
+    --brand: oklch(0.65 0.15 190);
+    --brand-glow: oklch(0.75 0.13 185);
 
     --surface: oklch(0.19 0.02 256);
     --hud-bg-1: oklch(0.14 0.015 256 / 0.98);
@@ -125,7 +125,7 @@
     --glass-bg-1: oklch(0.16 0.015 256 / 0.97);
     --glass-bg-2: oklch(0.10 0.01 256 / 0.94);
     --hud-shadow: 0 -20px 50px -15px oklch(0.01 0.01 256 / 0.85), 0 30px 80px -25px oklch(0.01 0.01 256 / 0.95);
-    --grid-color: rgba(255, 255, 255, 0.08);
+    --grid-color: rgba(255, 255, 255, 0.03);
   }
 }
 
@@ -134,6 +134,8 @@
   --primary: 212 100% 48%;
   --ring: 212 100% 48%;
   --primary-foreground: 0 0% 100%;
+  --sidebar-primary: 212 100% 48%;
+  --sidebar-primary-foreground: 0 0% 100%;
   --brand: oklch(0.68 0.18 250);
   --brand-glow: oklch(0.78 0.16 245);
 }
@@ -141,6 +143,8 @@
   --primary: 212 95% 56%;
   --ring: 212 95% 56%;
   --primary-foreground: 222 40% 8%;
+  --sidebar-primary: 212 95% 56%;
+  --sidebar-primary-foreground: 222 40% 8%;
   --brand: oklch(0.7 0.18 250);
   --brand-glow: oklch(0.8 0.16 245);
 }
@@ -149,6 +153,8 @@
   --primary: 38 92% 50%;
   --ring: 38 92% 50%;
   --primary-foreground: 0 0% 100%;
+  --sidebar-primary: 38 92% 50%;
+  --sidebar-primary-foreground: 0 0% 100%;
   --brand: oklch(0.75 0.18 72);
   --brand-glow: oklch(0.86 0.15 82);
 }
@@ -156,6 +162,8 @@
   --primary: 38 92% 50%;
   --ring: 38 92% 50%;
   --primary-foreground: 0 0% 100%;
+  --sidebar-primary: 38 92% 50%;
+  --sidebar-primary-foreground: 0 0% 100%;
   --brand: oklch(0.75 0.18 72);
   --brand-glow: oklch(0.86 0.15 82);
 }
@@ -164,6 +172,8 @@
   --primary: 174 100% 41%;
   --ring: 174 100% 41%;
   --primary-foreground: 0 0% 100%;
+  --sidebar-primary: 174 100% 41%;
+  --sidebar-primary-foreground: 0 0% 100%;
   --brand: oklch(0.65 0.15 190);
   --brand-glow: oklch(0.75 0.13 185);
 }
@@ -171,6 +181,8 @@
   --primary: 174 90% 43%;
   --ring: 174 90% 43%;
   --primary-foreground: 180 50% 8%;
+  --sidebar-primary: 174 90% 43%;
+  --sidebar-primary-foreground: 180 50% 8%;
   --brand: oklch(0.65 0.15 190);
   --brand-glow: oklch(0.75 0.13 185);
 }
@@ -179,6 +191,8 @@
   --primary: 142 71% 45%;
   --ring: 142 71% 45%;
   --primary-foreground: 0 0% 100%;
+  --sidebar-primary: 142 71% 45%;
+  --sidebar-primary-foreground: 0 0% 100%;
   --brand: oklch(0.68 0.2 150);
   --brand-glow: oklch(0.78 0.18 145);
 }
@@ -186,6 +200,8 @@
   --primary: 142 76% 51%;
   --ring: 142 76% 51%;
   --primary-foreground: 144 50% 8%;
+  --sidebar-primary: 142 76% 51%;
+  --sidebar-primary-foreground: 144 50% 8%;
   --brand: oklch(0.68 0.2 150);
   --brand-glow: oklch(0.78 0.18 145);
 }
@@ -194,6 +210,8 @@
   --primary: 240 5.9% 10%;
   --ring: 240 5.9% 10%;
   --primary-foreground: 0 0% 100%;
+  --sidebar-primary: 240 5.9% 10%;
+  --sidebar-primary-foreground: 0 0% 100%;
   --brand: oklch(0.2 0.01 250);
   --brand-glow: oklch(0.4 0.01 250);
 }
@@ -201,6 +219,8 @@
   --primary: 0 0% 100%;
   --ring: 0 0% 100%;
   --primary-foreground: 240 5.9% 10%;
+  --sidebar-primary: 0 0% 100%;
+  --sidebar-primary-foreground: 240 5.9% 10%;
   --brand: oklch(0.9 0.01 250);
   --brand-glow: oklch(1 0 250);
 }
@@ -558,7 +578,33 @@
   background-image: 
     linear-gradient(to right, var(--grid-color) 1px, transparent 1px),
     linear-gradient(to bottom, var(--grid-color) 1px, transparent 1px);
-  background-size: 24px 24px;
+  background-size: 72px 72px;
+}
+
+.main-glow-bg-right {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 50%;
+  height: 400px;
+  background: radial-gradient(circle, var(--brand) 0%, transparent 70%);
+  filter: blur(120px);
+  opacity: 0.05;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.main-glow-bg-left {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 40%;
+  height: 300px;
+  background: radial-gradient(circle, var(--brand) 0%, transparent 70%);
+  filter: blur(100px);
+  opacity: 0.03;
+  pointer-events: none;
+  z-index: 0;
 }
 
 .bg-noise-pattern {

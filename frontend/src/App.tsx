@@ -27,6 +27,7 @@ import TemplatesDrawerPage from "@/pages/TemplatesDrawerPage";
 import NotFound from "@/pages/NotFound";
 import Index from "@/pages/Index";
 import PlansPage from "@/pages/PlansPage";
+import AboutPage from "@/pages/AboutPage";
 import SubscriptionPage from "@/pages/SubscriptionPage";
 import { openRechargeModal } from "@/stores/rechargeModalStore";
 import { ThemeRouteObserver } from "@/components/layout/ThemeRouteObserver";
@@ -91,6 +92,7 @@ const App = () => (
             <Route path="/login" element={<LoginPage />} />
             <Route path="/cadastro" element={<RegisterPage />} />
             <Route path="/planos" element={<PlansPage />} />
+            <Route path="/sobre" element={<AboutPage />} />
             <Route path="/recuperar-acesso" element={<RecoverAccessPage />} />
             <Route path="/reset-senha" element={<ResetPasswordPage />} />
 

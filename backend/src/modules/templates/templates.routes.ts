@@ -82,7 +82,16 @@ export async function registerTemplateRoutes(app: FastifyInstance) {
       include: {
         user: {
           select: {
+            id: true,
+            fullName: true,
+            email: true,
             role: true
+          }
+        },
+        company: {
+          select: {
+            id: true,
+            name: true
           }
         },
         items: {

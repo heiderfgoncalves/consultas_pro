@@ -45,7 +45,7 @@ export default function ReportHeader({
   return (
     <>
       <input ref={logoInputRef} type="file" accept="image/*" onChange={handleLogoUpload} className="hidden" />
-      <div className="pb-3" style={{ borderBottom: '3px solid hsl(var(--primary))' }}>
+      <div className="pb-3" style={{ borderBottom: '3px solid var(--brand)' }}>
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             {logo ? (

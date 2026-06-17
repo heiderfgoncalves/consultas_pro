@@ -20,6 +20,7 @@ import { PageHeader } from '@/components/shared/StatCard';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { AdminPlansTab } from '@/components/admin/AdminPlansTab';
+import { apiRequest } from '@/lib/api';
 
 interface SubscriptionData {
   subscription: {
@@ -56,15 +57,8 @@ export default function SubscriptionPage() {
 
     async function fetchSubscription() {
       try {
-        const res = await fetch('/api/subscriptions/me', {
-          headers: {
-            'Authorization': `Bearer ${accessToken || localStorage.getItem('token')}`,
-          }
-        });
-        if (res.ok) {
-          const resData = await res.json();
-          setData(resData.data);
-        }
+        const subData = await apiRequest<SubscriptionData>('/subscriptions/me');
+        setData(subData);
       } catch (error) {
         console.error('Erro ao buscar assinatura:', error);
       } finally {
@@ -73,7 +67,7 @@ export default function SubscriptionPage() {
     }
 
     fetchSubscription();
-  }, [user, accessToken]);
+  }, [user]);
 
   if (loading) {
     return (

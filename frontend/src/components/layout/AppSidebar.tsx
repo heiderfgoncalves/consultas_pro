@@ -265,13 +265,13 @@ export default function AppSidebar() {
         <button
           type="button"
           onClick={() => setCollapsed(!collapsed)}
-          className="absolute top-3 -right-3 w-6 h-6 rounded-full bg-card border border-border shadow-elevated flex items-center justify-center hover:bg-primary hover:text-primary-foreground hover:border-primary transition-all duration-200 z-10 group"
+          className="absolute top-3 -right-3 w-6 h-6 rounded-full bg-primary border border-primary text-primary-foreground shadow-elevated flex items-center justify-center hover:opacity-90 hover:shadow-glow transition-all duration-200 z-40 group"
           title={collapsed ? 'Expandir' : 'Recolher'}
         >
           {collapsed ? (
-            <PanelLeft className="w-3 h-3 text-muted-foreground group-hover:text-primary-foreground transition-colors" />
+            <PanelLeft className="w-3 h-3 text-primary-foreground group-hover:scale-110 transition-transform duration-200" />
           ) : (
-            <PanelLeftClose className="w-3 h-3 text-muted-foreground group-hover:text-primary-foreground transition-colors" />
+            <PanelLeftClose className="w-3 h-3 text-primary-foreground group-hover:scale-110 transition-transform duration-200" />
           )}
         </button>
       </aside>

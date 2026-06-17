@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Plus, Send, FileText, Eye, AlertTriangle, Play, Edit, Star, Trash2, Copy,
   Sparkles, ShieldAlert, CheckCircle, Upload, X, Wallet, Lock, Info, StarOff, RotateCcw,
-  Clock, RefreshCw
+  Clock, RefreshCw, Building2, User2, ChevronDown, Coins
 } from 'lucide-react';
 import { useAuthStore } from '@/stores/authStore';
 import { useNavigate } from 'react-router-dom';
@@ -36,6 +36,10 @@ const mapApiTemplateToSavedTemplate = (apiTpl: ApiTemplate): SavedTemplate & {
   layout: any;
   logo: string | null;
   rawItems: any[];
+  userId?: string | null;
+  companyId?: string | null;
+  user?: any;
+  company?: any;
 } => {
   const blocks: ConsultationBlock[] = apiTpl.items.map((item) => {
     const existing = availableBlocks.find(
@@ -67,6 +71,10 @@ const mapApiTemplateToSavedTemplate = (apiTpl: ApiTemplate): SavedTemplate & {
     layout: normalizedLayout,
     logo: apiTpl.logo,
     rawItems: apiTpl.items,
+    userId: apiTpl.userId,
+    companyId: apiTpl.companyId,
+    user: apiTpl.user,
+    company: apiTpl.company,
   };
 };
 
@@ -457,7 +465,7 @@ export default function NewConsultationPage() {
   const [simProfile, setSimProfile] = useState<'clean' | 'restricted' | null>(null);
 
   const isAdmin = user?.backendRole === 'PLATFORM_ADMIN' && user?.accessLevel === 0;
-  const [activeTab, setActiveTab] = useState<'standard' | 'custom' | 'templates'>('templates');
+  const [activeTab, setActiveTab] = useState<'standard' | 'custom' | 'templates' | 'accounts'>('templates');
 
   // Força o ajuste do activeTab se o usuário carregar ou se seu cargo mudar
   useEffect(() => {
@@ -564,12 +572,76 @@ export default function NewConsultationPage() {
 
   // Separação de abas: Templates Padrão (GLOBAL/COMPANY) vs. Templates Personalizados (PRIVATE)
   const standardTemplates = useMemo(() => {
-    return apiTemplates.filter((t) => t.visibility === 'GLOBAL' || t.visibility === 'COMPANY');
-  }, [apiTemplates]);
+    return apiTemplates.filter((t) => {
+      const isGlobalOrCompany = t.visibility === 'GLOBAL' || t.visibility === 'COMPANY';
+      if (!isGlobalOrCompany) return false;
+      
+      // Se for admin mestre, não mostra templates padrão criados por outros parceiros/contas aqui
+      if (isAdmin) {
+        const isCreatedByPartner = t.userId && t.user?.role !== 'PLATFORM_ADMIN';
+        return !isCreatedByPartner;
+      }
+      return true;
+    });
+  }, [apiTemplates, isAdmin]);
 
   const customTemplates = useMemo(() => {
-    return apiTemplates.filter((t) => t.visibility === 'PRIVATE');
-  }, [apiTemplates]);
+    return apiTemplates.filter((t) => {
+      const isPrivate = t.visibility === 'PRIVATE';
+      if (!isPrivate) return false;
+      
+      // Se for admin mestre, não mostra templates privados criados por parceiros/contas aqui
+      if (isAdmin) {
+        const isCreatedByPartner = t.userId && t.user?.role !== 'PLATFORM_ADMIN';
+        return !isCreatedByPartner;
+      }
+      return true;
+    });
+  }, [apiTemplates, isAdmin]);
+
+  // Nova lista: Templates criados por outras contas (parceiros, empresas, etc.)
+  const accountTemplates = useMemo(() => {
+    if (!isAdmin) return [];
+    return apiTemplates.filter((t) => {
+      const isCreatedByPartner = t.userId && t.user?.role !== 'PLATFORM_ADMIN';
+      return isCreatedByPartner;
+    });
+  }, [apiTemplates, isAdmin]);
+
+  // Agrupa os templates por conta/empresa para exibição organizada
+  const groupedTemplatesByAccount = useMemo(() => {
+    const groups: { [key: string]: { name: string; type: 'company' | 'user'; email?: string; templates: typeof apiTemplates } } = {};
+    
+    accountTemplates.forEach((t) => {
+      let groupKey = 'Sem Empresa';
+      let groupName = 'Sem Empresa';
+      let groupType: 'company' | 'user' = 'user';
+      let groupEmail = '';
+      
+      if (t.company) {
+        groupKey = `company-${t.company.id}`;
+        groupName = t.company.name;
+        groupType = 'company';
+      } else if (t.user) {
+        groupKey = `user-${t.user.id}`;
+        groupName = t.user.fullName || t.user.email || 'Usuário Sem Nome';
+        groupType = 'user';
+        groupEmail = t.user.email;
+      }
+      
+      if (!groups[groupKey]) {
+        groups[groupKey] = {
+          name: groupName,
+          type: groupType,
+          email: groupEmail,
+          templates: [],
+        };
+      }
+      groups[groupKey].templates.push(t);
+    });
+    
+    return Object.values(groups);
+  }, [accountTemplates]);
 
   // Filtra templates permitidos para o usuário comum de acordo com metadata.visibleRoles
   const userTemplates = useMemo(() => {
@@ -832,7 +904,7 @@ export default function NewConsultationPage() {
       </div>
 
       {/* Tabs and Template Cards */}
-      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'standard' | 'custom' | 'templates')} className="w-full">
+      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as any)} className="w-full">
         <TabsList className="bg-muted/50 p-1 mb-4 h-auto flex flex-wrap sm:inline-flex rounded-xl">
           {isAdmin ? (
             <>
@@ -844,6 +916,9 @@ export default function NewConsultationPage() {
               </TabsTrigger>
               <TabsTrigger value="custom" className="text-xs px-4 py-2 rounded-lg data-[state=active]:bg-background data-[state=active]:text-primary data-[state=active]:shadow-sm">
                 Templates Personalizados ({customTemplates.length})
+              </TabsTrigger>
+              <TabsTrigger value="accounts" className="text-xs px-4 py-2 rounded-lg data-[state=active]:bg-background data-[state=active]:text-primary data-[state=active]:shadow-sm">
+                Templates por Conta ({accountTemplates.length})
               </TabsTrigger>
             </>
           ) : (
@@ -1010,6 +1085,54 @@ export default function NewConsultationPage() {
             </TabsContent>
           );
         })}
+
+        {isAdmin && (
+          <TabsContent value="accounts" className="mt-0">
+            {isLoading ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {[1, 2, 3].map((n) => (
+                  <div key={n} className="h-[210px] rounded-xl border border-border bg-card animate-pulse p-4 space-y-4">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-lg bg-muted"></div>
+                      <div className="space-y-2 flex-1">
+                        <div className="h-3 bg-muted rounded w-2/3"></div>
+                        <div className="h-2 bg-muted rounded w-1/3"></div>
+                      </div>
+                    </div>
+                    <div className="h-2 bg-muted rounded w-full"></div>
+                    <div className="h-2 bg-muted rounded w-3/4"></div>
+                    <div className="h-8 bg-muted rounded-lg w-full mt-4"></div>
+                  </div>
+                ))}
+              </div>
+            ) : groupedTemplatesByAccount.length === 0 ? (
+              <div className="text-center py-12 border border-dashed border-border rounded-xl bg-card">
+                <p className="text-muted-foreground text-sm">Nenhum template criado por parceiros ou clientes ainda.</p>
+              </div>
+            ) : (
+              <div className="space-y-6">
+                {groupedTemplatesByAccount.map((group, groupIdx) => (
+                  <AccountTemplatesGroupSection
+                    key={groupIdx}
+                    group={group}
+                    selectedTemplate={selectedTemplate}
+                    onLoadTemplate={loadTemplate}
+                    onEditTemplate={(tpl) => {
+                      setEditingTemplate(tpl);
+                      setEditorOpen(true);
+                    }}
+                    onDuplicateTemplate={(tpl) => duplicateMutation.mutate(tpl)}
+                    onDeleteTemplate={(id) => deleteMutation.mutate(id)}
+                    onFavoriteTemplate={(id, isFav) => favoriteMutation.mutate({ id, isFavorite: isFav })}
+                    isDeleting={deleteMutation.isPending}
+                    isFavoriting={favoriteMutation.isPending}
+                    isDuplicating={duplicateMutation.isPending}
+                  />
+                ))}
+              </div>
+            )}
+          </TabsContent>
+        )}
       </Tabs>
 
       {/* Editor Modal do Construtor de Templates */}
@@ -1076,6 +1199,184 @@ export default function NewConsultationPage() {
           }
         }}
       />
+    </div>
+  );
+}
+
+interface AccountTemplatesGroupProps {
+  group: {
+    name: string;
+    type: 'company' | 'user';
+    email?: string;
+    templates: any[];
+  };
+  selectedTemplate: any;
+  onLoadTemplate: (tpl: any) => void;
+  onEditTemplate: (tpl: any) => void;
+  onDuplicateTemplate: (tpl: any) => void;
+  onDeleteTemplate: (id: string) => void;
+  onFavoriteTemplate: (id: string, isFav: boolean) => void;
+  isDeleting: boolean;
+  isFavoriting: boolean;
+  isDuplicating: boolean;
+}
+
+function AccountTemplatesGroupSection({
+  group,
+  selectedTemplate,
+  onLoadTemplate,
+  onEditTemplate,
+  onDuplicateTemplate,
+  onDeleteTemplate,
+  onFavoriteTemplate,
+  isDeleting,
+  isFavoriting,
+  isDuplicating,
+}: AccountTemplatesGroupProps) {
+  const [isOpen, setIsOpen] = useState(true);
+
+  return (
+    <div className="border border-border/80 rounded-xl overflow-hidden bg-card/40 backdrop-blur-sm shadow-card">
+      <button
+        onClick={() => setIsOpen(!isOpen)}
+        className="w-full flex items-center justify-between p-4 bg-muted/30 hover:bg-muted/50 transition-colors text-left border-b border-border/50"
+      >
+        <div className="flex items-center gap-3">
+          <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${
+            group.type === 'company' ? 'bg-indigo-500/10 text-indigo-400' : 'bg-purple-500/10 text-purple-400'
+          }`}>
+            {group.type === 'company' ? (
+              <Building2 className="w-4 h-4" />
+            ) : (
+              <User2 className="w-4 h-4" />
+            )}
+          </div>
+          <div>
+            <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
+              {group.name}
+              <span className={`text-[10px] px-2 py-0.5 rounded-full ${
+                group.type === 'company' ? 'bg-indigo-500/10 text-indigo-400 border border-indigo-500/20' : 'bg-purple-500/10 text-purple-400 border border-purple-500/20'
+              }`}>
+                {group.type === 'company' ? 'Empresa' : 'Parceiro'}
+              </span>
+            </h3>
+            {group.email && (
+              <p className="text-xs text-muted-foreground mt-0.5">{group.email}</p>
+            )}
+          </div>
+        </div>
+        <div className="flex items-center gap-2 text-muted-foreground">
+          <span className="text-xs bg-muted px-2 py-1 rounded-md text-foreground/80 font-mono">
+            {group.templates.length} {group.templates.length === 1 ? 'template' : 'templates'}
+          </span>
+          <ChevronDown className={`w-4 h-4 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
+        </div>
+      </button>
+
+      <AnimatePresence initial={false}>
+        {isOpen && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            className="overflow-hidden"
+          >
+            <div className="p-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 bg-card/10">
+              {group.templates.map((tpl) => (
+                <div
+                  key={tpl.id}
+                  className={`bg-card rounded-xl border transition-all duration-200 overflow-hidden flex flex-col group relative ${
+                    selectedTemplate?.id === tpl.id
+                      ? 'border-primary ring-2 ring-primary/20 shadow-glow'
+                      : 'border-border/80 hover:border-primary/40 shadow-card hover:shadow-elevated'
+                  }`}
+                >
+                  <div className="p-4 flex-1 flex flex-col">
+                    <div className="flex items-start justify-between mb-2.5">
+                      <div className="flex items-center gap-2.5">
+                        <div className={`w-9 h-9 rounded-lg flex items-center justify-center bg-primary/10 text-primary`}>
+                          <FileText className="w-5 h-5" />
+                        </div>
+                        <div>
+                          <h4 className="font-semibold text-sm text-foreground line-clamp-1 group-hover:text-primary transition-colors">
+                            {tpl.name}
+                          </h4>
+                          <span className="text-[10px] text-muted-foreground block font-mono">
+                            Modificado em {tpl.updatedAt}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button
+                          onClick={() => onFavoriteTemplate(tpl.id, !tpl.isFavorite)}
+                          disabled={isFavoriting}
+                          className={`p-1.5 rounded-lg hover:bg-muted transition-colors ${
+                            tpl.isFavorite ? 'text-warning' : 'text-muted-foreground hover:text-foreground'
+                          }`}
+                        >
+                          <Star className="w-3.5 h-3.5 fill-current" />
+                        </button>
+                        <button
+                          onClick={() => onDuplicateTemplate(tpl)}
+                          disabled={isDuplicating}
+                          className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+                          title="Duplicar template"
+                        >
+                          <Copy className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          onClick={() => onEditTemplate(tpl)}
+                          className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+                          title="Editar template"
+                        >
+                          <Edit className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          onClick={() => onDeleteTemplate(tpl.id)}
+                          disabled={isDeleting}
+                          className="p-1.5 rounded-lg hover:bg-muted text-destructive hover:text-destructive transition-colors"
+                          title="Excluir template"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+
+                    {tpl.description && (
+                      <p className="text-xs text-muted-foreground line-clamp-2 leading-relaxed mb-3">
+                        {tpl.description}
+                      </p>
+                    )}
+
+                    <div className="mt-auto pt-3 border-t border-border/40 flex items-center justify-between text-[11px] text-muted-foreground">
+                      <span className="flex items-center gap-1">
+                        <Coins className="w-3 h-3 text-emerald-500" />
+                        Custo: <strong className="text-foreground">R$ {tpl.totalPrice.toFixed(2)}</strong>
+                      </span>
+                      <span className="bg-muted px-2 py-0.5 rounded-full font-mono text-[9px] uppercase">
+                        {tpl.blocks.length} blocos
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="p-3 bg-muted/20 border-t border-border/40 flex items-center justify-between">
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="w-full h-8 text-xs font-medium hover:bg-primary hover:text-primary-foreground transition-all duration-200"
+                      onClick={() => onLoadTemplate(tpl)}
+                    >
+                      Carregar Template
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

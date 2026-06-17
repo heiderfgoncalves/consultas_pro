@@ -287,7 +287,7 @@ export default function BaseReportSkeleton({
 
     if (section.kind === 'header' || section.id === 'header') {
       return (
-        <div className="pb-2" style={{ borderBottom: '3px solid hsl(var(--primary))' }}>
+        <div className="pb-2" style={{ borderBottom: '3px solid var(--brand)' }}>
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-3">
               {logo ? (

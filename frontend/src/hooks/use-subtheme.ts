@@ -29,7 +29,7 @@ const hslToRgb = (h: number, s: number, l: number) => {
 export function useSubTheme() {
   const [subTheme, setSubThemeState] = useState<SubTheme>(() => {
     const saved = localStorage.getItem('sub-theme') as SubTheme;
-    return THEME_CLASSES.includes(saved) ? saved : 'classic';
+    return THEME_CLASSES.includes(saved) ? saved : 'oceanic';
   });
 
   const setSubTheme = (newTheme: SubTheme) => {
@@ -74,6 +74,11 @@ export function useSubTheme() {
         document.documentElement.style.setProperty('--brand', themeColor);
         document.documentElement.style.setProperty('--brand-glow', `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.85)`);
         document.documentElement.style.setProperty('--scroll-rgb', `${rgb.r}, ${rgb.g}, ${rgb.b}`);
+        document.documentElement.style.setProperty('--primary', `${hueVal} 95% 48%`);
+        document.documentElement.style.setProperty('--ring', `${hueVal} 95% 48%`);
+        document.documentElement.style.setProperty('--primary-foreground', '0 0% 100%');
+        document.documentElement.style.setProperty('--sidebar-primary', `${hueVal} 95% 48%`);
+        document.documentElement.style.setProperty('--sidebar-primary-foreground', '0 0% 100%');
 
         const sequence = [hueVal, (hueVal + 290) % 360, (hueVal + 150) % 360];
         const stopColors = sequence.map((h) => {
@@ -83,6 +88,18 @@ export function useSubTheme() {
         document.documentElement.style.setProperty("--rgb-stop-a", stopColors[0]);
         document.documentElement.style.setProperty("--rgb-stop-b", stopColors[1]);
         document.documentElement.style.setProperty("--rgb-stop-c", stopColors[2]);
+      } else {
+        document.documentElement.style.removeProperty('--brand');
+        document.documentElement.style.removeProperty('--brand-glow');
+        document.documentElement.style.removeProperty('--scroll-rgb');
+        document.documentElement.style.removeProperty('--primary');
+        document.documentElement.style.removeProperty('--ring');
+        document.documentElement.style.removeProperty('--primary-foreground');
+        document.documentElement.style.removeProperty('--sidebar-primary');
+        document.documentElement.style.removeProperty('--sidebar-primary-foreground');
+        document.documentElement.style.removeProperty('--rgb-stop-a');
+        document.documentElement.style.removeProperty('--rgb-stop-b');
+        document.documentElement.style.removeProperty('--rgb-stop-c');
       }
     };
 

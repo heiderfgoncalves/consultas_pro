@@ -168,9 +168,9 @@ export default function DashboardPage() {
     const total = consultations.length;
     
     return [
-      { name: 'CPF', value: Math.round((countType.CPF / total) * 1000) / 10, rawValue: countType.CPF, color: '#00c2ff' },
-      { name: 'CNPJ', value: Math.round((countType.CNPJ / total) * 1000) / 10, rawValue: countType.CNPJ, color: '#00e676' },
-      { name: 'Outros', value: Math.round((countType.Outros / total) * 1000) / 10, rawValue: countType.Outros, color: '#ffd600' }
+      { name: 'CPF', value: Math.round((countType.CPF / total) * 1000) / 10, rawValue: countType.CPF, color: 'var(--brand)' },
+      { name: 'CNPJ', value: Math.round((countType.CNPJ / total) * 1000) / 10, rawValue: countType.CNPJ, color: 'color-mix(in srgb, var(--brand) 65%, transparent)' },
+      { name: 'Outros', value: Math.round((countType.Outros / total) * 1000) / 10, rawValue: countType.Outros, color: 'color-mix(in srgb, var(--brand) 35%, transparent)' }
     ].filter(item => item.rawValue > 0);
   };
 
@@ -228,7 +228,7 @@ export default function DashboardPage() {
           change="Dados atualizados em tempo real"
           isPositive={true}
           icon={Activity}
-          chartColor="#00c2ff"
+          chartColor="var(--brand)"
           chartData={getMiniChartData('consultas')}
           delay={0}
         />
@@ -238,7 +238,7 @@ export default function DashboardPage() {
           change="Consultas concluídas com sucesso"
           isPositive={true}
           icon={CheckCircle2}
-          chartColor="#00e676"
+          chartColor="hsl(var(--success))"
           chartData={getMiniChartData('sucesso')}
           delay={0.05}
         />
@@ -248,7 +248,7 @@ export default function DashboardPage() {
           change="Consultas em processamento"
           isPositive={pendingCount === 0}
           icon={AlertTriangle}
-          chartColor="#ffd600"
+          chartColor="hsl(var(--warning))"
           chartData={getMiniChartData('pendencias')}
           delay={0.1}
         />
@@ -258,7 +258,7 @@ export default function DashboardPage() {
           change="Saldo disponível para consultas"
           isPositive={true}
           icon={Wallet}
-          chartColor="#d500f9"
+          chartColor="var(--brand)"
           chartData={getMiniChartData('saldo')}
           delay={0.15}
         />
@@ -288,8 +288,8 @@ export default function DashboardPage() {
               <AreaChart data={getEvolutionData()} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                 <defs>
                   <linearGradient id="chartGradient" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#00c2ff" stopOpacity={0.35} />
-                    <stop offset="95%" stopColor="#00c2ff" stopOpacity={0.01} />
+                    <stop offset="5%" stopColor="var(--brand)" stopOpacity={0.35} />
+                    <stop offset="95%" stopColor="var(--brand)" stopOpacity={0.01} />
                   </linearGradient>
                 </defs>
                 <XAxis
@@ -318,12 +318,12 @@ export default function DashboardPage() {
                     fontSize: '11px',
                     boxShadow: '0 10px 25px -5px rgba(0,0,0,0.1)',
                   }}
-                  itemStyle={{ color: '#00c2ff' }}
+                  itemStyle={{ color: 'var(--brand)' }}
                 />
                 <Area
                   type="monotone"
                   dataKey="valor"
-                  stroke="#00c2ff"
+                  stroke="var(--brand)"
                   strokeWidth={3}
                   fillOpacity={1}
                   fill="url(#chartGradient)"

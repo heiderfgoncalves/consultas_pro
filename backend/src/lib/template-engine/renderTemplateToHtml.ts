@@ -242,6 +242,8 @@ export function renderTemplateToHtml(
     );
   });
 
+  const hasAutoHeight = elements.some((el) => el.type === "table" && el.data?.autoHeight);
+
   const body = elements
     .sort((a, b) => a.zIndex - b.zIndex)
     .map((el) => {
@@ -264,10 +266,89 @@ export function renderTemplateToHtml(
           };
         }
       }
-      return `<div style="${styleToCss(el, frame)}">${elementBody(el, localData, logs, mode)}</div>`;
+      const isAutoHeight = el.type === "table" && el.data?.autoHeight;
+      return `<div data-el-id="${el.id}" data-el-type="${el.type}" data-orig-y="${el.y - frame.y}" data-orig-height="${el.height}" data-auto-height="${isAutoHeight ? 'true' : 'false'}" style="${styleToCss(el, frame)}">${elementBody(el, localData, logs, mode)}</div>`;
     })
     .join("\n");
 
-  const html = `<div style="position:relative;width:${frame.width}px;height:${frame.height}px;background:${frame.background ?? "#fff"};font-family:'Geist', 'Inter', sans-serif;color:#0f172a">\n${body}\n</div>`;
+  const layoutAdjusterScript = `
+<script>
+(function() {
+  function adjustReportLayout() {
+    var frames = document.querySelectorAll('.report-frame-container');
+    frames.forEach(function(frame) {
+      var elements = Array.from(frame.querySelectorAll('[data-el-id]'));
+      if (elements.length === 0) return;
+      
+      var items = elements.map(function(el) {
+        return {
+          el: el,
+          id: el.getAttribute('data-el-id'),
+          type: el.getAttribute('data-el-type'),
+          origY: parseFloat(el.getAttribute('data-orig-y') || '0'),
+          origHeight: parseFloat(el.getAttribute('data-orig-height') || '0'),
+          autoHeight: el.getAttribute('data-auto-height') === 'true'
+        };
+      });
+      
+      items.sort(function(a, b) { return a.origY - b.origY; });
+      
+      var shifts = {};
+      items.forEach(function(item) {
+        if (item.autoHeight) {
+          var realHeight = item.el.offsetHeight;
+          var shift = Math.max(0, realHeight - item.origHeight);
+          shifts[item.id] = shift;
+        } else {
+          shifts[item.id] = 0;
+        }
+      });
+      
+      var maxBottom = parseFloat(frame.getAttribute('data-orig-height') || '0');
+      
+      items.forEach(function(item) {
+        var appliedShift = 0;
+        items.forEach(function(other) {
+          if (other.autoHeight && other.id !== item.id) {
+            if (other.origY + other.origHeight <= item.origY + 1) {
+              appliedShift += (shifts[other.id] || 0);
+            }
+          }
+        });
+        
+        var newTop = item.origY + appliedShift;
+        item.el.style.top = newTop + 'px';
+        
+        var currentHeight = item.autoHeight ? item.el.offsetHeight : item.origHeight;
+        var bottom = newTop + currentHeight;
+        if (bottom > maxBottom) {
+          maxBottom = bottom;
+        }
+      });
+      
+      frame.style.height = maxBottom + 'px';
+    });
+  }
+  
+  if (document.readyState === 'complete') {
+    adjustReportLayout();
+  } else {
+    window.addEventListener('load', adjustReportLayout);
+  }
+  
+  setTimeout(adjustReportLayout, 50);
+  setTimeout(adjustReportLayout, 150);
+  setTimeout(adjustReportLayout, 350);
+  setTimeout(adjustReportLayout, 700);
+  setTimeout(adjustReportLayout, 1500);
+  
+  window.adjustReportLayout = adjustReportLayout;
+})();
+</script>
+`;
+
+  const frameHtml = `<div class="report-frame-container" data-orig-height="${frame.height}" style="position:relative;width:${frame.width}px;height:${frame.height}px;background:${frame.background ?? "#fff"};font-family:'Geist', 'Inter', sans-serif;color:#0f172a">\n${body}\n</div>`;
+  const html = hasAutoHeight ? frameHtml + layoutAdjusterScript : frameHtml;
+
   return { html, logs };
 }

@@ -17,7 +17,7 @@ function isFullScreenPath(pathname: string) {
 }
 
 export default function AuthenticatedLayout() {
-  const { hydrated, isAuthenticated, accessToken } = useAuthStore();
+  const { hydrated, isAuthenticated, accessToken, sessionUser } = useAuthStore();
   const { pathname } = useLocation();
   const hideTopBar = isFullScreenPath(pathname);
   const isTemplatesDrawer = pathname === '/admin/templates-drawer';
@@ -62,7 +62,6 @@ export default function AuthenticatedLayout() {
     return <Navigate to="/login" replace />;
   }
 
-  const { sessionUser } = useAuthStore();
   if (sessionUser?.mustResetPassword) {
     return <Navigate to="/reset-senha" replace />;
   }
@@ -75,14 +74,18 @@ export default function AuthenticatedLayout() {
       <div className="flex-1 flex flex-col overflow-hidden relative min-w-0 bg-transparent">
         {!hideTopBar && <TopBar />}
         {hideTopBar ? (
-          <main className={isTemplatesDrawer ? "flex-1 min-h-0" : "flex-1 min-h-0 overflow-y-auto scrollbar-thin"}>
-            <div className={isTemplatesDrawer ? "h-full w-full relative overflow-hidden" : "p-3 lg:p-4"}>
+          <main className={isTemplatesDrawer ? "flex-1 min-h-0 bg-grid-pattern relative" : "flex-1 min-h-0 overflow-y-auto scrollbar-thin bg-grid-pattern relative"}>
+            <div className="main-glow-bg-right" />
+            <div className="main-glow-bg-left" />
+            <div className={isTemplatesDrawer ? "h-full w-full relative overflow-hidden z-10" : "p-3 lg:p-4 relative z-10"}>
               <PageTransition key={pathname}><Outlet /></PageTransition>
             </div>
           </main>
         ) : (
-          <main className="flex-1 overflow-y-auto scrollbar-thin">
-            <div className="p-4 lg:p-5">
+          <main className="flex-1 overflow-y-auto scrollbar-thin bg-grid-pattern relative">
+            <div className="main-glow-bg-right" />
+            <div className="main-glow-bg-left" />
+            <div className="p-4 lg:p-5 relative z-10">
               <PageTransition key={pathname}><Outlet /></PageTransition>
             </div>
           </main>

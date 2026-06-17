@@ -1,15 +1,14 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Lock, Eye, EyeOff, ArrowRight, ShieldAlert } from 'lucide-react';
+import { Lock, Eye, EyeOff, ArrowRight } from 'lucide-react';
 import { useAuthStore } from '@/stores/authStore';
 import { apiRequest } from '@/lib/api';
 import { toast } from 'sonner';
-import { BackgroundRippleEffect } from '@/components/ui/background-ripple-effect';
-import { useTheme } from '@/hooks/use-theme';
+import { PublicHeader } from '@/components/layout/PublicHeader';
+import { Footer } from '@/components/layout/Footer';
 
 export default function ResetPasswordPage() {
-  const { theme, setTheme } = useTheme();
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -17,19 +16,6 @@ export default function ResetPasswordPage() {
   const navigate = useNavigate();
   const { isAuthenticated, sessionUser, accessToken, hydrate } = useAuthStore();
 
-  // Força o tema claro ao montar e restaura o original ao desmontar
-  useEffect(() => {
-    const prevTheme = theme;
-    setTheme('light');
-    return () => {
-      if (prevTheme) {
-        setTheme(prevTheme);
-      }
-    };
-  }, []);
-
-  // Se não estiver autenticado, manda para login.
-  // Se estiver autenticado e não precisar resetar a senha, manda para o painel.
   useEffect(() => {
     if (!isAuthenticated) {
       navigate('/login', { replace: true });
@@ -60,231 +46,80 @@ export default function ResetPasswordPage() {
       });
 
       toast.success('Senha atualizada com sucesso!');
-      
-      // Re-hidrata a sessão para carregar o novo perfil com mustResetPassword = false
       await hydrate();
-      
       navigate('/dashboard', { replace: true });
     } catch (err: any) {
-      const msg = err?.message || 'Não foi possível redefinir a senha';
-      toast.error(msg);
+      toast.error(err?.message || 'Não foi possível redefinir a senha');
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen flex w-full bg-slate-50/50 select-none">
-      {/* Left - Branding / Security Info */}
-      <div className="hidden min-h-screen lg:flex lg:w-1/2 bg-gradient-to-br from-primary to-primary/80 relative overflow-hidden shadow-[2px_0_12px_rgba(0,0,0,0.03)]">
-        <div className="absolute inset-0 z-0">
-          <BackgroundRippleEffect
-            cover
-            coverPosition="top-left"
-            rows={13}
-            cols={10}
-            cellSize={60}
-            masked={false}
-            className="[--cell-border-color:hsl(var(--primary-foreground)_/_0.18)] [--cell-fill-color:hsl(var(--primary-foreground)_/_0.06)] [--cell-shadow-color:hsl(var(--primary-foreground)_/_0.12)]"
-            gridClassName="opacity-50"
-          />
-        </div>
-        <div className="absolute inset-0 z-[1] opacity-10 pointer-events-none">
-          <div className="absolute top-20 left-20 w-64 h-64 rounded-full bg-primary-foreground blur-3xl" />
-          <div className="absolute bottom-20 right-20 w-96 h-96 rounded-full bg-primary-foreground blur-3xl" />
-        </div>
-        <div className="relative z-10 flex w-full items-center justify-center px-16 py-14 pointer-events-none">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.2 }}
-            className="flex w-full max-w-[620px] flex-col gap-6"
-          >
-            <div className="inline-flex self-start items-center gap-2 rounded-full border border-white/20 bg-white/10 px-4 py-1.5 text-xs font-mono tracking-wider uppercase text-white backdrop-blur-[4px]">
-              <ShieldAlert className="h-4 w-4" />
-              <span>Primeiro Acesso Requerido</span>
-            </div>
+    <div className="min-h-screen flex flex-col bg-background text-foreground font-mono relative overflow-hidden">
+      <PublicHeader />
 
-            <h1 className="text-4xl md:text-5xl font-bold text-white leading-tight">
-              Garanta a segurança da sua conta.
-            </h1>
+      <div className="absolute inset-0 bg-grid-pattern ripple-grid-mask pointer-events-none opacity-40 z-0" />
+      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-brand/5 blur-[150px] rounded-full pointer-events-none z-0" />
 
-            <p className="text-lg text-primary-foreground/80 max-w-md leading-relaxed font-light">
-              Sua conta foi criada com uma senha temporária. Para continuar acessando os relatórios de crédito e consultas exclusivas, crie uma senha forte e pessoal de sua preferência.
-            </p>
-          </motion.div>
-        </div>
-      </div>
-
-      {/* Right - Form (HUD Minimalist Card) */}
-      <div className="relative flex min-h-screen flex-1 items-center justify-center px-6 py-12">
-        <div className="absolute inset-0 z-0 bg-[radial-gradient(circle_at_70%_20%,rgba(0,112,243,0.03),transparent_40%)] pointer-events-none" />
-
+      <main className="flex-1 flex flex-col justify-center items-center p-6 z-10">
         <motion.div
-          initial={{ opacity: 0, y: 15 }}
+          initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
-          className="relative z-10 w-full max-w-[430px]"
+          className="w-full max-w-md bg-surface/60 backdrop-blur-xl border border-hairline rounded-3xl p-8 shadow-2xl"
         >
-          {/* HUD Styled Container Card */}
-          <div className="bg-white border border-slate-100/90 rounded-2xl p-8 md:p-10 shadow-[0_24_64px_-16px_rgba(15,23,42,0.06)]">
-            <div className="mb-8 flex flex-col items-center text-center">
-              <img
-                src="/logo.png"
-                alt="Consultas PRO"
-                className="mb-3.5 h-20 w-auto object-contain sm:h-22"
-              />
-              <div className="flex items-center gap-1.5 justify-center mt-1">
-                <span className="h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse" />
-                <p className="text-[11px] font-mono text-slate-400 tracking-[0.12em] uppercase">
-                  Ativação de Primeiro Acesso
-                </p>
-              </div>
-            </div>
-
-            <div className="mb-6 p-4 rounded-xl bg-slate-50 border border-slate-100 text-sm text-slate-600 leading-relaxed">
-              Olá, <span className="text-slate-900 font-semibold">{sessionUser?.fullName || 'Usuário'}</span>. Por questões de segurança corporativa, defina uma nova senha de acesso antes de continuar.
-            </div>
-
-            <form onSubmit={handleSubmit} className="space-y-5">
-              <Field
-                id="new-password"
-                name="password"
-                icon={<Lock className="h-4 w-4" />}
-                label="Nova Senha"
-                type="password"
-                placeholder="No mínimo 6 caracteres"
-                value={password}
-                onChange={setPassword}
-                required
-              />
-
-              <Field
-                id="confirm-password"
-                name="confirmPassword"
-                icon={<Lock className="h-4 w-4" />}
-                label="Confirmar Nova Senha"
-                type="password"
-                placeholder="Repita a senha para confirmar"
-                value={confirmPassword}
-                onChange={setConfirmPassword}
-                required
-              />
-
-              <button
-                type="submit"
-                className="w-full h-11 rounded-xl bg-primary text-primary-foreground font-medium text-sm flex items-center justify-center gap-2 hover:bg-primary/90 transition-all duration-300 active:scale-[0.98] shadow-lg shadow-primary/10 hover:shadow-xl hover:shadow-primary/20"
-                disabled={loading}
-              >
-                {loading ? (
-                  <div className="w-5 h-5 border-2 border-primary-foreground/30 border-t-primary-foreground rounded-full animate-spin" />
-                ) : (
-                  <>
-                    <span>Ativar Conta & Entrar</span>
-                    <ArrowRight className="w-4 h-4" />
-                  </>
-                )}
-              </button>
-            </form>
+          <div className="text-center mb-8">
+            <h1 className="text-2xl font-bold tracking-tight mb-2">Defina sua senha</h1>
+            <p className="text-xs text-muted-foreground">Por questões de segurança, defina uma nova senha para continuar o acesso.</p>
           </div>
+
+          <form onSubmit={handleSubmit} className="space-y-5">
+            <Field
+              id="new-password" name="password" icon={<Lock className="h-4 w-4" />} label="Nova Senha" type="password"
+              placeholder="Mínimo 6 caracteres" value={password} onChange={setPassword} required
+            />
+            <Field
+              id="confirm-password" name="confirmPassword" icon={<Lock className="h-4 w-4" />} label="Confirmar Senha" type="password"
+              placeholder="Repita a senha" value={confirmPassword} onChange={setConfirmPassword} required
+            />
+
+            <button
+              type="submit" disabled={loading}
+              className="w-full bg-brand text-primary-foreground font-bold py-3.5 rounded-xl hover:bg-brand/90 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+            >
+              {loading ? <div className="w-4 h-4 border-2 border-primary-foreground/30 border-t-primary-foreground rounded-full animate-spin" /> : "SALVAR E ENTRAR"}
+              {!loading && <ArrowRight className="h-4 w-4" />}
+            </button>
+          </form>
         </motion.div>
-      </div>
+      </main>
+
+      <Footer />
     </div>
   );
 }
 
-function Field({
-  icon,
-  label,
-  type,
-  value,
-  onChange,
-  placeholder,
-  id,
-  name,
-  required = true,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  type: string;
-  value: string;
-  onChange: (v: string) => void;
-  placeholder?: string;
-  id?: string;
-  name?: string;
-  required?: boolean;
-}) {
-  return (
-    <label className="block">
-      <span className="font-mono text-[9px] tracking-[0.2em] uppercase text-slate-400">
-        {label}
-      </span>
-      <div className="mt-1.5">
-        <FieldInput
-          id={id}
-          name={name}
-          icon={icon}
-          type={type}
-          value={value}
-          onChange={onChange}
-          placeholder={placeholder}
-          required={required}
-        />
-      </div>
-    </label>
-  );
-}
-
-function FieldInput({
-  icon,
-  type,
-  value,
-  onChange,
-  placeholder,
-  id,
-  name,
-  required = true,
-}: {
-  icon: React.ReactNode;
-  type: string;
-  value: string;
-  onChange: (v: string) => void;
-  placeholder?: string;
-  id?: string;
-  name?: string;
-  required?: boolean;
-}) {
+function Field({ icon, label, type, value, onChange, placeholder, id, name, required }: any) {
   const [showPassword, setShowPassword] = useState(false);
   const isPassword = type === "password";
   const inputType = isPassword ? (showPassword ? "text" : "password") : type;
 
   return (
-    <div className="group relative flex items-center rounded-xl border border-slate-200 bg-slate-50/50 hover:bg-slate-50/80 transition-all duration-300 focus-within:border-primary/50 focus-within:bg-white focus-within:ring-4 focus-within:ring-primary/5">
-      <span className="pl-3.5 text-slate-400 group-focus-within:text-primary transition-colors">{icon}</span>
-      <input
-        id={id}
-        name={name}
-        type={inputType}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder={placeholder}
-        required={required}
-        className="w-full bg-transparent pl-3 pr-10 py-3 text-sm text-slate-900 placeholder:text-slate-400/60 outline-none border-none focus:ring-0"
-      />
-      {isPassword && (
-        <button
-          type="button"
-          onClick={() => setShowPassword(!showPassword)}
-          className="absolute right-3 text-slate-400 hover:text-slate-600 transition-colors p-1.5 rounded-md focus:outline-none"
-          aria-label={showPassword ? "Ocultar senha" : "Mostrar senha"}
-        >
-          {showPassword ? (
-            <EyeOff className="h-4.5 w-4.5" />
-          ) : (
-            <Eye className="h-4.5 w-4.5" />
-          )}
-        </button>
-      )}
-    </div>
+    <label className="block">
+      <span className="font-bold text-[10px] text-muted-foreground uppercase tracking-widest">{label}</span>
+      <div className="mt-2 relative flex items-center rounded-xl border border-hairline bg-background focus-within:border-brand/50 transition-colors">
+        <span className="pl-4 text-muted-foreground">{icon}</span>
+        <input
+          id={id} name={name} type={inputType} value={value} onChange={(e) => onChange(e.target.value)}
+          placeholder={placeholder} required={required}
+          className="w-full bg-transparent px-3 py-3 text-sm text-foreground outline-none placeholder:text-muted-foreground/40"
+        />
+        {isPassword && (
+          <button type="button" onClick={() => setShowPassword(!showPassword)} className="pr-4 text-muted-foreground hover:text-foreground">
+            {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+          </button>
+        )}
+      </div>
+    </label>
   );
 }

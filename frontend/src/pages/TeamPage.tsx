@@ -236,7 +236,7 @@ export default function TeamPage() {
           title="Saldo Compartilhado"
           value={`R$ ${(user?.balance ?? 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`}
           icon={Wallet}
-          chartColor="#00c2ff"
+          chartColor="var(--brand)"
           chartData={getMiniChartData('saldo')}
           delay={0}
         />
@@ -244,7 +244,7 @@ export default function TeamPage() {
           title="Total de Usuários"
           value={String(users.length)}
           icon={Users}
-          chartColor="#00e676"
+          chartColor="hsl(var(--success))"
           chartData={getMiniChartData('usuarios')}
           delay={0.05}
         />
@@ -252,7 +252,7 @@ export default function TeamPage() {
           title="Membros Ativos"
           value={String(users.filter(m => m.isActive).length)}
           icon={Shield}
-          chartColor="#d500f9"
+          chartColor="var(--brand)"
           chartData={getMiniChartData('ativos')}
           delay={0.1}
         />
@@ -261,7 +261,7 @@ export default function TeamPage() {
           value={String(totalMonthlyConsultations)}
           subtitle={`R$ ${totalMonthlySpent.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} gastos`}
           icon={Search}
-          chartColor="#ffd600"
+          chartColor="hsl(var(--warning))"
           chartData={getMiniChartData('consultas')}
           delay={0.15}
         />

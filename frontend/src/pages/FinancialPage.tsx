@@ -173,7 +173,7 @@ export default function FinancialPage() {
           change="Saldo atual compartilhado"
           isPositive={true}
           icon={Wallet}
-          chartColor="#00c2ff"
+          chartColor="var(--brand)"
           chartData={getMiniChartData('saldo')}
           delay={0}
         />
@@ -183,7 +183,7 @@ export default function FinancialPage() {
           change="Disponível para consultas"
           isPositive={true}
           icon={Plus}
-          chartColor="#00e676"
+          chartColor="hsl(var(--success))"
           chartData={getMiniChartData('saldo')}
           delay={0.05}
         />
@@ -193,7 +193,7 @@ export default function FinancialPage() {
           change="Gasto acumulado no mês"
           isPositive={false}
           icon={ArrowDownRight}
-          chartColor="#ffd600"
+          chartColor="hsl(var(--warning))"
           chartData={getMiniChartData('consumo')}
           delay={0.1}
         />
@@ -203,7 +203,7 @@ export default function FinancialPage() {
           change="Consultas no mês atual"
           isPositive={true}
           icon={Clock}
-          chartColor="#d500f9"
+          chartColor="var(--brand)"
           chartData={getMiniChartData('consultas')}
           delay={0.15}
         />

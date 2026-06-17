@@ -391,6 +391,18 @@ export interface ApiTemplate {
   items: ApiTemplateItem[];
   createdAt: string;
   updatedAt: string;
+  userId?: string | null;
+  companyId?: string | null;
+  user?: {
+    id: string;
+    fullName: string | null;
+    email: string;
+    role: string;
+  } | null;
+  company?: {
+    id: string;
+    name: string;
+  } | null;
 }
 
 export async function getTemplatesApi(accessToken: string | null) {

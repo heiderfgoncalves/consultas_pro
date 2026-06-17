@@ -181,7 +181,7 @@ const DivGrid = ({
       ref={gridRef}
       className={cn("relative", className)}
       style={gridStyle}
-      onClick={handleGridClick}
+      onMouseDown={handleGridClick}
     >
       {cells.map((idx) => {
         const rowIdx = Math.floor(idx / cols);

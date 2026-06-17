@@ -56,7 +56,12 @@ export default function ThemeToggle({
       emerald: 142,
       minimal: 240,
     };
-    return themeHues[subTheme] ?? 212;
+    return themeHues[subTheme] ?? 174;
+  });
+
+  const [shadow, setShadow] = useState<number>(() => {
+    const saved = localStorage.getItem('custom-shadow');
+    return saved ? parseInt(saved) : 0;
   });
 
   useEffect(() => {
@@ -69,43 +74,68 @@ export default function ThemeToggle({
         emerald: 142,
         minimal: 240,
       };
-      setHue(themeHues[subTheme] ?? 212);
+      setHue(themeHues[subTheme] ?? 174);
     }
   }, [subTheme]);
 
-  const handleHueChange = (newHue: number) => {
-    setHue(newHue);
-    localStorage.setItem('custom-hue', newHue.toString());
-
-    // Aplica as cores no documentElement
-    const rgb = hslToRgb(newHue, 95, 48);
+  const applyColors = (currentHue: number, currentShadow: number) => {
+    const L = 48 * (1 - currentShadow / 100);
+    const rgb = hslToRgb(currentHue, 95, L);
     const themeColor = `rgb(${rgb.r}, ${rgb.g}, ${rgb.b})`;
+    
     document.documentElement.style.setProperty('--brand', themeColor);
     document.documentElement.style.setProperty('--brand-glow', `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.85)`);
     document.documentElement.style.setProperty('--scroll-rgb', `${rgb.r}, ${rgb.g}, ${rgb.b}`);
+    document.documentElement.style.setProperty('--primary', `${currentHue} 95% ${L}%`);
+    document.documentElement.style.setProperty('--ring', `${currentHue} 95% ${L}%`);
+    document.documentElement.style.setProperty('--primary-foreground', '0 0% 100%');
+    document.documentElement.style.setProperty('--sidebar-primary', `${currentHue} 95% ${L}%`);
+    document.documentElement.style.setProperty('--sidebar-primary-foreground', '0 0% 100%');
 
     // Atualiza as cores de parada do gradiente para o scrollbar
-    const sequence = [newHue, (newHue + 290) % 360, (newHue + 150) % 360];
+    const sequence = [currentHue, (currentHue + 290) % 360, (currentHue + 150) % 360];
     const stopColors = sequence.map((h) => {
-      const stopRgb = hslToRgb(h, 95, 48);
+      const stopRgb = hslToRgb(h, 95, L);
       return `rgb(${stopRgb.r}, ${stopRgb.g}, ${stopRgb.b})`;
     });
     document.documentElement.style.setProperty("--rgb-stop-a", stopColors[0]);
     document.documentElement.style.setProperty("--rgb-stop-b", stopColors[1]);
     document.documentElement.style.setProperty("--rgb-stop-c", stopColors[2]);
+  };
+
+  const handleHueChange = (newHue: number) => {
+    setHue(newHue);
+    localStorage.setItem('custom-hue', newHue.toString());
+    applyColors(newHue, shadow);
 
     // Dispara evento para outros componentes que precisem ouvir a mudança
-    window.dispatchEvent(new CustomEvent('custom-hue-change', { detail: newHue }));
+    window.dispatchEvent(new CustomEvent('custom-hue-change', { detail: { hue: newHue, shadow } }));
+  };
+
+  const handleShadowChange = (newShadow: number) => {
+    setShadow(newShadow);
+    localStorage.setItem('custom-shadow', newShadow.toString());
+    applyColors(hue, newShadow);
+
+    // Dispara evento para outros componentes que precisem ouvir a mudança
+    window.dispatchEvent(new CustomEvent('custom-hue-change', { detail: { hue, shadow: newShadow } }));
   };
 
   const handleSubThemeSelect = (themeId: SubTheme) => {
     localStorage.removeItem('custom-hue');
+    localStorage.removeItem('custom-shadow');
     setSubTheme(themeId);
+    setShadow(0);
 
     // Limpa os estilos inline do documentElement
     document.documentElement.style.removeProperty('--brand');
     document.documentElement.style.removeProperty('--brand-glow');
     document.documentElement.style.removeProperty('--scroll-rgb');
+    document.documentElement.style.removeProperty('--primary');
+    document.documentElement.style.removeProperty('--ring');
+    document.documentElement.style.removeProperty('--primary-foreground');
+    document.documentElement.style.removeProperty('--sidebar-primary');
+    document.documentElement.style.removeProperty('--sidebar-primary-foreground');
     document.documentElement.style.removeProperty('--rgb-stop-a');
     document.documentElement.style.removeProperty('--rgb-stop-b');
     document.documentElement.style.removeProperty('--rgb-stop-c');
@@ -117,7 +147,7 @@ export default function ThemeToggle({
       emerald: 142,
       minimal: 240,
     };
-    setHue(themeHues[themeId] ?? 212);
+    setHue(themeHues[themeId] ?? 174);
     onSubThemeSelect?.(themeId);
   };
 
@@ -199,23 +229,47 @@ export default function ThemeToggle({
           <Palette className="w-3 h-3" /> Matriz Personalizada
         </DropdownMenuLabel>
 
-        <div className="px-2.5 py-2 space-y-1.5 select-none">
-          <div className="relative flex items-center h-5 group/slider select-none">
-            <input
-              type="range"
-              min="0"
-              max="360"
-              value={hue}
-              onChange={(e) => handleHueChange(parseInt(e.target.value))}
-              style={{
-                background: 'linear-gradient(to right, #ff0000 0%, #ffff00 17%, #00ff00 33%, #00ffff 50%, #0000ff 67%, #ff00ff 83%, #ff0000 100%)'
-              }}
-              className="w-full h-2 rounded-full appearance-none cursor-pointer border border-white/5 shadow-inner focus:outline-none spectral-slider"
-            />
+        <div className="px-2.5 py-2 space-y-3 select-none">
+          {/* Slider de Tonalidade */}
+          <div className="space-y-1">
+            <div className="relative flex items-center h-5 group/slider select-none">
+              <input
+                type="range"
+                min="0"
+                max="360"
+                value={hue}
+                onChange={(e) => handleHueChange(parseInt(e.target.value))}
+                style={{
+                  background: 'linear-gradient(to right, #ff0000 0%, #ffff00 17%, #00ff00 33%, #00ffff 50%, #0000ff 67%, #ff00ff 83%, #ff0000 100%)'
+                }}
+                className="w-full h-2 rounded-full appearance-none cursor-pointer border border-white/5 shadow-inner focus:outline-none spectral-slider"
+              />
+            </div>
+            <div className="flex justify-between items-center text-[8.5px] font-mono text-muted-foreground">
+              <span>Tonalidade:</span>
+              <span className="text-foreground font-bold">{hue}°</span>
+            </div>
           </div>
-          <div className="flex justify-between items-center text-[8.5px] font-mono text-muted-foreground">
-            <span>Tonalidade:</span>
-            <span className="text-foreground font-bold">{hue}°</span>
+
+          {/* Slider de Sombra (Escurecimento) */}
+          <div className="space-y-1">
+            <div className="relative flex items-center h-5 group/slider select-none">
+              <input
+                type="range"
+                min="0"
+                max="80"
+                value={shadow}
+                onChange={(e) => handleShadowChange(parseInt(e.target.value))}
+                style={{
+                  background: `linear-gradient(to right, hsl(${hue} 95% 48%) 0%, hsl(${hue} 95% 9.6%) 100%)`
+                }}
+                className="w-full h-2 rounded-full appearance-none cursor-pointer border border-white/5 shadow-inner focus:outline-none shadow-slider"
+              />
+            </div>
+            <div className="flex justify-between items-center text-[8.5px] font-mono text-muted-foreground">
+              <span>Sombra:</span>
+              <span className="text-foreground font-bold">{shadow}%</span>
+            </div>
           </div>
         </div>
       </DropdownMenuContent>

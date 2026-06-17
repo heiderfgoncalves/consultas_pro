@@ -98,9 +98,7 @@ export async function registerConsultationRoutes(app: FastifyInstance) {
     return ok(reply, consultation);
   });
 
-  app.get('/consultations/:id/pdf', {
-    preHandler: [authenticate, requireEndpointAccess('api.consultations.get')],
-  }, async (request, reply) => {
+  const getPdfHandler = async (request: any, reply: any) => {
     const params = request.params as { id: string };
 
     const consultation = await app.prisma.consultation.findUnique({
@@ -232,7 +230,11 @@ export async function registerConsultationRoutes(app: FastifyInstance) {
       request.log.error(e, 'Erro ao gerar PDF via Puppeteer');
       return reply.code(500).send({ error: 'Erro interno ao gerar PDF do relatório' });
     }
-  });
+  };
+
+  app.get('/download/relatorio-:id-document.pdf', getPdfHandler);
+  app.get('/reports/:id', getPdfHandler);
+  app.get('/consultations/:id/pdf', getPdfHandler);
 
   app.get('/catalog/canonical-fields', {
     preHandler: [authenticate, requireEndpointAccess('api.consultations.list')],

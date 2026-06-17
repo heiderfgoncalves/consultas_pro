@@ -70,8 +70,8 @@ export default function KpiCard({
         <div
           className="p-2.5 rounded-xl border transition-all duration-300 z-10 group-hover:scale-105"
           style={{
-            backgroundColor: `${chartColor}10`, // ~6% de opacidade
-            borderColor: `${chartColor}20`,     // ~12% de opacidade
+            backgroundColor: `color-mix(in srgb, ${chartColor} 10%, transparent)`,
+            borderColor: `color-mix(in srgb, ${chartColor} 20%, transparent)`,
             color: chartColor,
           }}
         >

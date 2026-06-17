@@ -1,11 +1,9 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { ArrowLeft, Mail, CheckCircle } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import logo from '@/assets/logo.png';
+import { Mail, CheckCircle } from 'lucide-react';
+import { PublicHeader } from '@/components/layout/PublicHeader';
+import { Footer } from '@/components/layout/Footer';
 
 export default function RecoverAccessPage() {
   const [value, setValue] = useState('');
@@ -19,50 +17,72 @@ export default function RecoverAccessPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center px-4 py-12 bg-background">
-      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="w-full max-w-[420px]">
-        <Link to="/login" className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground mb-6">
-          <ArrowLeft className="w-4 h-4" /> Voltar ao login
-        </Link>
+    <div className="min-h-screen flex flex-col bg-background text-foreground font-mono relative overflow-hidden">
+      <PublicHeader />
 
-        <img src={logo} alt="Consultas PRO" className="h-10 w-auto mb-6" />
+      <div className="absolute inset-0 bg-grid-pattern ripple-grid-mask pointer-events-none opacity-40 z-0" />
+      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-brand/5 blur-[150px] rounded-full pointer-events-none z-0" />
 
-        {sent ? (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-center py-8">
-            <div className="w-16 h-16 rounded-2xl bg-success/10 flex items-center justify-center mx-auto mb-4">
-              <CheckCircle className="w-8 h-8 text-success" />
-            </div>
-            <h2 className="text-xl font-bold text-foreground mb-2">E-mail enviado!</h2>
-            <p className="text-sm text-muted-foreground mb-6">
-              Verifique sua caixa de entrada e siga as instruções para redefinir sua senha.
-            </p>
-            <Link to="/login">
-              <Button variant="outline">Voltar ao login</Button>
-            </Link>
-          </motion.div>
-        ) : (
-          <>
-            <h2 className="text-2xl font-bold text-foreground mb-1">Recuperar acesso</h2>
-            <p className="text-sm text-muted-foreground mb-8">
-              Informe seu e-mail ou documento para receber as instruções de recuperação.
-            </p>
-            <form onSubmit={handleSubmit} className="space-y-5">
-              <div className="space-y-2">
-                <Label>E-mail ou CPF/CNPJ</Label>
-                <div className="relative">
-                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                  <Input value={value} onChange={(e) => setValue(e.target.value)} required className="h-11 pl-10" placeholder="seu@email.com ou 000.000.000-00" />
-                </div>
+      <main className="flex-1 flex flex-col justify-center items-center p-6 z-10">
+        <motion.div
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="w-full max-w-md bg-surface/60 backdrop-blur-xl border border-hairline rounded-3xl p-8 shadow-2xl"
+        >
+          {sent ? (
+            <div className="text-center py-8">
+              <div className="w-16 h-16 rounded-2xl bg-brand/10 flex items-center justify-center mx-auto mb-4 border border-brand/20">
+                <CheckCircle className="w-8 h-8 text-brand" />
               </div>
-              <Button type="submit" className="w-full h-11 gradient-primary text-primary-foreground font-medium" disabled={loading}>
-                {loading ? (
-                  <div className="w-5 h-5 border-2 border-primary-foreground/30 border-t-primary-foreground rounded-full animate-spin" />
-                ) : 'Enviar instruções'}
-              </Button>
-            </form>
-          </>
-        )}
-      </motion.div>
+              <h2 className="text-xl font-bold text-foreground mb-2">E-mail enviado!</h2>
+              <p className="text-xs text-muted-foreground mb-6 leading-relaxed">
+                Verifique sua caixa de entrada e siga as instruções para redefinir sua senha.
+              </p>
+              <Link to="/login">
+                <button className="w-full bg-secondary border border-border text-foreground font-bold py-3.5 rounded-xl hover:bg-secondary/80 transition-all">
+                  VOLTAR AO LOGIN
+                </button>
+              </Link>
+            </div>
+          ) : (
+            <>
+              <div className="text-center mb-8">
+                <h1 className="text-2xl font-bold tracking-tight mb-2">Recuperar acesso</h1>
+                <p className="text-xs text-muted-foreground">Informe seu e-mail ou documento para receber as instruções.</p>
+              </div>
+              
+              <form onSubmit={handleSubmit} className="space-y-5">
+                <label className="block">
+                  <span className="font-bold text-[10px] text-muted-foreground uppercase tracking-widest">E-mail ou CPF/CNPJ</span>
+                  <div className="mt-2 relative flex items-center rounded-xl border border-hairline bg-background focus-within:border-brand/50 transition-colors">
+                    <span className="pl-4 text-muted-foreground"><Mail className="w-4 h-4" /></span>
+                    <input
+                      required
+                      value={value}
+                      onChange={(e) => setValue(e.target.value)}
+                      placeholder="seu@email.com ou 000.000.000-00"
+                      className="w-full bg-transparent px-3 py-3 text-sm text-foreground outline-none placeholder:text-muted-foreground/40"
+                    />
+                  </div>
+                </label>
+                
+                <button
+                  type="submit" disabled={loading}
+                  className="w-full bg-brand text-primary-foreground font-bold py-3.5 rounded-xl hover:bg-brand/90 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                >
+                  {loading ? <div className="w-4 h-4 border-2 border-primary-foreground/30 border-t-primary-foreground rounded-full animate-spin" /> : "ENVIAR INSTRUÇÕES"}
+                </button>
+              </form>
+
+              <p className="mt-8 text-center text-xs text-muted-foreground">
+                Lembrou a senha? <Link to="/login" className="text-brand font-bold hover:underline">Fazer login</Link>
+              </p>
+            </>
+          )}
+        </motion.div>
+      </main>
+
+      <Footer />
     </div>
   );
 }
