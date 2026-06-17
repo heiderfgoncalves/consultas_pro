@@ -12,6 +12,7 @@ import AuthenticatedLayout from "@/components/layout/AuthenticatedLayout";
 import LoginPage from "@/pages/LoginPage";
 import RegisterPage from "@/pages/RegisterPage";
 import RecoverAccessPage from "@/pages/RecoverAccessPage";
+import ResetPasswordPage from "@/pages/ResetPasswordPage";
 import DashboardPage from "@/pages/DashboardPage";
 import NewConsultationPage from "@/pages/NewConsultationPage";
 
@@ -25,6 +26,8 @@ import ApiDocsPage from "@/pages/ApiDocsPage";
 import TemplatesDrawerPage from "@/pages/TemplatesDrawerPage";
 import NotFound from "@/pages/NotFound";
 import Index from "@/pages/Index";
+import PlansPage from "@/pages/PlansPage";
+import SubscriptionPage from "@/pages/SubscriptionPage";
 import { openRechargeModal } from "@/stores/rechargeModalStore";
 import { ThemeRouteObserver } from "@/components/layout/ThemeRouteObserver";
 import { SplashScreen } from "@/components/layout/SplashScreen";
@@ -87,10 +90,14 @@ const App = () => (
             <Route path="/index" element={<IndexRedirect />} />
             <Route path="/login" element={<LoginPage />} />
             <Route path="/cadastro" element={<RegisterPage />} />
+            <Route path="/planos" element={<PlansPage />} />
             <Route path="/recuperar-acesso" element={<RecoverAccessPage />} />
+            <Route path="/reset-senha" element={<ResetPasswordPage />} />
 
             <Route element={<AuthenticatedLayout />}>
               <Route path="/dashboard" element={<DashboardPage />} />
+              <Route path="/painel" element={<DashboardPage />} />
+              <Route path="/painel/assinatura" element={<SubscriptionPage />} />
               <Route path="/consulta/nova" element={<NewConsultationPage />} />
               
               <Route path="/consulta/historico" element={<HistoryPage />} />
