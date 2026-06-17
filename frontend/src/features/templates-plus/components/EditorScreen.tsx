@@ -8,7 +8,6 @@ import { CanvasColumn } from "./CanvasColumn";
 import { SummaryColumn } from "./SummaryColumn";
 import { ExpressionConsole } from "./ExpressionConsole";
 import { BlockEditorModal } from "./BlockEditorModal";
-import { Toaster } from "@/components/ui/sonner";
 import { fixedBlocks, customBlocks } from "../mocks";
 import { makePrimitive, type PrimitiveType } from "./ContainerRenderer";
 import { useTemplates } from "../api/hooks";
@@ -212,7 +211,6 @@ export function EditorScreen({ consultations = [] }: { consultations?: ProviderC
         </DragOverlay>
 
         {editing && <BlockEditorModal />}
-        <Toaster richColors position="bottom-right" />
       </DropPosContext.Provider>
     </DndContext>
   );
