@@ -40,3 +40,10 @@ export class ValidationError extends AppError {
     super(422, 'VALIDATION_ERROR', message, details);
   }
 }
+
+export class BadRequestError extends AppError {
+  constructor(message = 'Requisição inválida') {
+    super(400, 'BAD_REQUEST', message);
+  }
+}
+

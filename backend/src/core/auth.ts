@@ -6,6 +6,12 @@ import { isKnownExternalRouteKey } from './external-endpoints.catalog';
 import { sha256 } from '../lib/hash';
 
 export async function authenticate(request: FastifyRequest, _reply: FastifyReply) {
+  // 0. Se veio token via query param (?token=...), injeta no header para o jwtVerify funcionar
+  const queryToken = (request.query as Record<string, string>)?.token;
+  if (queryToken && !request.headers.authorization) {
+    request.headers.authorization = `Bearer ${queryToken}`;
+  }
+
   // 1. Tenta autenticação via JWT (sessão web do painel principal)
   try {
     await request.jwtVerify<{
