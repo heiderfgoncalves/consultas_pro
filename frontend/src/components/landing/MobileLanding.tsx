@@ -1,604 +1,544 @@
-import { useEffect, useMemo, useState, type CSSProperties } from "react";
-import { useNavigate } from "react-router-dom";
-import {
-  DndContext,
-  DragOverlay,
-  PointerSensor,
-  TouchSensor,
-  closestCenter,
-  useSensors,
-  useSensor,
-  type DragEndEvent,
-  type DragOverEvent,
-  type DragStartEvent,
-} from "@dnd-kit/core";
-import {
-  SortableContext,
-  arrayMove,
-  useSortable,
-  verticalListSortingStrategy,
-} from "@dnd-kit/sortable";
-import { CSS } from "@dnd-kit/utilities";
-import {
-  ArrowRight,
-  BadgeCheck,
-  BookOpenCheck,
-  Boxes,
-  ChevronRight,
-  DatabaseZap,
-  FileText,
-  Fingerprint,
-  Gauge,
-  GripHorizontal,
-  Home,
-  Layers3,
-  Menu,
-  Palette,
-  WalletCards,
-  X,
-  Zap,
+import { useState, useEffect } from "react";
+import { useNavigate, Link } from "react-router-dom";
+import { motion, AnimatePresence } from "framer-motion";
+import { 
+  Search, 
+  ArrowRight, 
+  ShieldCheck, 
+  Database, 
+  BarChart3, 
+  FileText, 
+  CheckCircle2, 
+  HelpCircle, 
+  ChevronRight, 
+  Zap, 
+  Check, 
+  Sparkles, 
+  Lock, 
+  Loader2,
+  Users,
+  TrendingUp,
+  AlertTriangle
 } from "lucide-react";
-import ThemeToggle from "@/components/ThemeToggle";
-import { ScanFlowCards } from "@/components/landing/ScanFlowCards";
+import { PublicHeader } from "@/components/layout/PublicHeader";
+import { Footer } from "@/components/layout/Footer";
 
-const navItems = [
-  { id: "top", label: "Início", icon: Home },
-  { id: "plataforma", label: "Fluxo", icon: Zap },
-  { id: "templates", label: "Templates", icon: Layers3 },
-  { id: "dossie", label: "Dossiê", icon: FileText },
-  { id: "recursos", label: "FAQ", icon: BookOpenCheck },
+// Provedores populares para simulação
+const popularQueries = [
+  { label: "CPF Limpo (Simulado)", value: "542.819.330-10", type: "clean-cpf" },
+  { label: "CNPJ Ativo (Simulado)", value: "14.281.990/0001-44", type: "active-cnpj" },
+  { label: "Restrição Bacen", value: "819.224.310-88", type: "bacen-alert" },
+  { label: "Pendência SPC", value: "310.442.890-55", type: "spc-alert" }
 ];
 
-const mobileStages = [
-  {
-    id: "providers",
-    label: "Provedores",
-    detail: "APIs, bureaus, webhooks e fallback operacional.",
-    metric: "+37",
-    icon: DatabaseZap,
-  },
-  {
-    id: "wallet",
-    label: "Ledger",
-    detail: "Saldo, débito, estorno e consumo por empresa.",
-    metric: "AUDIT",
-    icon: WalletCards,
-  },
-  {
-    id: "merge",
-    label: "Merge",
-    detail: "Normalização de payloads em um resultado usável.",
-    metric: "JSON",
-    icon: Boxes,
-  },
-  {
-    id: "report",
-    label: "Relatório",
-    detail: "Template comercial pronto para entregar ou revender.",
-    metric: "PDF",
-    icon: FileText,
-  },
-];
-
-type MobileStage = (typeof mobileStages)[number];
-
-const featureCards = [
-  {
-    title: "Consulta por template",
-    text: "Crie jornadas prontas para CPF, CNPJ, crédito, restrição e parceiros.",
-    icon: Layers3,
-  },
-  {
-    title: "White-label real",
-    text: "Widget, token, origem autorizada, marca do parceiro e rastreio por usuário.",
-    icon: Fingerprint,
-  },
-  {
-    title: "Governança financeira",
-    text: "Controle saldo, custo por emissão, histórico, estorno e repasse.",
-    icon: WalletCards,
-  },
-  {
-    title: "Fila operacional",
-    text: "Status claro: queued, processing, completed, partial ou failed.",
-    icon: Gauge,
-  },
-];
-
-const reportShots = [
-  { src: "/assets/Image_1.jpg", label: "Ledger multiempresa" },
-  { src: "/assets/Image_2.jpg", label: "Builder de templates" },
-  { src: "/assets/Image_3.jpg", label: "Central de provedores" },
-  { src: "/assets/image_4.jpg", label: "Pipelines e filas" },
-  { src: "/assets/Image_5.jpg", label: "Métricas técnicas" },
-];
-
-const faqs = [
-  {
-    q: "É só um painel de consultas?",
-    a: "Não. A proposta mobile reforça que o Consultas PRO é uma camada de operação: integra provedores, organiza saldo, compõe templates e distribui a entrega por painel, API ou widget.",
-  },
-  {
-    q: "Dá para usar com marca própria?",
-    a: "Sim. O discurso visual foca em white-label, token, origem autorizada e experiência embarcada para parceiro ou cliente final.",
-  },
-  {
-    q: "A versão mobile ficou mais leve?",
-    a: "Sim. O mobile usa animações CSS/transform, seções sob demanda e interações touch-first para evitar JS pesado no primeiro carregamento.",
-  },
-];
-
-function scrollToMobile(id: string) {
-  const element = document.getElementById(id === "top" ? "top" : id);
-  element?.scrollIntoView({ behavior: "smooth", block: "start" });
-}
-
-type SortableBindings = ReturnType<typeof useSortable>;
-
-type MobileLandingProps = {
-  activeSection: string;
-};
-
-export function MobileLanding({
-  activeSection,
-}: MobileLandingProps) {
+export function MobileLanding() {
   const navigate = useNavigate();
-  const [menuOpen, setMenuOpen] = useState(false);
-  const [stages, setStages] = useState<MobileStage[]>(mobileStages);
-  const [activeDragId, setActiveDragId] = useState<string | null>(null);
-  const [mobileFlowIndex, setMobileFlowIndex] = useState(0);
+  const [searchValue, setSearchValue] = useState("");
+  const [isSimulating, setIsSimulating] = useState(false);
+  const [simStep, setSimStep] = useState(0);
+  const [simType, setSimType] = useState("clean-cpf");
+  const [showResults, setShowResults] = useState(false);
 
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 7 } }),
-    useSensor(TouchSensor, { activationConstraint: { delay: 80, tolerance: 6 } }),
-  );
+  // FAQ Accordion State
+  const [openFaq, setOpenOpenFaq] = useState<number | null>(null);
 
-  const activeLabel = useMemo(() => {
-    const item = navItems.find((nav) => nav.id === activeSection);
-    return item?.label ?? "Live";
-  }, [activeSection]);
-
+  // Efeito de Simulação com delays controlados
   useEffect(() => {
-    if (!menuOpen) return;
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setMenuOpen(false);
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [menuOpen]);
+    if (!isSimulating) return;
+    
+    setSimStep(0);
+    setShowResults(false);
 
-  useEffect(() => {
-    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    if (reduced) return;
-    const timer = window.setInterval(() => {
-      setMobileFlowIndex((current) => (current + 1) % Math.max(stages.length, featureCards.length));
-    }, 2100);
-    return () => window.clearInterval(timer);
-  }, [stages.length]);
+    const timers = [
+      setTimeout(() => setSimStep(1), 800),
+      setTimeout(() => setSimStep(2), 1800),
+      setTimeout(() => setSimStep(3), 2800),
+      setTimeout(() => setSimStep(4), 3800),
+      setTimeout(() => {
+        setSimStep(5);
+        setShowResults(true);
+      }, 4800)
+    ];
 
-  const stageFlowStyle = {
-    "--mobile-flow-index": Math.min(mobileFlowIndex, stages.length - 1),
-    "--mobile-flow-count": stages.length,
-  } as CSSProperties;
+    return () => timers.forEach(clearTimeout);
+  }, [isSimulating]);
 
-  const featureFlowStyle = {
-    "--mobile-flow-index": Math.min(mobileFlowIndex, featureCards.length - 1),
-    "--mobile-flow-count": featureCards.length,
-  } as CSSProperties;
-
-  const activeStage = activeDragId
-    ? stages.find((stage) => stage.id === activeDragId) ?? null
-    : null;
-
-  const handleDragStart = ({ active }: DragStartEvent) => {
-    setActiveDragId(String(active.id));
+  const handleSearchSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!searchValue.trim()) return;
+    
+    // Define um tipo com base no conteúdo para tornar a simulação dinâmica
+    if (searchValue.includes("/") || searchValue.length > 14) {
+      setSimType("active-cnpj");
+    } else if (searchValue.includes("819") || searchValue.includes("9")) {
+      setSimType("bacen-alert");
+    } else if (searchValue.includes("310") || searchValue.includes("5")) {
+      setSimType("spc-alert");
+    } else {
+      setSimType("clean-cpf");
+    }
+    
+    setIsSimulating(true);
   };
 
-  const handleDragOver = ({ active, over }: DragOverEvent) => {
-    if (!over || active.id === over.id) return;
-    setStages((current) => {
-      const from = current.findIndex((item) => item.id === active.id);
-      const to = current.findIndex((item) => item.id === over.id);
-      if (from < 0 || to < 0 || from === to) return current;
-      return arrayMove(current, from, to);
-    });
-  };
-
-  const handleDragEnd = (_event: DragEndEvent) => {
-    setActiveDragId(null);
-  };
-
-  const handleDragCancel = () => {
-    setActiveDragId(null);
+  const handlePopularClick = (query: typeof popularQueries[0]) => {
+    setSearchValue(query.value);
+    setSimType(query.type);
+    setIsSimulating(true);
   };
 
   return (
-    <main className="md:hidden relative min-h-screen overflow-x-hidden pb-28 pt-16">
-      <div className="fixed inset-x-0 top-0 z-50 border-b border-hairline bg-background/88 backdrop-blur-2xl">
-        <div className="flex h-14 items-center justify-between px-4">
-          <button
-            type="button"
-            onClick={() => setMenuOpen(true)}
-            className="grid h-10 w-10 place-items-center rounded-xl border border-hairline bg-surface/70 text-foreground active:scale-95"
-            aria-label="Abrir menu mobile"
+    <div className="bg-background text-foreground flex flex-col justify-start min-h-screen overflow-x-hidden relative font-sans">
+      <PublicHeader />
+
+      {/* Grid de fundo decorativo */}
+      <div className="absolute inset-0 bg-grid-pattern opacity-[0.10] pointer-events-none z-0" />
+      
+      {/* Glow de Destaque no Topo */}
+      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[90%] h-[300px] bg-brand/5 blur-[90px] rounded-full pointer-events-none z-0 animate-pulse" />
+
+      <main className="w-full max-w-7xl mx-auto px-4 pt-28 pb-20 z-10 flex-1 relative space-y-16">
+        
+        {/* ================= HERO SECTION ================= */}
+        <section className="flex flex-col items-center text-center space-y-6 pt-4">
+          <motion.div 
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-brand/10 border border-brand/20 text-[9px] font-mono font-bold uppercase tracking-[0.12em] text-brand"
           >
-            <Menu className="h-4 w-4" />
-          </button>
+            <Sparkles className="w-3 h-3 animate-spin" style={{ animationDuration: "5s" }} /> 
+            Consultas de Crédito B2B em tempo real
+          </motion.div>
 
-          <button
-            onClick={() => scrollToMobile("top")}
-            className="mono flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-[0.14em]"
+          <motion.h1 
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.05 }}
+            className="text-3xl md:text-5xl font-black tracking-tight leading-[1.1] text-foreground px-1"
           >
-            <span className="grid h-6 w-6 place-items-center rounded-md border border-brand/60 bg-brand/10 text-brand">
-              ◆
-            </span>
-            <span>Consultas</span>
-            <span className="text-brand">PRO</span>
-          </button>
+            Decisões inteligentes. <br />
+            <span className="brand-text italic font-serif font-normal">Dados estruturados.</span>
+          </motion.h1>
 
-          <div className="flex items-center gap-1.5">
-            <ThemeToggle />
-          </div>
-        </div>
-      </div>
-
-      {menuOpen && (
-        <div
-          className="fixed inset-0 z-[70] bg-background/70 backdrop-blur-xl mobile-fade-in"
-          role="dialog"
-          aria-modal="true"
-        >
-          <div className="m-3 rounded-3xl border border-hairline bg-[linear-gradient(180deg,var(--hud-bg-1),var(--hud-bg-2))] p-4 shadow-2xl mobile-slide-in">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="mono text-[10px] uppercase tracking-[0.18em] text-brand">Menu mobile</p>
-                <h2 className="mt-1 text-xl font-semibold tracking-[-0.04em]">Navegação rápida</h2>
-              </div>
-              <button
-                type="button"
-                onClick={() => setMenuOpen(false)}
-                className="grid h-10 w-10 place-items-center rounded-xl border border-hairline bg-surface/65"
-                aria-label="Fechar menu mobile"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-
-            <div className="mt-5 grid gap-2">
-              {navItems.map((item) => {
-                const Icon = item.icon;
-                const isActive = activeSection === item.id;
-                return (
-                  <button
-                    key={item.id}
-                    type="button"
-                    onClick={() => {
-                      setMenuOpen(false);
-                      scrollToMobile(item.id);
-                    }}
-                    className={`flex items-center justify-between rounded-2xl border px-4 py-3 text-left transition active:scale-[0.99] ${
-                      isActive
-                        ? "border-brand bg-brand/12 text-foreground"
-                        : "border-hairline bg-background/35 text-muted-foreground"
-                    }`}
-                  >
-                    <span className="flex items-center gap-3">
-                      <Icon className="h-4 w-4 text-brand" />
-                      {item.label}
-                    </span>
-                    <ChevronRight className="h-4 w-4" />
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        </div>
-      )}
-
-      <section className="relative overflow-hidden px-4 pb-8 pt-8 scroll-mt-20">
-        <div className="absolute inset-x-4 top-8 h-72 rounded-full bg-brand/12 blur-3xl" aria-hidden />
-        <div className="relative rounded-[2rem] border border-brand/25 bg-[radial-gradient(circle_at_20%_0%,rgba(var(--scroll-rgb),0.25),transparent_36%),linear-gradient(180deg,var(--hud-bg-1),var(--hud-bg-2))] p-5 shadow-2xl">
-          <div className="mono flex items-center justify-between text-[10px] uppercase tracking-[0.16em] text-brand">
-            <span>Mobile v3</span>
-            <span>SISTEMA ATIVO</span>
-          </div>
-
-          <h1 className="mt-6 text-[3.05rem] font-semibold leading-[0.88] tracking-[-0.09em]">
-            Consultas, relatórios e white-label no bolso.
-          </h1>
-          <p className="mt-5 text-sm leading-6 text-muted-foreground">
-            Uma versão mobile própria: leve, escaneável, com animações de varredura e interação pensada para toque.
-          </p>
-
-          <div className="mobile-mini-grid mt-5 grid grid-cols-2 gap-2" style={featureFlowStyle}>
-            {[
-              ["API", "Widget e token"],
-              ["Ledger", "Saldo auditável"],
-              ["Merge", "Payload único"],
-              ["PDF", "Entrega comercial"],
-            ].map(([title, text]) => (
-              <div key={title} className="mobile-mini-card rounded-xl border border-hairline bg-background/45 p-2.5">
-                <span className="mono text-[9px] font-bold text-brand">{title}</span>
-                <p className="mt-0.5 text-[11px] text-muted-foreground">{text}</p>
-              </div>
-            ))}
-          </div>
-
-          <button
-            onClick={() => navigate("/cadastro")}
-            className="mt-6 inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl bg-brand px-5 text-sm font-bold text-primary-foreground shadow-[0_0_32px_rgba(var(--scroll-rgb),0.34)] active:scale-[0.98]"
+          <motion.p 
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.1 }}
+            className="text-muted-foreground text-xs md:text-sm max-w-md leading-relaxed px-2"
           >
-            Solicitar demonstração
-            <ArrowRight className="h-4 w-4" />
-          </button>
-        </div>
-      </section>
+            Acesse dados do SPC, Serasa, Bacen e Judiciário de forma modular, rápida e 100% online.
+          </motion.p>
 
-      <ScanFlowCards compact />
-
-      <section id="plataforma" className="relative px-4 py-8 scroll-mt-20">
-        <div className="mb-5 mobile-reveal">
-          <p className="mono text-[10px] font-bold uppercase tracking-[0.2em] text-brand">Fluxo touch-first</p>
-          <h2 className="mt-3 text-3xl font-semibold leading-tight tracking-[-0.055em]">Arraste pelo grip e reorganize em tempo real.</h2>
-          <p className="mt-3 text-sm leading-6 text-muted-foreground">
-            O drag mobile agora usa ordenação animada: o item já troca de posição durante o gesto e os outros cards se reorganizam suavemente.
-          </p>
-        </div>
-
-        <DndContext
-          sensors={sensors}
-          collisionDetection={closestCenter}
-          onDragStart={handleDragStart}
-          onDragOver={handleDragOver}
-          onDragEnd={handleDragEnd}
-          onDragCancel={handleDragCancel}
-        >
-          <SortableContext items={stages.map((stage) => stage.id)} strategy={verticalListSortingStrategy}>
-            <div className="mobile-flow-list mobile-reorder-flow grid gap-2.5" style={stageFlowStyle}>
-              {stages.map((stage, index) => (
-                <SortableMobileStageCard
-                  key={stage.id}
-                  stage={stage}
-                  index={index}
-                  active={index === Math.min(mobileFlowIndex, stages.length - 1)}
-                  done={index < Math.min(mobileFlowIndex, stages.length - 1)}
+          {/* Input de Busca Interativo / Caixa de Consulta */}
+          <motion.div
+            initial={{ opacity: 0, y: 15 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.15 }}
+            className="w-full max-w-md px-1"
+          >
+            <form onSubmit={handleSearchSubmit} className="relative flex flex-col p-1.5 rounded-2xl border border-border bg-card/60 backdrop-blur-xl shadow-lg focus-within:border-brand/50 transition-all duration-300 gap-1.5">
+              <div className="flex items-center gap-2.5 px-2.5 py-1.5">
+                <Search className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                <input 
+                  type="text" 
+                  placeholder="Digite o CPF ou CNPJ..." 
+                  value={searchValue}
+                  onChange={(e) => setSearchValue(e.target.value)}
+                  className="w-full bg-transparent text-xs text-foreground placeholder:text-muted-foreground focus:outline-none"
                 />
+              </div>
+              <button 
+                type="submit"
+                className="w-full bg-brand text-primary-foreground font-mono font-bold text-xs py-3 rounded-xl hover:bg-brand/90 transition-all shadow-md active:scale-95 cursor-pointer flex items-center justify-center gap-2"
+              >
+                Consultar
+                <ArrowRight className="w-3.5 h-3.5" />
+              </button>
+            </form>
+
+            {/* Botões rápidos abaixo da busca */}
+            <div className="mt-4 flex flex-wrap gap-1.5 items-center justify-center">
+              {popularQueries.map((q) => (
+                <button
+                  key={q.label}
+                  onClick={() => handlePopularClick(q)}
+                  className="px-2 py-0.5 rounded text-[9.5px] font-mono bg-surface border border-hairline hover:border-brand/40 text-muted-foreground hover:text-foreground transition-all duration-200 cursor-pointer"
+                >
+                  {q.label}
+                </button>
               ))}
             </div>
-          </SortableContext>
+          </motion.div>
 
-          <DragOverlay dropAnimation={{ duration: 180, easing: "cubic-bezier(0.2, 0.8, 0.2, 1)" }}>
-            {activeStage ? (
-              <div className="mobile-drag-overlay" aria-hidden>
-                <MobileStageCardContent stage={activeStage} index={0} compact overlay />
-              </div>
-            ) : null}
-          </DragOverlay>
-        </DndContext>
-      </section>
+          {/* Imagem do Mockup do Dashboard */}
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ delay: 0.2 }}
+            className="relative w-full max-w-[320px] aspect-[4/3] rounded-2xl border border-border bg-card/40 backdrop-blur-md overflow-hidden shadow-xl p-1.5 mt-4"
+          >
+            <img 
+              src="/assets/hero_dashboard.png" 
+              alt="Consultas PRO Dashboard Ilustração" 
+              className="w-full h-full object-cover rounded-xl brightness-95"
+            />
+          </motion.div>
+        </section>
 
-      <section id="templates" className="px-4 py-7 scroll-mt-20">
-        <div className="rounded-[1.55rem] border border-hairline bg-[linear-gradient(180deg,var(--hud-bg-1),var(--hud-bg-2))] p-4 shadow-2xl mobile-reveal">
-          <p className="mono text-[10px] font-bold uppercase tracking-[0.2em] text-brand">Templates e módulos</p>
-          <h2 className="mt-2.5 text-[1.7rem] font-semibold leading-tight tracking-[-0.055em]">Cards menores, alinhados e conectados por varredura.</h2>
+        {/* ================= BANNER DE ESTATÍSTICAS ================= */}
+        <section className="grid grid-cols-2 gap-4 border-y border-border/50 py-6 bg-surface/10 backdrop-blur-sm px-4 rounded-xl">
+          <div className="text-center p-2">
+            <h3 className="text-2xl font-black text-brand">15M+</h3>
+            <p className="text-[10px] text-muted-foreground font-mono uppercase tracking-wider mt-0.5">Consultas</p>
+          </div>
+          <div className="text-center p-2 border-l border-border/50">
+            <h3 className="text-2xl font-black text-brand">40+</h3>
+            <p className="text-[10px] text-muted-foreground font-mono uppercase tracking-wider mt-0.5">Bureaus</p>
+          </div>
+          <div className="text-center p-2 border-t border-border/50 pt-4">
+            <h3 className="text-2xl font-black text-brand">99.9%</h3>
+            <p className="text-[10px] text-muted-foreground font-mono uppercase tracking-wider mt-0.5">Precisão</p>
+          </div>
+          <div className="text-center p-2 border-l border-t border-border/50 pt-4">
+            <h3 className="text-2xl font-black text-brand">4.9★</h3>
+            <p className="text-[10px] text-muted-foreground font-mono uppercase tracking-wider mt-0.5">Avaliação B2B</p>
+          </div>
+        </section>
 
-          <div className="mobile-flow-list mt-4 grid gap-2.5" style={featureFlowStyle}>
-            {featureCards.map((feature, index) => {
-              const Icon = feature.icon;
+        {/* ================= CORE PILLARS SECTION ================= */}
+        <section className="space-y-8">
+          <div className="text-center space-y-2">
+            <span className="mono text-[9px] tracking-[0.2em] text-brand uppercase font-bold">◆ Diferenciais ◆</span>
+            <h2 className="text-2xl font-black tracking-tight">Vantagens Exclusivas</h2>
+            <p className="text-muted-foreground text-xs leading-relaxed max-w-sm mx-auto">
+              Desenvolvido com o mais alto padrão em React, unindo performance, beleza e total segurança de saldos.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 gap-4">
+            {[
+              {
+                icon: BarChart3,
+                title: "Gráficos e BI Avançados",
+                desc: "Históricos de buscas, análise de inadimplência média por lote de CPFs e comportamento de score de forma visual."
+              },
+              {
+                icon: Users,
+                title: "Gestão de Saldo Unificada",
+                desc: "Adicione colaboradores, operadores e filiais na mesma carteira de saldo e distribua limites com total governança."
+              },
+              {
+                icon: TrendingUp,
+                title: "Templates de Alto Padrão",
+                desc: "Relatórios legíveis, organizados e fáceis de exportar para PDF com um design premium que valoriza o seu negócio."
+              },
+              {
+                icon: ShieldCheck,
+                title: "Informação Fiel e Revisada",
+                desc: "Conexões oficiais criptografadas diretas aos principais bureaus de proteção ao crédito nacional com conformidade LGPD."
+              }
+            ].map((p, idx) => {
+              const Icon = p.icon;
               return (
-                <div
-                  key={feature.title}
-                  className={`mobile-feature-card ${index === Math.min(mobileFlowIndex, featureCards.length - 1) ? "is-active" : ""} ${index < Math.min(mobileFlowIndex, featureCards.length - 1) ? "is-done" : ""}`}
-                >
-                  <div className="flex gap-2.5">
-                    <div className="grid h-8 w-8 shrink-0 place-items-center rounded-xl bg-brand/10 text-brand">
-                      <Icon className="h-3.5 w-3.5" />
-                    </div>
-                    <div>
-                      <h3 className="text-[14px] font-semibold tracking-[-0.03em]">{feature.title}</h3>
-                      <p className="mt-1 text-[11.5px] leading-4 text-muted-foreground">{feature.text}</p>
-                    </div>
+                <div key={idx} className="bg-card/40 backdrop-blur-md p-5 rounded-xl border border-border flex flex-col space-y-3 shadow-sm text-left">
+                  <div className="p-2 bg-brand/10 text-brand border border-brand/20 rounded-lg w-fit">
+                    <Icon className="w-4.5 h-4.5" />
                   </div>
+                  <h3 className="font-bold text-sm text-foreground">{p.title}</h3>
+                  <p className="text-muted-foreground text-xs leading-relaxed">{p.desc}</p>
                 </div>
               );
             })}
           </div>
-        </div>
-      </section>
+        </section>
 
-      <section id="dossie" className="px-4 py-8 scroll-mt-20">
-        <div className="mobile-reveal">
-          <div className="flex items-end justify-between gap-4">
-            <div>
-              <p className="mono text-[10px] font-bold uppercase tracking-[0.2em] text-brand">Dossiê mobile</p>
-              <h2 className="mt-3 text-3xl font-semibold leading-tight tracking-[-0.055em]">Prints reais em carrossel leve.</h2>
-            </div>
-            <BadgeCheck className="mb-1 h-7 w-7 text-brand" />
+        {/* ================= SERVICES/CATEGORIES GRID ================= */}
+        <section className="space-y-8">
+          <div className="text-center space-y-2">
+            <span className="mono text-[9px] tracking-[0.2em] text-brand uppercase font-bold">◆ Consultas ◆</span>
+            <h2 className="text-2xl font-black tracking-tight">Nossos Módulos</h2>
+            <p className="text-muted-foreground text-xs leading-relaxed max-w-sm mx-auto">
+              Selecione apenas as tabelas que importam para o seu negócio e pague apenas pelo que consultar.
+            </p>
           </div>
 
-          <div className="-mx-4 mt-5 flex snap-x gap-3 overflow-x-auto px-4 pb-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-            {reportShots.map((shot, index) => (
-              <article key={shot.src} className="mobile-scan-card w-[76vw] shrink-0 snap-center overflow-hidden rounded-[1.25rem] border border-hairline bg-card/90 shadow-xl">
-                <div className="aspect-[4/3] overflow-hidden bg-muted/30">
-                  <img src={shot.src} alt={shot.label} loading="lazy" decoding="async" className="h-full w-full object-cover" />
-                </div>
-                <div className="p-3">
-                  <p className="mono text-[8px] uppercase tracking-[0.18em] text-brand">Relatório 0{index + 1}</p>
-                  <h3 className="mt-1 text-[14px] font-semibold tracking-[-0.03em]">{shot.label}</h3>
-                </div>
-              </article>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      <section id="white-label" className="px-4 py-8 scroll-mt-20">
-        <div className="relative overflow-hidden rounded-[2rem] border border-brand/25 bg-brand/10 p-5 mobile-reveal">
-          <div className="absolute -right-16 -top-16 h-44 w-44 rounded-full bg-brand/20 blur-3xl" />
-          <p className="mono text-[10px] font-bold uppercase tracking-[0.2em] text-brand">White-label</p>
-          <h2 className="mt-3 text-3xl font-semibold leading-tight tracking-[-0.055em]">Seu parceiro vê sua marca, não a complexidade.</h2>
-          <p className="mt-3 text-sm leading-6 text-muted-foreground">
-            Token, domínio, origem autorizada, rastreio por usuário final e entrega pronta para embed.
-          </p>
-
-          <div className="mobile-mini-grid mt-4 grid grid-cols-2 gap-2" style={featureFlowStyle}>
-            {["TOKEN", "DOMÍNIO", "API", "WIDGET"].map((item) => (
-              <div key={item} className="mobile-mini-card rounded-xl border border-brand/20 bg-background/45 px-2.5 py-2.5 text-center">
-                <span className="mono text-[9px] font-bold tracking-[0.16em] text-brand">{item}</span>
+          <div className="grid grid-cols-1 gap-4">
+            {[
+              { title: "Análise de Crédito & Score", desc: "Pendências comerciais, restrições bancárias, protestos nacionais e Score de Crédito consolidado oficial." },
+              { title: "Localização & Cadastral", desc: "Situação na Receita Federal, histórico de endereços revisados, telefones ativos e vínculos familiares." },
+              { title: "Bacen & Dívida Ativa", desc: "Verificação de restrições do Banco Central, processos judiciais ativos e débitos junto à União." }
+            ].map((cat, idx) => (
+              <div key={idx} className="bg-card/30 backdrop-blur-md rounded-xl border border-border p-5 flex flex-col justify-between items-start text-left space-y-3">
+                <span className="font-mono text-[8px] bg-brand/15 text-brand border border-brand/20 font-bold px-2 py-0.5 rounded-full">MODULAR</span>
+                <h4 className="font-bold text-sm text-foreground">{cat.title}</h4>
+                <p className="text-muted-foreground text-[11px] leading-relaxed">{cat.desc}</p>
+                <Link to="/cadastro" className="text-[11px] font-mono font-bold text-brand hover:underline inline-flex items-center gap-1 mt-1">
+                  Ver módulo <ChevronRight className="w-3.5 h-3.5" />
+                </Link>
               </div>
             ))}
           </div>
-        </div>
-      </section>
+        </section>
 
-      <section id="recursos" className="px-4 py-8 scroll-mt-20">
-        <div className="mobile-reveal">
-          <p className="mono text-[10px] font-bold uppercase tracking-[0.2em] text-brand">FAQ rápido</p>
-          <h2 className="mt-3 text-3xl font-semibold leading-tight tracking-[-0.055em]">Respostas curtas para decisão rápida.</h2>
-          <div className="mt-5 grid gap-3">
-            {faqs.map((item) => (
-              <details key={item.q} className="group rounded-[1.35rem] border border-hairline bg-card/85 p-4 backdrop-blur-xl">
-                <summary className="flex cursor-pointer list-none items-center justify-between gap-3 text-sm font-semibold tracking-[-0.02em]">
-                  {item.q}
-                  <ChevronRight className="h-4 w-4 shrink-0 text-brand transition group-open:rotate-90" />
-                </summary>
-                <p className="mt-3 text-[13px] leading-6 text-muted-foreground">{item.a}</p>
-              </details>
-            ))}
+        {/* ================= DETAILED REPORT SHOWCASE ================= */}
+        <section className="py-8 rounded-2xl bg-surface/5 border border-border px-5 flex flex-col space-y-6 items-center relative overflow-hidden">
+          <div className="text-left space-y-3 relative z-10 w-full">
+            <span className="mono text-[9px] tracking-[0.2em] text-brand uppercase font-bold">◆ Dossier Engine ◆</span>
+            <h2 className="text-xl md:text-3xl font-black tracking-tight leading-tight">Dossiês modulares com layout premium</h2>
+            <p className="text-muted-foreground text-xs leading-relaxed">
+              O construtor modular permite selecionar apenas os blocos que você quer pagar e emiti-los com saldo em carteira.
+            </p>
+
+            <ul className="space-y-2.5 font-mono text-[10px] text-muted-foreground">
+              <li className="flex items-center gap-2">
+                <Check className="w-3.5 h-3.5 text-brand flex-shrink-0" />
+                <span>Exportação para PDF com design impecável</span>
+              </li>
+              <li className="flex items-center gap-2">
+                <Check className="w-3.5 h-3.5 text-brand flex-shrink-0" />
+                <span>Integração White-Label simples com sua marca</span>
+              </li>
+              <li className="flex items-center gap-2">
+                <Check className="w-3.5 h-3.5 text-brand flex-shrink-0" />
+                <span>Armazenamento em histórico criptografado seguro</span>
+              </li>
+            </ul>
           </div>
-        </div>
-      </section>
 
-      <section id="cta" className="px-4 py-10 scroll-mt-20">
-        <div className="rounded-[2rem] border border-brand/30 bg-[radial-gradient(circle_at_top_right,rgba(var(--scroll-rgb),0.25),transparent_46%),linear-gradient(180deg,var(--hud-bg-1),var(--hud-bg-2))] p-5 shadow-2xl mobile-reveal">
-          <div className="grid h-12 w-12 place-items-center rounded-2xl bg-brand text-primary-foreground shadow-[0_0_28px_rgba(var(--scroll-rgb),0.35)]">
-            <Palette className="h-5 w-5" />
+          {/* Imagem */}
+          <div className="relative w-full max-w-[240px] aspect-[4/5] rounded-2xl border border-border bg-card/60 overflow-hidden shadow-lg p-1">
+            <img 
+              src="/assets/credit_report.png" 
+              alt="Credit Report Mockup" 
+              className="w-full h-full object-cover rounded-xl brightness-95"
+            />
           </div>
-          <h2 className="mt-5 text-4xl font-semibold leading-[0.98] tracking-[-0.07em]">Leve o Consultas PRO para sua operação.</h2>
-          <p className="mt-4 text-sm leading-6 text-muted-foreground">
-            Solicite uma demonstração e veja como transformar consultas em uma experiência comercial, auditável e white-label.
-          </p>
-          <button
-            onClick={() => navigate("/cadastro")}
-            className="mt-6 inline-flex min-h-13 w-full items-center justify-center gap-2 rounded-2xl bg-brand px-5 py-4 text-sm font-bold text-primary-foreground shadow-[0_0_34px_rgba(var(--scroll-rgb),0.35)] active:scale-[0.98]"
-          >
-            Criar conta / solicitar demo
-            <ArrowRight className="h-4 w-4" />
-          </button>
-        </div>
-      </section>
+        </section>
 
-      <footer className="px-4 pb-4 text-center">
-        <p className="mono text-[9px] uppercase tracking-[0.18em] text-muted-foreground">Consultas PRO • mobile performance v3</p>
-      </footer>
+        {/* ================= FAQ ACCORDION SECTION ================= */}
+        <section className="space-y-6 max-w-md mx-auto">
+          <div className="text-center space-y-2">
+            <span className="mono text-[9px] tracking-[0.2em] text-brand uppercase font-bold">◆ FAQ ◆</span>
+            <h2 className="text-2xl font-black tracking-tight">Dúvidas Frequentes</h2>
+          </div>
 
-      <div className="fixed bottom-3 left-3 right-3 z-50 rounded-[1.35rem] border border-hairline bg-background/88 p-1.5 shadow-2xl backdrop-blur-2xl">
-        <div className="grid grid-cols-5 gap-1">
-          {navItems.map((item) => {
-            const Icon = item.icon;
-            const isActive = activeSection === item.id;
-            return (
-              <button
-                key={item.id}
-                type="button"
-                onClick={() => scrollToMobile(item.id)}
-                className={`flex min-h-12 flex-col items-center justify-center gap-0.5 rounded-2xl px-1 transition active:scale-95 ${
-                  isActive ? "bg-brand text-primary-foreground" : "text-muted-foreground"
-                }`}
-                aria-label={`Ir para ${item.label}`}
+          <div className="space-y-3 text-left">
+            {[
+              {
+                q: "Como funciona o sistema de recargas?",
+                a: "Na Consultas PRO você não fica preso a assinaturas obrigatórias. Você simplesmente faz uma recarga via Pix ou cartão do valor que desejar, e esse saldo fica disponível em carteira para você consumir realizando consultas conforme sua necessidade."
+              },
+              {
+                q: "A plataforma está em conformidade com a LGPD?",
+                a: "Sim, 100%. Todos os dados consultados são provenientes de fontes e bureaus oficiais com finalidade específica autorizada por lei, como proteção ao crédito, prevenção de fraudes e compliance."
+              }
+            ].map((faq, idx) => {
+              const isOpen = openFaq === idx;
+              return (
+                <div 
+                  key={idx} 
+                  className="rounded-xl border border-border bg-card/35 backdrop-blur-md overflow-hidden transition-all duration-300"
+                >
+                  <button 
+                    onClick={() => setOpenOpenFaq(isOpen ? null : idx)}
+                    className="w-full px-4 py-4 flex items-center justify-between font-bold text-xs text-foreground focus:outline-none text-left cursor-pointer"
+                  >
+                    <span>{faq.q}</span>
+                    <span className={`p-1 bg-brand/10 text-brand rounded border border-brand/20 flex items-center justify-center transition-transform duration-300 ${isOpen ? "rotate-90" : ""}`}>
+                      <ChevronRight className="w-3.5 h-3.5" />
+                    </span>
+                  </button>
+                  <AnimatePresence initial={false}>
+                    {isOpen && (
+                      <motion.div 
+                        initial={{ height: 0 }}
+                        animate={{ height: "auto" }}
+                        exit={{ height: 0 }}
+                        className="overflow-hidden"
+                      >
+                        <div className="px-4 pb-4 pt-1 border-t border-border/40 text-[11px] text-muted-foreground leading-relaxed">
+                          {faq.a}
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+
+        {/* ================= FINAL CTA SECTION ================= */}
+        <section className="rounded-2xl border border-brand/25 bg-[radial-gradient(circle_at_top_right,rgba(var(--brand-rgb),0.05),transparent_40%),linear-gradient(180deg,rgba(15,18,25,0.4),rgba(10,12,17,0.8))] p-6 text-center relative overflow-hidden shadow-lg">
+          <div className="flex flex-col items-center space-y-4 relative z-10">
+            <div className="p-2 bg-brand/10 text-brand border border-brand/20 rounded-xl">
+              <Sparkles className="w-5 h-5 animate-pulse" />
+            </div>
+            <h2 className="text-xl font-black text-foreground">Pronto para transformar sua análise?</h2>
+            <p className="text-muted-foreground text-xs leading-relaxed max-w-xs">
+              Crie uma conta gratuita agora mesmo, ganhe saldo de simulação e desenhe seu primeiro relatório.
+            </p>
+
+            <div className="pt-2 flex flex-col gap-2.5 w-full">
+              <Link 
+                to="/cadastro"
+                className="w-full min-h-[44px] inline-flex items-center justify-center gap-2 rounded-xl bg-brand text-xs font-mono font-bold text-primary-foreground shadow-md hover:brightness-110 transition-all cursor-pointer"
               >
-                <Icon className="h-4 w-4" />
-                <span className="text-[9px] font-medium">{item.label}</span>
+                CRIAR CONTA GRÁTIS
+                <ArrowRight className="w-4 h-4" />
+              </Link>
+              <Link 
+                to="/planos"
+                className="w-full min-h-[44px] inline-flex items-center justify-center rounded-xl border border-border bg-surface/40 backdrop-blur text-xs font-mono font-bold text-foreground transition-all cursor-pointer"
+              >
+                VER PLANOS DISPONÍVEIS
+              </Link>
+            </div>
+          </div>
+        </section>
+
+      </main>
+
+      {/* FOOTER */}
+      <Footer />
+
+      {/* ================= SIMULATION FLOATING PORTAL OVERLAY ================= */}
+      <AnimatePresence>
+        {isSimulating && (
+          <div className="fixed inset-0 bg-background/95 backdrop-blur-md z-[100] flex items-center justify-center p-3 overflow-y-auto">
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.96 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.96 }}
+              className="w-full max-w-md bg-card border border-border rounded-2xl p-5 relative shadow-xl font-mono text-left my-auto"
+            >
+              <button 
+                onClick={() => setIsSimulating(false)}
+                className="absolute top-4 right-4 text-muted-foreground hover:text-foreground text-[10px] font-bold p-1 hover:bg-muted rounded transition"
+              >
+                ✕ FECHAR
               </button>
-            );
-          })}
-        </div>
-        <div className="mt-1 flex items-center justify-between px-2 pb-1 mono text-[8px] uppercase tracking-[0.12em] text-muted-foreground">
-          <span id="mobile-active-section-label">{activeLabel}</span>
-          <span>OPERACIONAL</span>
-        </div>
-      </div>
-    </main>
-  );
-}
 
-function SortableMobileStageCard({
-  stage,
-  index,
-  active,
-  done,
-}: {
-  stage: MobileStage;
-  index: number;
-  active: boolean;
-  done: boolean;
-}) {
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    transform,
-    transition,
-    isDragging,
-  } = useSortable({ id: stage.id });
+              <div className="mb-4">
+                <span className="text-[8px] font-bold text-brand uppercase tracking-[0.15em] flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 bg-brand rounded-full animate-ping" />
+                  Conexão Ativa
+                </span>
+                <h3 className="text-sm font-bold text-foreground mt-1.5">Simulação de Consulta</h3>
+                <p className="text-muted-foreground text-[10px] mt-0.5">Alvo: <span className="text-foreground font-bold">{searchValue}</span></p>
+              </div>
 
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-  } as CSSProperties;
+              {/* Console de Simulação */}
+              <div className="bg-black/90 rounded-xl p-3.5 border border-border flex flex-col space-y-2.5 min-h-[140px] justify-start text-[9.5px] text-muted-foreground leading-relaxed">
+                <div className={`transition-all duration-300 flex items-start gap-1.5 ${simStep >= 0 ? "opacity-100 text-brand" : "opacity-0"}`}>
+                  <span>◆</span>
+                  <span>[INFO] Estabelecendo conexão segura...</span>
+                </div>
 
-  return (
-    <div
-      ref={setNodeRef}
-      style={style}
-      className={`mobile-stage-card mobile-drag-card ${active ? "is-active" : ""} ${done ? "is-done" : ""} ${isDragging ? "is-dragging" : ""}`}
-    >
-      <MobileStageCardContent
-        stage={stage}
-        index={index}
-        dragAttributes={attributes}
-        dragListeners={listeners}
-      />
-    </div>
-  );
-}
+                <div className={`transition-all duration-300 flex items-start gap-1.5 ${simStep >= 1 ? "opacity-100 text-brand/90" : "opacity-0"}`}>
+                  <span>{simStep >= 1 ? "✔" : "◇"}</span>
+                  <span className={simStep === 1 ? "animate-pulse font-bold text-foreground" : ""}>[RECEITA] Verificando CPF/CNPJ ativo...</span>
+                </div>
 
-function MobileStageCardContent({
-  stage,
-  index,
-  dragAttributes,
-  dragListeners,
-  overlay = false,
-}: {
-  stage: MobileStage;
-  index: number;
-  dragAttributes?: SortableBindings["attributes"];
-  dragListeners?: SortableBindings["listeners"];
-  compact?: boolean;
-  overlay?: boolean;
-}) {
-  const Icon = stage.icon;
+                <div className={`transition-all duration-300 flex items-start gap-1.5 ${simStep >= 2 ? "opacity-100 text-brand/80" : "opacity-0"}`}>
+                  <span>{simStep >= 2 ? "✔" : "◇"}</span>
+                  <span className={simStep === 2 ? "animate-pulse font-bold text-foreground" : ""}>[SPC_SERASA] Consultando pendências...</span>
+                </div>
 
-  return (
-    <div className={`mobile-stage-card-inner ${overlay ? "is-overlay" : ""}`}>
-      <button
-        type="button"
-        className="mobile-drag-handle grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-brand/25 bg-brand/10 text-brand touch-none"
-        aria-label={`Arrastar ${stage.label}`}
-        {...dragAttributes}
-        {...dragListeners}
-      >
-        <GripHorizontal className="absolute h-3 w-3 translate-y-3.5 opacity-55" />
-        <Icon className="h-4 w-4" />
-      </button>
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center justify-between gap-2">
-          <h3 className="text-[14px] font-semibold tracking-[-0.025em]">{stage.label}</h3>
-          <span className="mono rounded-full border border-brand/25 bg-brand/10 px-2 py-0.5 text-[8px] font-bold text-brand">{stage.metric}</span>
-        </div>
-        <p className="mt-0.5 text-[11.5px] leading-4 text-muted-foreground">{stage.detail}</p>
-      </div>
-      <span className="mono text-[9px] text-muted-foreground">0{index + 1}</span>
+                <div className={`transition-all duration-300 flex items-start gap-1.5 ${simStep >= 3 ? "opacity-100 text-brand/70" : "opacity-0"}`}>
+                  <span>{simStep >= 3 ? "✔" : "◇"}</span>
+                  <span className={simStep === 3 ? "animate-pulse font-bold text-foreground" : ""}>[BACEN_JUD] Escaneando Banco Central...</span>
+                </div>
+
+                {simStep < 4 && (
+                  <div className="flex items-center gap-1.5 pt-1 text-brand">
+                    <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />
+                    <span className="animate-pulse">Consultando...</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Bloco de Resultados Simulados */}
+              <AnimatePresence>
+                {showResults && (
+                  <motion.div 
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="mt-4 border border-border bg-surface/50 rounded-xl p-4 space-y-4 text-xs"
+                  >
+                    <div className="flex justify-between items-center border-b border-border/50 pb-3 gap-2">
+                      <div>
+                        <span className="text-[8px] font-bold text-emerald-500 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full uppercase">CONCLUÍDO</span>
+                        <h4 className="font-bold text-xs text-foreground mt-1">Dossiê Simplificado</h4>
+                      </div>
+
+                      {/* Score */}
+                      <div className="flex items-center gap-2">
+                        <div className="text-right">
+                          <p className="text-[8px] text-muted-foreground font-bold">SCORE</p>
+                          <p className="text-[10px] font-bold text-foreground leading-none">Excelente</p>
+                        </div>
+                        <div className="h-9 w-9 rounded-full border border-emerald-500 flex items-center justify-center bg-emerald-500/10 shadow-sm">
+                          <span className="text-emerald-500 font-black text-xs">742</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Dados */}
+                    <div className="grid grid-cols-1 gap-1.5 text-[10.5px]">
+                      <div className="p-2 border border-border rounded-lg bg-card flex items-center justify-between">
+                        <span>Situação Cadastral</span>
+                        <span className="font-bold text-emerald-500">Regular</span>
+                      </div>
+
+                      <div className="p-2 border border-border rounded-lg bg-card flex items-center justify-between">
+                        <span>Restrições Financeiras</span>
+                        {simType === "spc-alert" ? (
+                          <span className="font-bold text-amber-500 flex items-center gap-1"><AlertTriangle className="w-3 h-3" /> Consta Pendência</span>
+                        ) : (
+                          <span className="font-bold text-emerald-500">Nada Consta</span>
+                        )}
+                      </div>
+
+                      <div className="p-2 border border-border rounded-lg bg-card flex items-center justify-between">
+                        <span>Apontamentos Bacen</span>
+                        {simType === "bacen-alert" ? (
+                          <span className="font-bold text-rose-500 flex items-center gap-1"><AlertTriangle className="w-3 h-3" /> Consta Restrição</span>
+                        ) : (
+                          <span className="font-bold text-emerald-500">Regularizado</span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Texto comercial */}
+                    <p className="text-[9.5px] text-muted-foreground leading-relaxed bg-brand/5 border border-brand/20 rounded-lg p-3">
+                      Adquira créditos ou crie uma conta gratuita para visualizar o dossiê oficial, baixar PDFs estruturados de alto padrão e habilitar pesquisas via API.
+                    </p>
+
+                    {/* Botões */}
+                    <div className="flex flex-col gap-2 pt-1.5">
+                      <Link 
+                        to="/cadastro"
+                        className="w-full min-h-[38px] inline-flex items-center justify-center gap-1.5 rounded-lg bg-brand text-[11px] font-mono font-bold text-primary-foreground shadow-sm hover:brightness-110 transition-all cursor-pointer"
+                      >
+                        Começar Grátis Agora
+                        <ArrowRight className="w-3.5 h-3.5" />
+                      </Link>
+                      <Link 
+                        to="/login"
+                        className="w-full min-h-[38px] inline-flex items-center justify-center rounded-lg border border-border bg-surface hover:bg-surface/85 text-[11px] font-mono font-bold text-foreground transition-all cursor-pointer"
+                      >
+                        Acessar com minha conta
+                      </Link>
+                    </div>
+
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
