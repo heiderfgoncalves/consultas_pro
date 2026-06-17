@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import { Link, useNavigate } from 'react-router-dom';
-import { motion } from 'framer-motion';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowRight, Lock, Mail, Eye, EyeOff } from 'lucide-react';
 import { useAuthStore } from '@/stores/authStore';
 import { ApiError } from '@/lib/api';
@@ -13,8 +13,16 @@ import ThemeToggle from '@/components/ThemeToggle';
 import Particles from '@/components/ui/Particles';
 import { useTheme } from '@/hooks/use-theme';
 import { BackgroundRippleEffect } from '@/components/ui/background-ripple-effect';
+import LoginPageLegacy from "./LoginPageLegacy";
 
 export default function LoginPage() {
+  const [searchParams] = useSearchParams();
+  const version = searchParams.get('v');
+
+  if (version !== '2') {
+    return <LoginPageLegacy />;
+  }
+
   const { subTheme } = useSubTheme(); // Inicializa o tema salvo
   const { theme, resolvedTheme } = useTheme();
   const isDark = resolvedTheme === 'dark' || theme === 'dark';
@@ -34,8 +42,43 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [remember, setRemember] = useState(false);
+  const [showGoogleModal, setShowGoogleModal] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState<string | null>(null);
   const navigate = useNavigate();
   const { login, hydrated, isAuthenticated } = useAuthStore();
+
+  const handleGoogleLogin = async (subId: string, emailPrefix: string, registerAs?: 'company' | 'user') => {
+    setGoogleLoading(subId);
+    try {
+      const mockCredential = `mock_google_${subId}_${emailPrefix}`;
+      const res = await fetch('/api/auth/google', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ credential: mockCredential, registerAs }),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        // Salva na autenticação local do app
+        localStorage.setItem('token', data.data.token);
+        localStorage.setItem('cp_user_json', JSON.stringify(data.data.user));
+        
+        toast.success(`Bem-vindo, ${data.data.user.fullName}!`);
+        
+        // Sincroniza a store global instantaneamente
+        await useAuthStore.getState().hydrate();
+        navigate('/dashboard');
+      } else {
+        const err = await res.json();
+        toast.error(err.error?.message || 'Erro no login via Google');
+      }
+    } catch (e) {
+      toast.error('Erro de conexão ao servidor.');
+    } finally {
+      setGoogleLoading(null);
+      setShowGoogleModal(false);
+    }
+  };
 
   useEffect(() => {
     if (hydrated && isAuthenticated) {
@@ -273,11 +316,106 @@ export default function LoginPage() {
 
               <button
                 type="button"
-                className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-xl border border-hairline/60 bg-surface/10 dark:bg-surface/25 px-4 py-3 text-sm font-medium text-foreground hover:bg-surface/30 dark:hover:bg-surface/40 hover:border-hairline/85 backdrop-blur-md transition-all duration-300 active:scale-[0.98]"
+                onClick={() => setShowGoogleModal(true)}
+                className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-xl border border-hairline/60 bg-surface/10 dark:bg-surface/25 px-4 py-3 text-sm font-semibold text-foreground hover:bg-surface/30 dark:hover:bg-surface/40 hover:border-hairline/85 backdrop-blur-md transition-all duration-300 active:scale-[0.98]"
               >
-                Acessar via SSO corporativo
+                <span className="text-red-500 font-extrabold mr-1 font-mono">G</span> Entrar com o Google
               </button>
             </motion.div>
+
+            {/* Google Simulation Modal */}
+            <AnimatePresence>
+              {showGoogleModal && (
+                <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-50 flex items-center justify-center p-4">
+                  <motion.div
+                    initial={{ opacity: 0, scale: 0.95 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={{ opacity: 0, scale: 0.95 }}
+                    className="w-full max-w-sm bg-[#070b15] border border-white/[0.08] rounded-2xl p-6 relative shadow-2xl overflow-hidden"
+                  >
+                    <button 
+                      onClick={() => setShowGoogleModal(false)}
+                      className="absolute top-4 right-4 text-muted-foreground hover:text-foreground text-xs p-1.5 hover:bg-white/5 rounded-lg transition"
+                    >
+                      ✕
+                    </button>
+
+                    <h3 className="text-base font-bold text-white mb-1">Simulação Google Login</h3>
+                    <p className="text-xs text-muted-foreground mb-4 leading-relaxed">Escolha uma conta do Google para simular a autenticação integrada.</p>
+
+                    <div className="space-y-2">
+                      <button
+                        type="button"
+                        onClick={() => handleGoogleLogin('sub_admin_master', 'admin.consultas.pro')}
+                        disabled={!!googleLoading}
+                        className="w-full text-left py-2.5 px-4 rounded-xl border border-white/[0.08] hover:bg-white/5 transition flex items-center gap-3 bg-white/[0.02] text-xs text-white font-semibold disabled:opacity-50"
+                      >
+                        {googleLoading === 'sub_admin_master' ? (
+                          <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin flex-shrink-0" />
+                        ) : (
+                          <span className="font-bold text-red-500 font-mono text-sm flex-shrink-0">G</span>
+                        )}
+                        <div className="flex-1 min-w-0">
+                          <p className="font-bold text-[11px] truncate">Master (admin@consultas.pro)</p>
+                          <p className="text-[9px] text-muted-foreground font-mono truncate">Simular Admin Master</p>
+                        </div>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleGoogleLogin('sub_standalone_operator', 'carlos.operador')}
+                        disabled={!!googleLoading}
+                        className="w-full text-left py-2.5 px-4 rounded-xl border border-white/[0.08] hover:bg-white/5 transition flex items-center gap-3 bg-white/[0.02] text-xs text-white font-semibold disabled:opacity-50"
+                      >
+                        {googleLoading === 'sub_standalone_operator' ? (
+                          <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin flex-shrink-0" />
+                        ) : (
+                          <span className="font-bold text-blue-400 font-mono text-sm flex-shrink-0">G</span>
+                        )}
+                        <div className="flex-1 min-w-0">
+                          <p className="font-bold text-[11px] truncate">Carlos (Operador Individual)</p>
+                          <p className="text-[9px] text-muted-foreground font-mono truncate">Simular Individual Grátis</p>
+                        </div>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleGoogleLogin('sub_company_admin', 'novas.consultas', 'company')}
+                        disabled={!!googleLoading}
+                        className="w-full text-left py-2.5 px-4 rounded-xl border border-white/[0.08] hover:bg-white/5 transition flex items-center gap-3 bg-white/[0.02] text-xs text-white font-semibold disabled:opacity-50"
+                      >
+                        {googleLoading === 'sub_company_admin' ? (
+                          <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin flex-shrink-0" />
+                        ) : (
+                          <span className="font-bold text-violet-400 font-mono text-sm flex-shrink-0">G</span>
+                        )}
+                        <div className="flex-1 min-w-0">
+                          <p className="font-bold text-[11px] truncate">Criar Nova Empresa (Premium)</p>
+                          <p className="text-[9px] text-muted-foreground font-mono truncate">Cadastro Empresa Premium (R$ 599,90)</p>
+                        </div>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleGoogleLogin('sub_new_user', 'ana.carla', 'user')}
+                        disabled={!!googleLoading}
+                        className="w-full text-left py-2.5 px-4 rounded-xl border border-white/[0.08] hover:bg-white/5 transition flex items-center gap-3 bg-white/[0.02] text-xs text-white font-semibold disabled:opacity-50"
+                      >
+                        {googleLoading === 'sub_new_user' ? (
+                          <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin flex-shrink-0" />
+                        ) : (
+                          <span className="font-bold text-emerald-400 font-mono text-sm flex-shrink-0">G</span>
+                        )}
+                        <div className="flex-1 min-w-0">
+                          <p className="font-bold text-[11px] truncate">Criar Nova Conta Individual</p>
+                          <p className="text-[9px] text-muted-foreground font-mono truncate">Cadastro Individual Grátis</p>
+                        </div>
+                      </button>
+                    </div>
+                  </motion.div>
+                </div>
+              )}
+            </AnimatePresence>
 
             <p className="mt-6 text-center text-[12px] text-muted-foreground">
               Não tem conta?{" "}
@@ -286,12 +424,18 @@ export default function LoginPage() {
               </Link>
             </p>
 
-            <div className="mt-4 text-center">
+            <div className="mt-4 text-center flex flex-col gap-2">
               <Link 
                 to="/?bypass=true" 
                 className="text-[11px] font-mono tracking-wider text-muted-foreground hover:text-brand transition-colors uppercase hover:underline cursor-target"
               >
                 ← Voltar para a Landing Page
+              </Link>
+              <Link 
+                to="/login" 
+                className="text-[10px] font-mono tracking-wider text-brand/70 hover:text-brand transition-colors uppercase hover:underline cursor-target mt-1"
+              >
+                ◆ Usar o Login Clássico Principal ◆
               </Link>
             </div>
           </div>

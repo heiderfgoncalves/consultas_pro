@@ -1062,7 +1062,6 @@ const ConsultationEditor = forwardRef(function ConsultationEditor(
     } catch {
       return;
     }
-    console.log('[ConsultationEditor] Salvando payload com filtros:', form.typeItemFilters);
     void onSave({
       ...form,
       sampleResponse: testJson,
@@ -1647,7 +1646,7 @@ export default function IntegrationsPage() {
     newConsultationTestRef.current = fn;
   }, []);
 
-  const enabled = !!accessToken && user?.backendRole === 'PLATFORM_ADMIN';
+  const enabled = !!accessToken && (user?.backendRole === 'PLATFORM_ADMIN' || user?.backendRole === 'CUSTOMER_ADMIN');
 
   const providersQuery = useQuery({
     queryKey: ['admin-providers'],
@@ -2083,6 +2082,17 @@ export default function IntegrationsPage() {
         ...(data.typeItemFilters !== undefined ? { typeItemFilters: data.typeItemFilters } : {}),
       });
       await syncMappings(accessToken, existingId, fieldTypes, data.fieldMappings || [], prev);
+      useEditorStore.getState().clearDraftSampleResponse(existingId);
+      // Limpar o log de teste selecionado para esta consulta no templates drawer,
+      // garantindo que o drawer use o mock estático recém-salvo (sampleResponse do banco).
+      {
+        const currentMeta = useEditorStore.getState().template?.metadata ?? {};
+        const selectedTestLogs = { ...((currentMeta.selectedTestLogs as Record<string, string>) ?? {}) };
+        if (selectedTestLogs[existingId]) {
+          delete selectedTestLogs[existingId];
+          useEditorStore.getState().updateMetadata({ selectedTestLogs });
+        }
+      }
       toast.success('Consulta atualizada');
     } else {
       if (!data.providerId) {
@@ -2105,6 +2115,7 @@ export default function IntegrationsPage() {
         ...(data.typeItemFilters !== undefined ? { typeItemFilters: data.typeItemFilters } : {}),
       });
       await syncMappings(accessToken, created.id, fieldTypes, data.fieldMappings || [], undefined);
+      useEditorStore.getState().clearDraftSampleResponse(created.id);
       toast.success('Consulta cadastrada');
       setConsultationPicker(created.id);
     }
@@ -2130,8 +2141,10 @@ export default function IntegrationsPage() {
     consultations.filter((c) => c.fieldMappings.some((m) => m.fieldTypeKey === fieldTypeKey));
 
   const isCompanyManager = user?.backendRole === 'COMPANY_OWNER' || user?.backendRole === 'COMPANY_MANAGER';
+  const isPlatformAdmin = user?.backendRole === 'PLATFORM_ADMIN';
+  const isCustomerAdmin = user?.backendRole === 'CUSTOMER_ADMIN';
 
-  if (user?.backendRole !== 'PLATFORM_ADMIN' && !isCompanyManager) {
+  if (!isPlatformAdmin && !isCustomerAdmin && !isCompanyManager) {
     return <Navigate to="/dashboard" replace />;
   }
 
@@ -2589,7 +2602,12 @@ export default function IntegrationsPage() {
                     registerCardTestFn={registerCardTestFn}
                     onTest={(input) => testMutation.mutateAsync(input)}
                     onSave={async (data) => saveConsultation(data, consultationPicker)}
-                    onCancel={() => setConsultationEditorNonce((n) => n + 1)}
+                    onCancel={() => {
+                      if (consultationPicker) {
+                        useEditorStore.getState().clearDraftSampleResponse(consultationPicker);
+                      }
+                      setConsultationEditorNonce((n) => n + 1);
+                    }}
                   />
                 )}
               </div>

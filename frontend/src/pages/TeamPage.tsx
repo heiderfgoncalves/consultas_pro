@@ -12,6 +12,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { apiRequest } from '@/lib/api';
 import { useToast } from '@/hooks/use-toast';
+import { Modal } from '@/components/shared/Modal';
 
 export default function TeamPage() {
   const { user, refreshBalance } = useAuthStore();
@@ -396,120 +397,96 @@ export default function TeamPage() {
       </motion.div>
 
       {/* Invite User Modal */}
-      <AnimatePresence>
-        {showInviteModal && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/50 backdrop-blur-md p-4"
-            onClick={() => setShowInviteModal(false)}
-          >
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-card rounded-xl border border-border shadow-md w-full max-w-md p-6"
-              onClick={(e) => e.stopPropagation()}
+      <Modal
+        isOpen={showInviteModal}
+        onClose={() => setShowInviteModal(false)}
+        title="Convidar Usuário"
+        icon={UserPlus}
+        size="md"
+        description="O usuário receberá um convite por e-mail contendo os detalhes de login e credenciais temporárias para acessar a plataforma."
+      >
+        <form onSubmit={handleInvite} className="space-y-4">
+          <div className="space-y-1.5">
+            <Label className="text-xs font-bold text-foreground">Nome Completo</Label>
+            <Input 
+              value={inviteName} 
+              onChange={(e) => setInviteName(e.target.value)} 
+              className="h-10 border-border bg-muted/20 text-xs placeholder:text-muted-foreground/50 rounded-xl" 
+              placeholder="Ex: João Silva" 
+              required 
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <Label className="text-xs font-bold text-foreground">E-mail Corporativo</Label>
+            <Input 
+              type="email" 
+              value={inviteEmail} 
+              onChange={(e) => setInviteEmail(e.target.value)} 
+              className="h-10 border-border bg-muted/20 text-xs placeholder:text-muted-foreground/50 rounded-xl" 
+              placeholder="joao@empresa.com" 
+              required 
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <Label className="text-xs font-bold text-foreground">Telefone de Contato</Label>
+            <Input 
+              value={invitePhone} 
+              onChange={(e) => setInvitePhone(e.target.value)} 
+              className="h-10 border-border bg-muted/20 text-xs placeholder:text-muted-foreground/50 rounded-xl" 
+              placeholder="(11) 99999-8888" 
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label className="text-xs font-bold text-foreground">Nível de Permissão (Papel)</Label>
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={() => setInviteRole('USER')}
+                className={`flex-1 py-2.5 rounded-lg border text-xs font-bold transition-all ${
+                  inviteRole === 'USER'
+                    ? 'border-primary bg-primary/10 text-primary'
+                    : 'border-border bg-muted/25 text-muted-foreground hover:border-border/80'
+                }`}
+              >
+                Operador
+              </button>
+              <button
+                type="button"
+                onClick={() => setInviteRole('COMPANY_MANAGER')}
+                className={`flex-1 py-2.5 rounded-lg border text-xs font-bold transition-all ${
+                  inviteRole === 'COMPANY_MANAGER'
+                    ? 'border-primary bg-primary/10 text-primary'
+                    : 'border-border bg-muted/25 text-muted-foreground hover:border-border/80'
+                }`}
+              >
+                Gerente
+              </button>
+            </div>
+          </div>
+
+          <div className="flex gap-3 pt-4">
+            <Button 
+              type="button" 
+              variant="outline" 
+              onClick={() => setShowInviteModal(false)} 
+              className="flex-1 rounded-lg h-10 text-xs font-bold border-border bg-muted/30 hover:bg-muted/50 text-foreground"
+              disabled={inviting}
             >
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-bold text-foreground flex items-center gap-2">
-                  <UserPlus className="w-5 h-5 text-primary" /> Convidar Usuário
-                </h3>
-                <button onClick={() => setShowInviteModal(false)} className="text-muted-foreground hover:text-foreground cursor-pointer">
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-
-              <p className="text-xs text-muted-foreground mb-6 leading-relaxed">
-                O usuário receberá um convite por e-mail contendo os detalhes de login e credenciais temporárias para acessar a plataforma.
-              </p>
-
-              <form onSubmit={handleInvite} className="space-y-4">
-                <div className="space-y-1.5">
-                  <Label className="text-xs font-bold text-foreground">Nome Completo</Label>
-                  <Input 
-                    value={inviteName} 
-                    onChange={(e) => setInviteName(e.target.value)} 
-                    className="h-10 border-border bg-muted/20 text-xs placeholder:text-muted-foreground/50 rounded-xl" 
-                    placeholder="Ex: João Silva" 
-                    required 
-                  />
-                </div>
-
-                <div className="space-y-1.5">
-                  <Label className="text-xs font-bold text-foreground">E-mail Corporativo</Label>
-                  <Input 
-                    type="email" 
-                    value={inviteEmail} 
-                    onChange={(e) => setInviteEmail(e.target.value)} 
-                    className="h-10 border-border bg-muted/20 text-xs placeholder:text-muted-foreground/50 rounded-xl" 
-                    placeholder="joao@empresa.com" 
-                    required 
-                  />
-                </div>
-
-                <div className="space-y-1.5">
-                  <Label className="text-xs font-bold text-foreground">Telefone de Contato</Label>
-                  <Input 
-                    value={invitePhone} 
-                    onChange={(e) => setInvitePhone(e.target.value)} 
-                    className="h-10 border-border bg-muted/20 text-xs placeholder:text-muted-foreground/50 rounded-xl" 
-                    placeholder="(11) 99999-8888" 
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label className="text-xs font-bold text-foreground">Nível de Permissão (Papel)</Label>
-                  <div className="flex gap-3">
-                    <button
-                      type="button"
-                      onClick={() => setInviteRole('USER')}
-                      className={`flex-1 py-2.5 rounded-lg border text-xs font-bold transition-all ${
-                        inviteRole === 'USER'
-                          ? 'border-primary bg-primary/10 text-primary'
-                          : 'border-border bg-muted/25 text-muted-foreground hover:border-border/80'
-                      }`}
-                    >
-                      Operador
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setInviteRole('COMPANY_MANAGER')}
-                      className={`flex-1 py-2.5 rounded-lg border text-xs font-bold transition-all ${
-                        inviteRole === 'COMPANY_MANAGER'
-                          ? 'border-primary bg-primary/10 text-primary'
-                          : 'border-border bg-muted/25 text-muted-foreground hover:border-border/80'
-                      }`}
-                    >
-                      Gerente
-                    </button>
-                  </div>
-                </div>
-
-                <div className="flex gap-3 pt-4">
-                  <Button 
-                    type="button" 
-                    variant="outline" 
-                    onClick={() => setShowInviteModal(false)} 
-                    className="flex-1 rounded-lg h-10 text-xs font-bold border-border bg-muted/30 hover:bg-muted/50 text-foreground"
-                    disabled={inviting}
-                  >
-                    Cancelar
-                  </Button>
-                  <Button 
-                    type="submit" 
-                    className="flex-1 rounded-lg h-10 text-xs font-bold bg-primary hover:bg-primary/90 text-primary-foreground shadow-none"
-                    disabled={inviting}
-                  >
-                    {inviting ? 'Enviando...' : 'Enviar Convite'}
-                  </Button>
-                </div>
-              </form>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+              Cancelar
+            </Button>
+            <Button 
+              type="submit" 
+              className="flex-1 rounded-lg h-10 text-xs font-bold bg-primary hover:bg-primary/90 text-primary-foreground shadow-none"
+              disabled={inviting}
+            >
+              {inviting ? 'Enviando...' : 'Enviar Convite'}
+            </Button>
+          </div>
+        </form>
+      </Modal>
     </div>
   );
 }

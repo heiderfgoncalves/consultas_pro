@@ -9,8 +9,10 @@ import { PageHeader, EmptyState } from '@/components/shared/StatCard';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useAuthStore } from '@/stores/authStore';
-import { apiRequest } from '@/lib/api';
+import { apiRequest, getStoredToken, apiBase, openConsultationPdfInNewTab } from '@/lib/api';
 import ConsultationPreview from '@/components/consultation/ConsultationPreview';
+import { Modal } from '@/components/shared/Modal';
+import { toast } from 'sonner';
 
 
 export default function HistoryPage() {
@@ -66,178 +68,10 @@ export default function HistoryPage() {
     }
   }, []);
 
-  const downloadPdf = useCallback(async (item: any) => {
-    if (pdfLoading) return;
-    setPdfLoading(true);
-    try {
-      const realData = item.renderPayload || item.mergedPayload || {};
-      const templateLayout = item.template?.layout ?? null;
-      const rawItems = item.items ?? [];
-      const clientName =
-        realData?.cliente?.nome ||
-        realData?.clientName ||
-        realData?.nome ||
-        item.subjectDocument ||
-        'CLIENTE ANALISADO';
-
-      const consultationDate = new Date().toLocaleDateString('pt-BR') + ' ' + new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-      const protocol = realData?.protocol ||
-                       (realData as any)?.template?.protocol ||
-                       realData?.hash ||
-                       (item.subjectDocument
-                         ? `REQ-${item.subjectDocument.replace(/\D/g, '').slice(0, 8)}`
-                         : `REQ-${item.id.slice(0, 8).toUpperCase()}`);
-      
-      const mergedData = {
-        ...realData,
-        cliente: { nome: clientName, documento: item.subjectDocument || '' },
-        clientName,
-        clientCpf: item.subjectDocument || '',
-        consultationDate,
-        protocol,
-        template: {
-          date: consultationDate,
-          protocol,
-          company: user?.companyName || 'CONSULTAS PRO',
-        },
-      };
-
-      const { renderTemplateToHtml } = await import(
-        '@/features/templates-drawer/engine/renderTemplateToHtml'
-      );
-
-      let pagesHtml = '';
-      let pageWidth = 794;
-      let pageHeight = 1123;
-
-      if (templateLayout?.frames?.length > 0) {
-        templateLayout.frames.forEach((f: any) => {
-          try {
-            const { html } = renderTemplateToHtml(templateLayout, f.id, mergedData);
-            pagesHtml += `<section class="page" style="width:${f.width}px;height:${f.height}px;background:${f.background || '#fff'}">${html}</section>`;
-            pageWidth = f.width;
-            pageHeight = f.height;
-          } catch (e: any) {
-            pagesHtml += `<div class="error">Erro no frame ${f.name || ''}: ${e.message}</div>`;
-          }
-        });
-      } else if (rawItems.length > 0) {
-        rawItems.forEach((raw: any) => {
-          const pl = raw.providerProduct?.templateLayout;
-          if (pl?.frames?.length > 0) {
-            try {
-              const { html } = renderTemplateToHtml(pl, pl.frames[0].id, mergedData);
-              pagesHtml += `<section class="page" style="width:${pl.frames[0].width}px;height:${pl.frames[0].height}px;background:${pl.frames[0].background || '#fff'}">${html}</section>`;
-              pageWidth = pl.frames[0].width;
-              pageHeight = pl.frames[0].height;
-            } catch (e: any) {
-              pagesHtml += `<div class="error">Erro: ${e.message}</div>`;
-            }
-          }
-        });
-      }
-
-      if (!pagesHtml) {
-        pagesHtml = `<section class="page" style="width:794px;min-height:1123px;padding:48px;background:#fff">
-          <h1 style="font-size:22px;font-weight:800;margin:0 0 8px">${item.template?.name || 'Relatório'}</h1>
-          <p style="font-size:13px;color:#64748b;margin:0 0 24px">Documento: ${item.subjectDocument}</p>
-          <pre style="font-size:10px;background:#f1f5f9;padding:16px;border-radius:8px;overflow:auto;white-space:pre-wrap">${JSON.stringify(realData, null, 2)}</pre>
-        </section>`;
-      }
-
-      const logo = item.template?.logo
-        ? `<img src="${item.template.logo}" style="max-height:32px;width:auto;position:absolute;top:16px;right:16px;z-index:10;" />`
-        : '';
-
-      const parentStyles = Array.from(document.querySelectorAll('style, link[rel="stylesheet"]'))
-        .map(el => el.outerHTML)
-        .join('\n');
-
-      const fullHtml = `<!doctype html><html><head><meta charset="utf-8"/>
-${parentStyles}
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Geist:wght@100..900&family=Inter:wght@100..900&display=swap" rel="stylesheet">
-<script src="https://cdn.jsdelivr.net/npm/lucide@0.462.0/dist/umd/lucide.min.js"></script>
-<style>
-  * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Geist', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif !important; }
-  body { background: #fff; color: #0f172a; }
-  .page { position: relative; overflow: hidden; }
-  i[data-lucide] svg, svg.lucide { width: 100%; height: 100%; }
-</style></head><body>${logo}${pagesHtml}
-<script>if(typeof lucide!=='undefined'){lucide.createIcons();}</script>
-</body></html>`;
-
-      // Renderiza em iframe oculto, espera carregar, então captura com html2canvas e gera PDF
-      const existingFrame = document.getElementById('__pdf-render-frame') as HTMLIFrameElement | null;
-      if (existingFrame) existingFrame.remove();
-
-      const frame = document.createElement('iframe');
-      frame.id = '__pdf-render-frame';
-      // Iframe visível mas fora da tela (html2canvas precisa de visibilidade real)
-      frame.style.cssText = `position:fixed;top:0;left:-9999px;width:${pageWidth}px;height:${pageHeight}px;border:none;z-index:-1;opacity:0.01;pointer-events:none;`;
-      document.body.appendChild(frame);
-
-      frame.srcdoc = fullHtml;
-      frame.onload = async () => {
-        try {
-          const iframeDoc = frame.contentDocument;
-          if (!iframeDoc) throw new Error('iframe sem documento');
-
-          // Aguarda fontes e Lucide renderizarem
-          if (iframeDoc.fonts) {
-            await iframeDoc.fonts.ready;
-          }
-          await new Promise(res => setTimeout(res, 500));
-
-          const { default: html2canvas } = await import('html2canvas');
-          const { jsPDF } = await import('jspdf');
-
-          const pages = iframeDoc.querySelectorAll<HTMLElement>('section.page');
-          const pagesToCapture = pages.length > 0 ? Array.from(pages) : [iframeDoc.body];
-
-          const pdf = new jsPDF({
-            orientation: pageWidth > pageHeight ? 'landscape' : 'portrait',
-            unit: 'px',
-            format: [pageWidth, pageHeight],
-            compress: true,
-          });
-
-          for (let i = 0; i < pagesToCapture.length; i++) {
-            const el = pagesToCapture[i] as HTMLElement;
-            const canvas = await html2canvas(el, {
-              scale: 2,
-              useCORS: true,
-              allowTaint: true,
-              backgroundColor: '#ffffff',
-              width: el.offsetWidth || pageWidth,
-              height: el.offsetHeight || pageHeight,
-              windowWidth: el.offsetWidth || pageWidth,
-              windowHeight: el.offsetHeight || pageHeight,
-            });
-
-            if (i > 0) pdf.addPage();
-            const imgData = canvas.toDataURL('image/jpeg', 0.92);
-            const pdfW = pdf.internal.pageSize.getWidth();
-            const pdfH = pdf.internal.pageSize.getHeight();
-            pdf.addImage(imgData, 'JPEG', 0, 0, pdfW, pdfH);
-          }
-
-          const docName = item.template?.name || 'Relatorio';
-          const safeDoc = item.subjectDocument?.replace(/\D/g, '') || 'sem-doc';
-          pdf.save(`${docName}-${safeDoc}.pdf`);
-        } catch (e: any) {
-          console.error('Erro ao gerar PDF:', e);
-        } finally {
-          frame.remove();
-          setPdfLoading(false);
-        }
-      };
-    } catch (err: any) {
-      console.error('Erro ao preparar PDF:', err);
-      setPdfLoading(false);
-    }
-  }, [pdfLoading]);
+  const downloadPdf = useCallback((item: any) => {
+    openConsultationPdfInNewTab(item.id);
+    toast.success('PDF aberto em nova aba!');
+  }, []);
 
   const isAdmin = user?.backendRole === 'PLATFORM_ADMIN';
   const canReport = (user?.accessLevel ?? 2) >= 1;
@@ -448,386 +282,316 @@ ${parentStyles}
       )}
 
       {/* Report Modal */}
-      <AnimatePresence>
-        {reportModal && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/50 backdrop-blur-md"
-            onClick={() => setReportModal(null)}
+      {(() => {
+        const item = history.find(h => h.id === reportModal);
+        if (!item) return null;
+
+        const templateNameStr = item.template?.name || (item.items?.map((i: any) => i.providerProduct?.name).join(', ') || 'Consulta Personalizada');
+        const showAdminDetails = isAdmin && item.reportedBy;
+
+        return (
+          <Modal
+            isOpen={!!reportModal}
+            onClose={() => setReportModal(null)}
+            title={showAdminDetails ? "Detalhes do Report" : "Reportar Consulta"}
+            icon={showAdminDetails ? AlertTriangle : Flag}
+            iconClassName={showAdminDetails ? "text-amber-500" : "text-primary"}
+            size="md"
           >
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-card rounded-xl border border-border shadow-md p-6 w-full max-w-md"
-              onClick={(e) => e.stopPropagation()}
-            >
-              {(() => {
-                const item = history.find(h => h.id === reportModal);
-                if (!item) return null;
-
-                const templateNameStr = item.template?.name || (item.items?.map((i: any) => i.providerProduct?.name).join(', ') || 'Consulta Personalizada');
-
-                if (isAdmin && item.reportedBy) {
-                  return (
-                    <>
-                      <div className="flex items-center justify-between mb-4">
-                        <h3 className="text-base font-bold text-foreground flex items-center gap-2">
-                          <AlertTriangle className="w-5 h-5 text-amber-500" /> Detalhes do Report
-                        </h3>
-                        <button onClick={() => setReportModal(null)} className="text-muted-foreground hover:text-foreground cursor-pointer"><X className="w-5 h-5" /></button>
-                      </div>
-                      <div className="space-y-4">
-                        <div className="text-xs space-y-1">
-                          <p><span className="text-muted-foreground font-medium">Reportado por:</span> <span className="font-bold text-foreground">{item.reportedBy}</span></p>
-                          <p><span className="text-muted-foreground font-medium">Consulta:</span> <span className="font-bold text-foreground">{templateNameStr} — {item.subjectDocument}</span></p>
-                        </div>
-                        <div className="p-3.5 rounded-xl bg-muted/50 border border-border/80">
-                          <p className="text-xs text-foreground/80 font-medium leading-relaxed">{item.reportComment}</p>
-                        </div>
-                        <div className="flex gap-2">
-                          <Button size="sm" className="flex-1 bg-muted hover:bg-muted/80 text-foreground border border-border rounded-lg text-xs" variant="outline">Marcar como Analisado</Button>
-                          <Button size="sm" className="flex-1 bg-emerald-500 text-slate-950 font-bold hover:bg-emerald-400 rounded-lg text-xs">Resolver</Button>
-                        </div>
-                      </div>
-                    </>
-                  );
-                }
-
-                return (
-                  <>
-                    <div className="flex items-center justify-between mb-4">
-                      <h3 className="text-base font-bold text-foreground flex items-center gap-2">
-                        <Flag className="w-5 h-5 text-amber-500" /> Reportar Consulta
-                      </h3>
-                      <button onClick={() => setReportModal(null)} className="text-muted-foreground hover:text-foreground cursor-pointer"><X className="w-5 h-5" /></button>
-                    </div>
-                    <div className="space-y-4">
-                      <p className="text-xs text-muted-foreground font-medium">Consulta: <span className="font-bold text-foreground">{templateNameStr}</span> — {item.subjectDocument}</p>
-                      <textarea
-                        value={reportComment}
-                        onChange={(e) => setReportComment(e.target.value)}
-                        placeholder="Descreva detalhadamente o problema encontrado..."
-                        className="w-full h-28 p-3.5 rounded-xl border border-border bg-muted/35 text-xs text-foreground placeholder:text-muted-foreground/60 resize-none focus:outline-none focus:ring-1 focus:ring-primary/40 focus:border-primary/40"
-                      />
-                      <Button className="w-full bg-primary hover:bg-primary/90 text-primary-foreground font-semibold text-xs h-10 rounded-lg shadow-none" disabled={!reportComment.trim()}>
-                        <Flag className="w-4 h-4 mr-1.5" /> Enviar Report
-                      </Button>
-                    </div>
-                  </>
-                );
-              })()}
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+            {showAdminDetails ? (
+              <div className="space-y-4">
+                <div className="text-xs space-y-1">
+                  <p><span className="text-muted-foreground font-medium">Reportado por:</span> <span className="font-bold text-foreground">{item.reportedBy}</span></p>
+                  <p><span className="text-muted-foreground font-medium">Consulta:</span> <span className="font-bold text-foreground">{templateNameStr} — {item.subjectDocument}</span></p>
+                </div>
+                <div className="p-3.5 rounded-xl bg-muted/50 border border-border/80">
+                  <p className="text-xs text-foreground/80 font-medium leading-relaxed">{item.reportComment}</p>
+                </div>
+                <div className="flex gap-2">
+                  <Button size="sm" className="flex-1 bg-muted hover:bg-muted/80 text-foreground border border-border rounded-lg text-xs" variant="outline">Marcar como Analisado</Button>
+                  <Button size="sm" className="flex-1 bg-emerald-500 text-slate-950 font-bold hover:bg-emerald-400 rounded-lg text-xs">Resolver</Button>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <p className="text-xs text-muted-foreground font-medium">Consulta: <span className="font-bold text-foreground">{templateNameStr}</span> — {item.subjectDocument}</p>
+                <textarea
+                  value={reportComment}
+                  onChange={(e) => setReportComment(e.target.value)}
+                  placeholder="Descreva detalhadamente o problema encontrado..."
+                  className="w-full h-28 p-3.5 rounded-xl border border-border bg-muted/35 text-xs text-foreground placeholder:text-muted-foreground/60 resize-none focus:outline-none focus:ring-1 focus:ring-primary/40 focus:border-primary/40"
+                />
+                <Button className="w-full bg-primary hover:bg-primary/90 text-primary-foreground font-semibold text-xs h-10 rounded-lg shadow-none" disabled={!reportComment.trim()}>
+                  <Flag className="w-4 h-4 mr-1.5" /> Enviar Report
+                </Button>
+              </div>
+            )}
+          </Modal>
+        );
+      })()}
 
       {/* JSON Log Modal */}
-      <AnimatePresence>
-        {jsonModal !== null && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/50 backdrop-blur-md"
-            onClick={() => setJsonModal(null)}
-          >
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-card rounded-xl border border-border shadow-md p-6 w-full max-w-2xl max-h-[80vh] flex flex-col"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-base font-bold text-foreground flex items-center gap-2">
-                  <Code2 className="w-5 h-5 text-primary" /> JSON Log da Consulta
-                </h3>
-                <button onClick={() => setJsonModal(null)} className="text-muted-foreground hover:text-foreground cursor-pointer"><X className="w-5 h-5" /></button>
-              </div>
-              <pre className="flex-1 overflow-auto rounded-xl bg-muted/30 border border-border/80 p-4 text-xs font-mono text-foreground/80 scrollbar-thin">
-                {jsonModal}
-              </pre>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      <Modal
+        isOpen={jsonModal !== null}
+        onClose={() => setJsonModal(null)}
+        title="JSON Log da Consulta"
+        icon={Code2}
+        size="2xl"
+      >
+        <pre className="overflow-auto rounded-xl bg-muted/30 border border-border/80 p-4 text-xs font-mono text-foreground/80 scrollbar-thin">
+          {jsonModal}
+        </pre>
+      </Modal>
 
       {/* View Consultation Modal */}
-      <AnimatePresence>
-        {viewModal !== null && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/50 backdrop-blur-md p-4"
-            onClick={() => setViewModal(null)}
-          >
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95, y: 10 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 10 }}
-              transition={{ duration: 0.2 }}
-              className="bg-card rounded-2xl border border-border shadow-xl w-full max-w-4xl flex flex-col"
-              style={{ height: 'min(90vh, 900px)' }}
-              onClick={(e) => e.stopPropagation()}
-            >
-              {/* Modal Header */}
-              <div className="flex items-center justify-between px-6 py-4 border-b border-border/60 shrink-0">
-                <h3 className="text-base font-bold text-foreground flex items-center gap-2">
-                  <FileText className="w-5 h-5 text-primary" />
-                  {viewDetail ? (
-                    <span className="font-mono">{viewDetail.subjectDocument}</span>
-                  ) : 'Visualizar Consulta'}
-                </h3>
-                <button onClick={() => setViewModal(null)} className="text-muted-foreground hover:text-foreground cursor-pointer transition-colors rounded-lg p-1 hover:bg-muted">
-                  <X className="w-5 h-5" />
-                </button>
+      <Modal
+        isOpen={viewModal !== null}
+        onClose={() => setViewModal(null)}
+        title={viewDetail ? <span className="font-mono">{viewDetail.subjectDocument}</span> : 'Visualizar Consulta'}
+        icon={FileText}
+        size="4xl"
+        className="h-[min(90vh,900px)] flex flex-col"
+        noPadding={true}
+        bodyClassName="flex flex-col min-h-0"
+        headerSuffix={
+          viewDetail && !viewLoading && (
+            <div className="flex gap-1 px-6 pt-3 pb-0">
+              <button
+                onClick={() => setViewTab('preview')}
+                className={`flex items-center gap-1.5 px-3 py-2 text-xs font-bold rounded-t-lg transition-colors border-b-2 -mb-px ${
+                  viewTab === 'preview'
+                    ? 'text-primary border-primary bg-primary/5'
+                    : 'text-muted-foreground border-transparent hover:text-foreground'
+                }`}
+              >
+                <LayoutTemplate className="w-3.5 h-3.5" /> Preview HTML
+              </button>
+              <button
+                onClick={() => setViewTab('data')}
+                className={`flex items-center gap-1.5 px-3 py-2 text-xs font-bold rounded-t-lg transition-colors border-b-2 -mb-px ${
+                  viewTab === 'data'
+                    ? 'text-primary border-primary bg-primary/5'
+                    : 'text-muted-foreground border-transparent hover:text-foreground'
+                }`}
+              >
+                <Database className="w-3.5 h-3.5" /> Dados da Consulta
+              </button>
+            </div>
+          )
+        }
+        footer={
+          viewDetail && !viewLoading && (
+            <div className="w-full flex items-center justify-between">
+              <p className="text-[10px] text-muted-foreground font-mono">ID: {viewDetail.id}</p>
+              <div className="flex gap-2">
+                {isAdmin && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="text-xs h-8 rounded-lg border-border"
+                    onClick={() => { setViewModal(null); setJsonModal(JSON.stringify(viewDetail, null, 2)); }}
+                  >
+                    <Code2 className="w-3.5 h-3.5 mr-1.5" /> Raw JSON
+                  </Button>
+                )}
               </div>
+            </div>
+          )
+        }
+      >
+        <div className="flex-1 overflow-hidden flex flex-col min-h-0">
+          {viewLoading && (
+            <div className="flex flex-col items-center justify-center py-16 gap-3">
+              <Loader2 className="w-8 h-8 text-primary animate-spin" />
+              <p className="text-sm text-muted-foreground">Carregando consulta...</p>
+            </div>
+          )}
 
-              {/* Tabs */}
-              {viewDetail && !viewLoading && (
-                <div className="flex gap-1 px-6 pt-3 pb-0 border-b border-border/60 shrink-0">
-                  <button
-                    onClick={() => setViewTab('preview')}
-                    className={`flex items-center gap-1.5 px-3 py-2 text-xs font-bold rounded-t-lg transition-colors border-b-2 -mb-px ${
-                      viewTab === 'preview'
-                        ? 'text-primary border-primary bg-primary/5'
-                        : 'text-muted-foreground border-transparent hover:text-foreground'
-                    }`}
-                  >
-                    <LayoutTemplate className="w-3.5 h-3.5" /> Preview HTML
-                  </button>
-                  <button
-                    onClick={() => setViewTab('data')}
-                    className={`flex items-center gap-1.5 px-3 py-2 text-xs font-bold rounded-t-lg transition-colors border-b-2 -mb-px ${
-                      viewTab === 'data'
-                        ? 'text-primary border-primary bg-primary/5'
-                        : 'text-muted-foreground border-transparent hover:text-foreground'
-                    }`}
-                  >
-                    <Database className="w-3.5 h-3.5" /> Dados da Consulta
-                  </button>
-                </div>
-              )}
+          {viewError && (
+            <div className="m-6 p-4 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-500 text-sm flex items-center gap-2">
+              <AlertTriangle className="w-5 h-5 shrink-0" />
+              <span>{viewError}</span>
+            </div>
+          )}
 
-              {/* Modal Body */}
-              <div className="flex-1 overflow-hidden flex flex-col min-h-0">
-                {viewLoading && (
-                  <div className="flex flex-col items-center justify-center py-16 gap-3">
-                    <Loader2 className="w-8 h-8 text-primary animate-spin" />
-                    <p className="text-sm text-muted-foreground">Carregando consulta...</p>
+          {viewDetail && !viewLoading && (
+            <>
+              {/* ABA: PREVIEW REAL */}
+              {viewTab === 'preview' && (() => {
+                const realData = viewDetail.renderPayload || viewDetail.mergedPayload || null;
+                const templateLayout = viewDetail.template?.layout ?? null;
+                const rawItems = viewDetail.items ?? [];
+                const clientName =
+                  realData?.cliente?.nome ||
+                  realData?.clientName ||
+                  realData?.nome ||
+                  viewDetail.subjectDocument ||
+                  'CLIENTE ANALISADO';
+
+                return (
+                  <div className="flex-1 min-h-0" style={{ height: '100%', overflow: 'hidden' }}>
+                    <ConsultationPreview
+                      blocks={[]}
+                      rawItems={rawItems}
+                      document={viewDetail.subjectDocument || ''}
+                      clientName={clientName}
+                      logo={viewDetail.template?.logo ?? null}
+                      realData={realData}
+                      mode="preview"
+                      layout={templateLayout}
+                      consultationId={viewDetail.id}
+                    />
                   </div>
-                )}
+                );
+              })()}
 
-                {viewError && (
-                  <div className="m-6 p-4 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-500 text-sm flex items-center gap-2">
-                    <AlertTriangle className="w-5 h-5 shrink-0" />
-                    <span>{viewError}</span>
-                  </div>
-                )}
-
-                {viewDetail && !viewLoading && (
-                  <>
-                    {/* ABA: PREVIEW REAL */}
-                    {viewTab === 'preview' && (() => {
-                      const realData = viewDetail.renderPayload || viewDetail.mergedPayload || null;
-                      const templateLayout = viewDetail.template?.layout ?? null;
-                      const rawItems = viewDetail.items ?? [];
-                      const clientName =
-                        realData?.cliente?.nome ||
-                        realData?.clientName ||
-                        realData?.nome ||
-                        viewDetail.subjectDocument ||
-                        'CLIENTE ANALISADO';
-
-                      return (
-                        <div className="flex-1 min-h-0" style={{ height: '100%', overflow: 'hidden' }}>
-                          <ConsultationPreview
-                            blocks={[]}
-                            rawItems={rawItems}
-                            document={viewDetail.subjectDocument || ''}
-                            clientName={clientName}
-                            logo={viewDetail.template?.logo ?? null}
-                            realData={realData}
-                            mode="preview"
-                            layout={templateLayout}
-                          />
-                        </div>
-                      );
-                    })()}
-
-                    {/* ABA: DADOS DA CONSULTA */}
-                    {viewTab === 'data' && (
-                      <div className="flex-1 overflow-y-auto p-6 space-y-5">
-                        {/* Info Geral */}
-                        <div className="grid grid-cols-2 gap-3">
-                          <div className="p-3.5 rounded-xl bg-muted/40 border border-border/60 col-span-2">
-                            <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1">Documento</p>
-                            <p className="text-sm font-mono font-bold text-foreground">{viewDetail.subjectDocument}</p>
-                          </div>
-                          <div className="p-3.5 rounded-xl bg-muted/40 border border-border/60">
-                            <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1">Template</p>
-                            <p className="text-xs font-semibold text-foreground">{viewDetail.template?.name || viewDetail.items?.map((i: any) => i.providerProduct?.name).join(', ') || 'Personalizada'}</p>
-                          </div>
-                          <div className="p-3.5 rounded-xl bg-muted/40 border border-border/60">
-                            <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1">Status</p>
-                            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[9px] font-bold border uppercase tracking-wider ${
-                              viewDetail.status === 'COMPLETED' ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20'
-                                : viewDetail.status === 'PROCESSING' || viewDetail.status === 'QUEUED' ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20'
-                                : 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20'
-                            }`}>
-                              {viewDetail.status}
-                            </span>
-                          </div>
-                          <div className="p-3.5 rounded-xl bg-muted/40 border border-border/60">
-                            <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1">Custo Total</p>
-                            <p className="text-sm font-black text-foreground">R$ {Number(viewDetail.totalCost).toFixed(2)}</p>
-                          </div>
-                          <div className="p-3.5 rounded-xl bg-muted/40 border border-border/60">
-                            <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1">Data</p>
-                            <p className="text-xs font-medium text-foreground">{new Date(viewDetail.createdAt).toLocaleString('pt-BR')}</p>
-                          </div>
-                          {viewDetail.externalUserId && (
-                            <div className="p-3.5 rounded-xl bg-muted/40 border border-border/60 col-span-2">
-                              <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1">ID Cliente</p>
-                              <p className="text-xs font-mono text-foreground">{viewDetail.externalUserId}</p>
-                            </div>
-                          )}
-                        </div>
-
-                        {/* Produtos */}
-                        {viewDetail.items?.length > 0 && (
-                          <div>
-                            <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-2">Produtos Consultados</p>
-                            <div className="space-y-1.5">
-                              {viewDetail.items.map((it: any, idx: number) => (
-                                <div key={idx} className="flex items-center justify-between p-3 rounded-xl bg-muted/30 border border-border/50">
-                                  <div>
-                                    <p className="text-xs font-semibold text-foreground">{it.providerProduct?.name || '—'}</p>
-                                    <p className="text-[10px] text-muted-foreground">{it.providerProduct?.provider?.name} · {it.providerProduct?.consultationType?.name}</p>
-                                  </div>
-                                  <p className="text-xs font-bold text-foreground">R$ {Number(it.requestedCost).toFixed(2)}</p>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-
-                        {/* Execuções */}
-                        {viewDetail.executions?.length > 0 && (
-                          <div>
-                            <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-2">Execuções</p>
-                            <div className="space-y-2">
-                              {viewDetail.executions.map((exec: any) => {
-                                const isExpanded = expandedExecution === exec.id;
-                                const execStatus = exec.status === 'SUCCESS' ? 'success' : (exec.status === 'PENDING' || exec.status === 'RUNNING') ? 'pending' : 'error';
-                                return (
-                                  <div key={exec.id} className="rounded-xl border border-border/60 overflow-hidden">
-                                    <button
-                                      onClick={() => setExpandedExecution(isExpanded ? null : exec.id)}
-                                      className="w-full flex items-center justify-between px-4 py-3 bg-muted/30 hover:bg-muted/50 transition-colors cursor-pointer"
-                                    >
-                                      <div className="flex items-center gap-2">
-                                        <span className={`w-2 h-2 rounded-full ${
-                                          execStatus === 'success' ? 'bg-emerald-500' : execStatus === 'pending' ? 'bg-amber-500 animate-pulse' : 'bg-rose-500'
-                                        }`} />
-                                        <span className="text-xs font-semibold text-foreground">{exec.provider?.name || exec.product?.name || 'Execução'}</span>
-                                        {exec.product?.name && exec.provider?.name && (
-                                          <span className="text-[9px] text-muted-foreground">({exec.product.name})</span>
-                                        )}
-                                      </div>
-                                      <div className="flex items-center gap-2">
-                                        <span className={`text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border ${
-                                          execStatus === 'success' ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20' : execStatus === 'pending' ? 'bg-amber-500/10 text-amber-500 border-amber-500/20' : 'bg-rose-500/10 text-rose-500 border-rose-500/20'
-                                        }`}>{exec.status}</span>
-                                        {isExpanded ? <ChevronUp className="w-3.5 h-3.5 text-muted-foreground" /> : <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" />}
-                                      </div>
-                                    </button>
-                                    <AnimatePresence initial={false}>
-                                      {isExpanded && (
-                                        <motion.div
-                                          initial={{ height: 0, opacity: 0 }}
-                                          animate={{ height: 'auto', opacity: 1 }}
-                                          exit={{ height: 0, opacity: 0 }}
-                                          transition={{ duration: 0.2 }}
-                                          className="overflow-hidden"
-                                        >
-                                          <div className="p-4 space-y-3 border-t border-border/60">
-                                            {exec.errorMessage && (
-                                              <div className="p-3 rounded-lg bg-rose-500/10 border border-rose-500/20">
-                                                <p className="text-[10px] font-bold text-rose-500 uppercase mb-1">Erro</p>
-                                                <p className="text-xs text-rose-400 font-mono">{exec.errorMessage}</p>
-                                              </div>
-                                            )}
-                                            {exec.normalizedPayload ? (
-                                              <div>
-                                                <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1.5">Dados Normalizados</p>
-                                                <pre className="text-[10px] font-mono text-foreground/80 bg-muted/30 border border-border/50 rounded-lg p-3 overflow-auto max-h-48 scrollbar-thin">
-                                                  {JSON.stringify(exec.normalizedPayload, null, 2)}
-                                                </pre>
-                                              </div>
-                                            ) : exec.rawResponse ? (
-                                              <div>
-                                                <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1.5">Resposta Bruta</p>
-                                                <pre className="text-[10px] font-mono text-foreground/80 bg-muted/30 border border-border/50 rounded-lg p-3 overflow-auto max-h-48 scrollbar-thin">
-                                                  {typeof exec.rawResponse === 'string' ? exec.rawResponse : JSON.stringify(exec.rawResponse, null, 2)}
-                                                </pre>
-                                              </div>
-                                            ) : (
-                                              <p className="text-xs text-muted-foreground italic">Sem dados disponíveis</p>
-                                            )}
-                                            <div className="flex gap-4 text-[10px] text-muted-foreground">
-                                              {exec.startedAt && <span>Início: {new Date(exec.startedAt).toLocaleString('pt-BR')}</span>}
-                                              {exec.completedAt && <span>Fim: {new Date(exec.completedAt).toLocaleString('pt-BR')}</span>}
-                                            </div>
-                                          </div>
-                                        </motion.div>
-                                      )}
-                                    </AnimatePresence>
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          </div>
-                        )}
-
-                        {(!viewDetail.executions || viewDetail.executions.length === 0) && viewDetail.status !== 'COMPLETED' && (
-                          <div className="flex flex-col items-center justify-center py-8 gap-2 text-muted-foreground">
-                            <Clock className="w-8 h-8 opacity-40" />
-                            <p className="text-xs font-medium">Execuções ainda não disponíveis</p>
-                          </div>
-                        )}
+              {/* ABA: DADOS DA CONSULTA */}
+              {viewTab === 'data' && (
+                <div className="flex-1 overflow-y-auto p-6 space-y-5">
+                  {/* Info Geral */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="p-3.5 rounded-xl bg-muted/40 border border-border/60 col-span-2">
+                      <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1">Documento</p>
+                      <p className="text-sm font-mono font-bold text-foreground">{viewDetail.subjectDocument}</p>
+                    </div>
+                    <div className="p-3.5 rounded-xl bg-muted/40 border border-border/60">
+                      <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1">Template</p>
+                      <p className="text-xs font-semibold text-foreground">{viewDetail.template?.name || viewDetail.items?.map((i: any) => i.providerProduct?.name).join(', ') || 'Personalizada'}</p>
+                    </div>
+                    <div className="p-3.5 rounded-xl bg-muted/40 border border-border/60">
+                      <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1">Status</p>
+                      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[9px] font-bold border uppercase tracking-wider ${
+                        viewDetail.status === 'COMPLETED' ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20'
+                          : viewDetail.status === 'PROCESSING' || viewDetail.status === 'QUEUED' ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20'
+                          : 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20'
+                      }`}>
+                        {viewDetail.status}
+                      </span>
+                    </div>
+                    <div className="p-3.5 rounded-xl bg-muted/40 border border-border/60">
+                      <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1">Custo Total</p>
+                      <p className="text-sm font-black text-foreground">R$ {Number(viewDetail.totalCost).toFixed(2)}</p>
+                    </div>
+                    <div className="p-3.5 rounded-xl bg-muted/40 border border-border/60">
+                      <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1">Data</p>
+                      <p className="text-xs font-medium text-foreground">{new Date(viewDetail.createdAt).toLocaleString('pt-BR')}</p>
+                    </div>
+                    {viewDetail.externalUserId && (
+                      <div className="p-3.5 rounded-xl bg-muted/40 border border-border/60 col-span-2">
+                        <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1">ID Cliente</p>
+                        <p className="text-xs font-mono text-foreground">{viewDetail.externalUserId}</p>
                       </div>
                     )}
-                  </>
-                )}
-              </div>
-
-              {/* Modal Footer */}
-              {viewDetail && !viewLoading && (
-                <div className="flex items-center justify-between px-6 py-4 border-t border-border/60 bg-muted/20 rounded-b-2xl shrink-0">
-                  <p className="text-[10px] text-muted-foreground font-mono">ID: {viewDetail.id}</p>
-                  <div className="flex gap-2">
-                    {isAdmin && (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="text-xs h-8 rounded-lg border-border"
-                        onClick={() => { setViewModal(null); setJsonModal(JSON.stringify(viewDetail, null, 2)); }}
-                      >
-                        <Code2 className="w-3.5 h-3.5 mr-1.5" /> Raw JSON
-                      </Button>
-                    )}
                   </div>
+
+                  {/* Produtos */}
+                  {viewDetail.items?.length > 0 && (
+                    <div>
+                      <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-2">Produtos Consultados</p>
+                      <div className="space-y-1.5">
+                        {viewDetail.items.map((it: any, idx: number) => (
+                          <div key={idx} className="flex items-center justify-between p-3 rounded-xl bg-muted/30 border border-border/50">
+                            <div>
+                              <p className="text-xs font-semibold text-foreground">{it.providerProduct?.name || '—'}</p>
+                              <p className="text-[10px] text-muted-foreground">{it.providerProduct?.provider?.name} · {it.providerProduct?.consultationType?.name}</p>
+                            </div>
+                            <p className="text-xs font-bold text-foreground">R$ {Number(it.requestedCost).toFixed(2)}</p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Execuções */}
+                  {viewDetail.executions?.length > 0 && (
+                    <div>
+                      <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-2">Execuções</p>
+                      <div className="space-y-2">
+                        {viewDetail.executions.map((exec: any) => {
+                          const isExpanded = expandedExecution === exec.id;
+                          const execStatus = exec.status === 'SUCCESS' ? 'success' : (exec.status === 'PENDING' || exec.status === 'RUNNING') ? 'pending' : 'error';
+                          return (
+                            <div key={exec.id} className="rounded-xl border border-border/60 overflow-hidden">
+                              <button
+                                onClick={() => setExpandedExecution(isExpanded ? null : exec.id)}
+                                className="w-full flex items-center justify-between px-4 py-3 bg-muted/30 hover:bg-muted/50 transition-colors cursor-pointer"
+                              >
+                                <div className="flex items-center gap-2">
+                                  <span className={`w-2 h-2 rounded-full ${
+                                    execStatus === 'success' ? 'bg-emerald-500' : execStatus === 'pending' ? 'bg-amber-500 animate-pulse' : 'bg-rose-500'
+                                  }`} />
+                                  <span className="text-xs font-semibold text-foreground">{exec.provider?.name || exec.product?.name || 'Execução'}</span>
+                                  {exec.product?.name && exec.provider?.name && (
+                                    <span className="text-[9px] text-muted-foreground">({exec.product.name})</span>
+                                  )}
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <span className={`text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border ${
+                                    execStatus === 'success' ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20' : execStatus === 'pending' ? 'bg-amber-500/10 text-amber-500 border-amber-500/20' : 'bg-rose-500/10 text-rose-500 border-rose-500/20'
+                                  }`}>{exec.status}</span>
+                                  {isExpanded ? <ChevronUp className="w-3.5 h-3.5 text-muted-foreground" /> : <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" />}
+                                </div>
+                              </button>
+                              <AnimatePresence initial={false}>
+                                {isExpanded && (
+                                  <motion.div
+                                    initial={{ height: 0, opacity: 0 }}
+                                    animate={{ height: 'auto', opacity: 1 }}
+                                    exit={{ height: 0, opacity: 0 }}
+                                    transition={{ duration: 0.2 }}
+                                    className="overflow-hidden"
+                                  >
+                                    <div className="p-4 space-y-3 border-t border-border/60">
+                                      {exec.errorMessage && (
+                                        <div className="p-3 rounded-lg bg-rose-500/10 border border-rose-500/20">
+                                          <p className="text-[10px] font-bold text-rose-500 uppercase mb-1">Erro</p>
+                                          <p className="text-xs text-rose-400 font-mono">{exec.errorMessage}</p>
+                                        </div>
+                                      )}
+                                      {exec.normalizedPayload ? (
+                                        <div>
+                                          <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1.5">Dados Normalizados</p>
+                                          <pre className="text-[10px] font-mono text-foreground/80 bg-muted/30 border border-border/50 rounded-lg p-3 overflow-auto max-h-48 scrollbar-thin">
+                                            {JSON.stringify(exec.normalizedPayload, null, 2)}
+                                          </pre>
+                                        </div>
+                                      ) : exec.rawResponse ? (
+                                        <div>
+                                          <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1.5">Resposta Bruta</p>
+                                          <pre className="text-[10px] font-mono text-foreground/80 bg-muted/30 border border-border/50 rounded-lg p-3 overflow-auto max-h-48 scrollbar-thin">
+                                            {typeof exec.rawResponse === 'string' ? exec.rawResponse : JSON.stringify(exec.rawResponse, null, 2)}
+                                          </pre>
+                                        </div>
+                                      ) : (
+                                        <p className="text-xs text-muted-foreground italic">Sem dados disponíveis</p>
+                                      )}
+                                      <div className="flex gap-4 text-[10px] text-muted-foreground">
+                                        {exec.startedAt && <span>Início: {new Date(exec.startedAt).toLocaleString('pt-BR')}</span>}
+                                        {exec.completedAt && <span>Fim: {new Date(exec.completedAt).toLocaleString('pt-BR')}</span>}
+                                      </div>
+                                    </div>
+                                  </motion.div>
+                                )}
+                              </AnimatePresence>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {(!viewDetail.executions || viewDetail.executions.length === 0) && viewDetail.status !== 'COMPLETED' && (
+                    <div className="flex flex-col items-center justify-center py-8 gap-2 text-muted-foreground">
+                      <Clock className="w-8 h-8 opacity-40" />
+                      <p className="text-xs font-medium">Execuções ainda não disponíveis</p>
+                    </div>
+                  )}
                 </div>
               )}
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+            </>
+          )}
+        </div>
+      </Modal>
     </div>
   );
 }

@@ -52,6 +52,7 @@ import {
 } from '@/api/admin-panel';
 import { RoleEndpointAccessTab } from '@/components/admin/RoleEndpointAccessTab';
 import { RealtimeConsultationsTab } from '@/components/admin/RealtimeConsultationsTab';
+import { AdminPlansTab } from '@/components/admin/AdminPlansTab';
 import { apiBase } from '@/lib/api';
 
 const labelCls = 'text-xs font-medium text-muted-foreground uppercase tracking-wide';
@@ -100,7 +101,12 @@ export default function AdminPage() {
     }, { replace: true });
   };
 
-  const enabled = !!accessToken && user?.backendRole === 'PLATFORM_ADMIN';
+  const isPlatformAdmin = user?.backendRole === 'PLATFORM_ADMIN';
+  const isCustomerAdmin = user?.backendRole === 'CUSTOMER_ADMIN';
+  const isCompanyAdmin = user?.backendRole === 'COMPANY_ADMIN';
+  const hasAdminAccess = ['PLATFORM_ADMIN', 'CUSTOMER_ADMIN', 'COMPANY_ADMIN'].includes(user?.backendRole ?? '');
+
+  const enabled = !!accessToken && hasAdminAccess;
 
   const usersQuery = useQuery({
     queryKey: ['admin-users'],
@@ -150,7 +156,7 @@ export default function AdminPage() {
     void queryClient.invalidateQueries({ queryKey: ['admin-endpoint-access'] });
   };
 
-  if (user?.backendRole !== 'PLATFORM_ADMIN') {
+  if (!hasAdminAccess) {
     return <Navigate to="/dashboard" replace />;
   }
 
@@ -172,12 +178,19 @@ export default function AdminPage() {
         <TabsList className="h-10 bg-muted/50 p-1 rounded-lg gap-1 flex-wrap h-auto min-h-10">
           <TabsTrigger value="realtime-consultations" className="text-sm gap-2"><Globe className="w-4 h-4" /> Consultas em Tempo Real</TabsTrigger>
           <TabsTrigger value="users" className="text-sm gap-2"><Users className="w-4 h-4" /> Usuários</TabsTrigger>
-          <TabsTrigger value="companies" className="text-sm gap-2"><Building2 className="w-4 h-4" /> Contas</TabsTrigger>
+          {isCompanyAdmin ? (
+            <TabsTrigger value="companies" className="text-sm gap-2"><Building2 className="w-4 h-4" /> Minha Empresa</TabsTrigger>
+          ) : (
+            <TabsTrigger value="companies" className="text-sm gap-2"><Building2 className="w-4 h-4" /> Contas</TabsTrigger>
+          )}
           <TabsTrigger value="tokens" className="text-sm gap-2"><KeyRound className="w-4 h-4" /> Tokens API</TabsTrigger>
           <TabsTrigger value="invites" className="text-sm gap-2"><Mail className="w-4 h-4" /> Convites</TabsTrigger>
           <TabsTrigger value="audit" className="text-sm gap-2"><ClipboardList className="w-4 h-4" /> Auditoria</TabsTrigger>
           <TabsTrigger value="api-access" className="text-sm gap-2"><Route className="w-4 h-4" /> Acesso API</TabsTrigger>
           <TabsTrigger value="white-label" className="text-sm gap-2"><FileCode className="w-4 h-4" /> Guia White-Label</TabsTrigger>
+          {isPlatformAdmin && (
+            <TabsTrigger value="plans-management" className="text-sm gap-2"><CreditCard className="w-4 h-4" /> Planos & Assinaturas</TabsTrigger>
+          )}
         </TabsList>
 
         <TabsContent value="realtime-consultations" className="space-y-3">
@@ -248,6 +261,12 @@ export default function AdminPage() {
             }}
           />
         </TabsContent>
+
+        {isPlatformAdmin && (
+          <TabsContent value="plans-management" className="space-y-3">
+            <AdminPlansTab accessToken={accessToken} />
+          </TabsContent>
+        )}
       </Tabs>
     </div>
   );
@@ -458,12 +477,17 @@ function UserFormDialog({
   saving: boolean;
   onSubmit: (data: Record<string, unknown>) => void;
 }) {
+  const { user: authUser } = useAuthStore();
+  const isPlatformAdmin = authUser?.backendRole === 'PLATFORM_ADMIN';
+  const isCustomerAdmin = authUser?.backendRole === 'CUSTOMER_ADMIN';
+  const isCompanyAdmin = authUser?.backendRole === 'COMPANY_ADMIN';
+
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [document, setDocument] = useState('');
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
-  const [role, setRole] = useState<'USER' | 'COMPANY_MANAGER' | 'COMPANY_OWNER'>('USER');
+  const [role, setRole] = useState<string>('COMPANY_COMMON');
   const [companyId, setCompanyId] = useState<string>('__none__');
   const [accountStatus, setAccountStatus] = useState<UserAccountStatus>('ACTIVE');
 
@@ -475,11 +499,7 @@ function UserFormDialog({
       setDocument(initial.document ?? '');
       setPhone(initial.phone ?? '');
       setPassword('');
-      setRole(
-        initial.role === 'PLATFORM_ADMIN' || initial.role === 'USER' || initial.role === 'COMPANY_MANAGER' || initial.role === 'COMPANY_OWNER'
-          ? (initial.role === 'PLATFORM_ADMIN' ? 'USER' : initial.role)
-          : 'USER',
-      );
+      setRole(initial.role);
       setCompanyId(initial.companyId ?? '__none__');
       setAccountStatus(initial.accountStatus ?? 'ACTIVE');
     }
@@ -489,13 +509,23 @@ function UserFormDialog({
       setDocument('');
       setPhone('');
       setPassword('');
-      setRole('USER');
-      setCompanyId('__none__');
+      if (isCompanyAdmin) {
+        setRole('COMPANY_COMMON');
+        setCompanyId(authUser?.companyId ?? '__none__');
+      } else if (isCustomerAdmin) {
+        setRole('COMPANY_ADMIN');
+        setCompanyId('__none__');
+      } else {
+        setRole('COMPANY_COMMON');
+        setCompanyId('__none__');
+      }
       setAccountStatus('ACTIVE');
     }
-  }, [open, initial, mode]);
+  }, [open, initial, mode, isCompanyAdmin, isCustomerAdmin, authUser]);
 
   const save = () => {
+    const targetCompanyId = isCompanyAdmin ? (authUser?.companyId ?? null) : (companyId === '__none__' ? null : companyId);
+
     if (mode === 'create') {
       if (!fullName || !email || !document || !phone || !password) {
         toast.error('Preencha todos os campos obrigatórios');
@@ -508,7 +538,7 @@ function UserFormDialog({
         phone,
         password,
         role,
-        ...(companyId !== '__none__' ? { companyId } : {}),
+        ...(targetCompanyId ? { companyId: targetCompanyId } : {}),
       });
       return;
     }
@@ -518,7 +548,7 @@ function UserFormDialog({
         email,
         document: document || null,
         phone: phone || null,
-        companyId: companyId === '__none__' ? null : companyId,
+        companyId: targetCompanyId,
       };
       if (password.trim()) body.password = password;
       onSubmit(body);
@@ -530,7 +560,7 @@ function UserFormDialog({
       document: document || null,
       phone: phone || null,
       role,
-      companyId: companyId === '__none__' ? null : companyId,
+      companyId: targetCompanyId,
       accountStatus,
     };
     if (password.trim()) body.password = password;
@@ -577,28 +607,47 @@ function UserFormDialog({
           {!(mode === 'edit' && initial?.role === 'PLATFORM_ADMIN') && (
             <div className="space-y-1">
               <label className={labelCls}>Papel</label>
-              <Select value={role} onValueChange={(v) => setRole(v as typeof role)}>
+              <Select value={role} onValueChange={(v) => setRole(v)}>
                 <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="USER">USER</SelectItem>
-                  <SelectItem value="COMPANY_MANAGER">COMPANY_MANAGER</SelectItem>
-                  <SelectItem value="COMPANY_OWNER">COMPANY_OWNER</SelectItem>
+                  {isPlatformAdmin && (
+                    <>
+                      <SelectItem value="PLATFORM_ADMIN">PLATFORM_ADMIN</SelectItem>
+                      <SelectItem value="CUSTOMER_ADMIN">CUSTOMER_ADMIN</SelectItem>
+                      <SelectItem value="COMPANY_ADMIN">COMPANY_ADMIN</SelectItem>
+                      <SelectItem value="COMPANY_COMMON">COMPANY_COMMON</SelectItem>
+                      <SelectItem value="COMPANY_OWNER">COMPANY_OWNER (legado)</SelectItem>
+                      <SelectItem value="COMPANY_MANAGER">COMPANY_MANAGER (legado)</SelectItem>
+                      <SelectItem value="USER">USER (legado)</SelectItem>
+                    </>
+                  )}
+                  {isCustomerAdmin && (
+                    <>
+                      <SelectItem value="COMPANY_ADMIN">COMPANY_ADMIN</SelectItem>
+                      <SelectItem value="COMPANY_COMMON">COMPANY_COMMON</SelectItem>
+                    </>
+                  )}
+                  {isCompanyAdmin && (
+                    <SelectItem value="COMPANY_COMMON">COMPANY_COMMON</SelectItem>
+                  )}
                 </SelectContent>
               </Select>
             </div>
           )}
-          <div className="space-y-1">
-            <label className={labelCls}>Conta (empresa)</label>
-            <Select value={companyId} onValueChange={setCompanyId}>
-              <SelectTrigger className="h-9"><SelectValue placeholder="Nenhuma" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="__none__">Nenhuma</SelectItem>
-                {companies.map((c) => (
-                  <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+          {!isCompanyAdmin && (
+            <div className="space-y-1">
+              <label className={labelCls}>Conta (empresa)</label>
+              <Select value={companyId} onValueChange={setCompanyId}>
+                <SelectTrigger className="h-9"><SelectValue placeholder="Nenhuma" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">Nenhuma</SelectItem>
+                  {companies.map((c) => (
+                    <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
           {mode === 'edit' && initial?.role !== 'PLATFORM_ADMIN' && (
             <div className="space-y-1">
               <label className={labelCls}>Status da conta</label>
@@ -635,6 +684,11 @@ function CompaniesTab({
   loading: boolean;
   invalidateAll: () => void;
 }) {
+  const { user: authUser } = useAuthStore();
+  const isCompanyAdmin = authUser?.backendRole === 'COMPANY_ADMIN';
+  const isCustomerAdmin = authUser?.backendRole === 'CUSTOMER_ADMIN';
+  const isPlatformAdmin = authUser?.backendRole === 'PLATFORM_ADMIN';
+
   const [createOpen, setCreateOpen] = useState(false);
   const [editRow, setEditRow] = useState<AdminCompanyRow | null>(null);
   const [creditRow, setCreditRow] = useState<AdminCompanyRow | null>(null);
@@ -675,11 +729,13 @@ function CompaniesTab({
 
   return (
     <div className="space-y-3">
-      <div className="flex justify-end">
-        <Button type="button" size="sm" className="h-9 gradient-primary text-primary-foreground" onClick={() => setCreateOpen(true)}>
-          <Plus className="w-4 h-4 mr-1.5" /> Nova conta
-        </Button>
-      </div>
+      {!isCompanyAdmin && (
+        <div className="flex justify-end">
+          <Button type="button" size="sm" className="h-9 gradient-primary text-primary-foreground" onClick={() => setCreateOpen(true)}>
+            <Plus className="w-4 h-4 mr-1.5" /> Nova conta
+          </Button>
+        </div>
+      )}
       <div className="bg-card rounded-xl border border-border shadow-card overflow-hidden">
         {loading ? (
           <p className="p-4 text-sm text-muted-foreground">Carregando…</p>
@@ -710,9 +766,11 @@ function CompaniesTab({
                   <TableCell>
                     <div className="flex flex-wrap gap-1">
                       <Button type="button" variant="ghost" size="sm" className="h-8" onClick={() => setEditRow(c)}>Editar</Button>
-                      <Button type="button" variant="ghost" size="sm" className="h-8" onClick={() => setCreditRow(c)}>
-                        <CreditCard className="w-3.5 h-3.5 mr-1" /> Crédito
-                      </Button>
+                      {!isCompanyAdmin && (
+                        <Button type="button" variant="ghost" size="sm" className="h-8" onClick={() => setCreditRow(c)}>
+                          <CreditCard className="w-3.5 h-3.5 mr-1" /> Crédito
+                        </Button>
+                      )}
                       <Button type="button" variant="ghost" size="sm" className="h-8" onClick={() => setLedgerRow(c)}>Extrato</Button>
                     </div>
                   </TableCell>

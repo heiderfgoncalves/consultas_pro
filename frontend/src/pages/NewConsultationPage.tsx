@@ -193,7 +193,8 @@ function TemplatePreviewModal({
   customClientName,
   isRealConsultation = false,
   isAdmin = false,
-  onEditTemplate
+  onEditTemplate,
+  consultationId
 }: { 
   template: any; 
   open: boolean; 
@@ -204,6 +205,7 @@ function TemplatePreviewModal({
   isRealConsultation?: boolean;
   isAdmin?: boolean;
   onEditTemplate?: (tpl: any) => void;
+  consultationId?: string;
 }) {
   const [profile, setProfile] = useState<'clean' | 'restricted'>('clean');
   const activeSim = SIMULATED_PROFILES[profile];
@@ -286,6 +288,7 @@ function TemplatePreviewModal({
               realData={realDataToUse}
               mode="preview"
               layout={template.layout}
+              consultationId={consultationId}
             />
           </div>
         </div>
@@ -311,6 +314,7 @@ export default function NewConsultationPage() {
   const [realClientName, setRealClientName] = useState('');
   const [showRealPreview, setShowRealPreview] = useState(false);
   const [selectedTemplateForRealPreview, setSelectedTemplateForRealPreview] = useState<any | null>(null);
+  const [realConsultationId, setRealConsultationId] = useState<string | null>(null);
 
   // Executa uma consulta real e monitora o progresso via polling
   const handleExecuteRealConsultation = async (tpl: any) => {
@@ -351,6 +355,7 @@ export default function NewConsultationPage() {
       }
 
       consultationId = result.id;
+      setRealConsultationId(result.id);
       setPollingStatus('processing');
       setPollingMessage('Solicitação enviada. Acionando canais de dados parceiros e reunindo as informações oficiais...');
 
@@ -1048,6 +1053,7 @@ export default function NewConsultationPage() {
             setShowRealPreview(false);
             setSelectedTemplateForRealPreview(null);
             setRealConsultationData(null);
+            setRealConsultationId(null);
           }}
           customRealData={realConsultationData}
           customDocument={realDocument}
@@ -1055,6 +1061,7 @@ export default function NewConsultationPage() {
           isRealConsultation={true}
           isAdmin={false}
           onEditTemplate={handleEditTemplate}
+          consultationId={realConsultationId || undefined}
         />
       )}
 

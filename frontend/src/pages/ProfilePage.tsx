@@ -1,15 +1,45 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
-import { User, Mail, Phone, Hash, Building2, Lock, Shield, Save } from 'lucide-react';
+import { User, Mail, Phone, Hash, Building2, Lock, Shield, Save, CheckCircle, HelpCircle } from 'lucide-react';
 import { useAuthStore } from '@/stores/authStore';
 import { PageHeader } from '@/components/shared/StatCard';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { toast } from 'sonner';
 
 export default function ProfilePage() {
-  const { user } = useAuthStore();
+  const { user, sessionUser } = useAuthStore();
   const [editing, setEditing] = useState(false);
+  const [linking, setLinking] = useState(false);
+
+  const handleLinkGoogle = async () => {
+    try {
+      setLinking(true);
+      // Gera um mock google id combinando o id real com o email
+      const mockCredential = `mock_google_id_${Math.random().toString(36).substring(7)}_${user?.email || 'user'}`;
+      const res = await fetch('/api/auth/google/link', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`,
+        },
+        body: JSON.stringify({ credential: mockCredential }),
+      });
+      if (res.ok) {
+        toast.success('Sua conta do Google foi vinculada com sucesso!');
+        // Atualiza a sessão para refletir a alteração instantaneamente no frontend
+        void useAuthStore.getState().hydrate();
+      } else {
+        const err = await res.json();
+        toast.error(err.error?.message || 'Erro ao vincular conta do Google');
+      }
+    } catch (e) {
+      toast.error('Erro de conexão ao vincular.');
+    } finally {
+      setLinking(false);
+    }
+  };
 
   return (
     <div className="space-y-6 max-w-3xl">
@@ -80,6 +110,44 @@ export default function ProfilePage() {
             </div>
           </div>
           <Button variant="outline" size="sm"><Lock className="w-3 h-3 mr-1" /> Alterar Senha</Button>
+        </div>
+      </motion.div>
+
+      {/* Google Link Integration */}
+      <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.12 }} className="bg-card rounded-xl border border-border shadow-card overflow-hidden">
+        <div className="px-6 py-4 border-b border-border">
+          <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">🔗 Contas Vinculadas</h3>
+        </div>
+        <div className="p-6 space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-muted/20 p-4 rounded-xl border border-border/50">
+            <div className="flex items-start gap-3">
+              <div className="p-2 bg-slate-900 border border-slate-850 rounded-lg flex items-center justify-center font-bold text-white text-xs select-none">
+                G
+              </div>
+              <div>
+                <p className="text-xs font-semibold text-foreground">Acesso Simplificado via Google</p>
+                <p className="text-[11px] text-muted-foreground mt-0.5">Faça login com um clique na plataforma usando sua conta federada.</p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              {sessionUser?.googleId ? (
+                <div className="flex items-center gap-1.5 text-xs text-emerald-400 font-semibold bg-emerald-500/10 border border-emerald-500/20 px-3 py-1.5 rounded-full select-none">
+                  <CheckCircle className="w-3.5 h-3.5" /> Conta Vinculada
+                </div>
+              ) : (
+                <Button 
+                  onClick={handleLinkGoogle} 
+                  disabled={linking}
+                  variant="outline" 
+                  size="sm" 
+                  className="text-xs font-semibold h-9 animate-pulse"
+                >
+                  {linking ? 'Vinculando...' : 'Vincular Conta Google'}
+                </Button>
+              )}
+            </div>
+          </div>
         </div>
       </motion.div>
 
