@@ -117,3 +117,15 @@ export async function apiRequest<T>(
 
   return json.data as T;
 }
+
+/**
+ * Abre o PDF de uma consulta diretamente em nova aba do navegador.
+ * O token JWT é passado como query param ?token= para que o browser
+ * possa carregar a URL diretamente sem precisar de headers customizados.
+ */
+export function openConsultationPdfInNewTab(consultationId: string): void {
+  const token = getStoredToken();
+  const base = apiBase();
+  const url = `${base}/consultations/${consultationId}/pdf${token ? `?token=${encodeURIComponent(token)}` : ''}`;
+  window.open(url, '_blank', 'noopener,noreferrer');
+}

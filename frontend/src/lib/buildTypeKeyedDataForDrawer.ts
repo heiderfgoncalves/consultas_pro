@@ -29,7 +29,7 @@ export function buildTypeKeyedDataForDrawer(params: {
   trechoMappings: FieldMapping[];
   fieldType: ConsultationFieldType;
   typeItemFilterConfig: TypeItemFilterConfig;
-}): Record<string, unknown> | null {
+}): Record<string, unknown> | Record<string, unknown>[] | null {
   const { sampleResponse, trechoMappings, fieldType, typeItemFilterConfig } = params;
   const normalizedCfg = normalizeTypeItemFilterConfig(typeItemFilterConfig);
 
@@ -166,7 +166,6 @@ export function buildTypeKeyedDataForDrawer(params: {
     const cleaned = buildByTypeWithGlobalDedupRemoved(byType, [typeKey], rowInfo);
     zipped = cleaned[typeKey];
   }
-
   if (zipped) {
     const isTabular = trechoMappings.some(m => m.jsonPath && m.jsonPath.includes('[*]'));
     if (isTabular) {
@@ -174,13 +173,10 @@ export function buildTypeKeyedDataForDrawer(params: {
         return zipped;
       }
       if (zipped && typeof zipped === 'object' && !isMappedPreviewZipWrapper(zipped)) {
-        return [zipped];
+        return [zipped as Record<string, unknown>];
       }
     }
     return zipped as Record<string, unknown> | Record<string, unknown>[];
   }
 
-  return [];
-
-  return null;
 }
