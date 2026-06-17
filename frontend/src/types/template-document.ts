@@ -47,6 +47,7 @@ export type BaseTemplateNode = {
   binding?: TemplateBinding;
   icon?: string | null;
   children?: TemplateNode[];
+  source?: string;
 };
 
 export type TemplateSectionNode = BaseTemplateNode & {
