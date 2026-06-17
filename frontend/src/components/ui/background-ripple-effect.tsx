@@ -23,11 +23,6 @@ export const BackgroundRippleEffect = ({
   cover?: boolean;
   coverPosition?: "center" | "top-right" | "top-left";
 }) => {
-  const [clickedCell, setClickedCell] = useState<{
-    row: number;
-    col: number;
-  } | null>(null);
-  const [rippleKey, setRippleKey] = useState(0);
   const coverWrapRef = useRef<HTMLDivElement>(null);
   const [coverDimensions, setCoverDimensions] = useState({ rows, cols });
 
@@ -57,7 +52,6 @@ export const BackgroundRippleEffect = ({
 
   const grid = (
     <DivGrid
-      key={`base-${rippleKey}`}
       className={cn(
         "relative z-[3]",
         masked ? "opacity-40 ripple-grid-mask" : "opacity-100",
@@ -68,11 +62,6 @@ export const BackgroundRippleEffect = ({
       cellSize={cellSize}
       borderColor="var(--cell-border-color)"
       fillColor="var(--cell-fill-color)"
-      clickedCell={clickedCell}
-      onCellClick={(row, col) => {
-        setClickedCell({ row, col });
-        setRippleKey((k) => k + 1);
-      }}
       interactive
     />
   );
@@ -121,14 +110,7 @@ type DivGridProps = {
   cellSize: number;
   borderColor: string;
   fillColor: string;
-  clickedCell: { row: number; col: number } | null;
-  onCellClick?: (row: number, col: number) => void;
   interactive?: boolean;
-};
-
-type CellStyle = React.CSSProperties & {
-  ["--delay"]?: string;
-  ["--duration"]?: string;
 };
 
 const DivGrid = ({
@@ -138,54 +120,86 @@ const DivGrid = ({
   cellSize = 56,
   borderColor = "#3f3f46",
   fillColor = "rgba(14,165,233,0.3)",
-  clickedCell = null,
-  onCellClick = () => {},
   interactive = true,
 }: DivGridProps) => {
-  const cells = useMemo(
-    () => Array.from({ length: rows * cols }, (_, idx) => idx),
-    [rows, cols],
-  );
+  const gridRef = useRef<HTMLDivElement>(null);
 
-  const gridStyle: React.CSSProperties = {
+  // Armazena as dimensões e células sem remontar ou re-renderizar desnecessariamente
+  const gridStyle: React.CSSProperties = useMemo(() => ({
     display: "grid",
     gridTemplateColumns: `repeat(${cols}, ${cellSize}px)`,
     gridTemplateRows: `repeat(${rows}, ${cellSize}px)`,
     width: cols * cellSize,
     height: rows * cellSize,
     marginInline: "auto",
+  }), [cols, rows, cellSize]);
+
+  const totalCells = rows * cols;
+  const cells = useMemo(() => Array.from({ length: totalCells }, (_, idx) => idx), [totalCells]);
+
+  const handleGridClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!interactive || !gridRef.current) return;
+
+    // Delegação de eventos para encontrar o elemento de célula clicado de forma síncrona e rápida
+    const target = (e.target as HTMLElement).closest(".cell-ripple-item");
+    if (!target) return;
+
+    const rowIdx = parseInt(target.getAttribute("data-row") || "0", 10);
+    const colIdx = parseInt(target.getAttribute("data-col") || "0", 10);
+
+    // Obtém todas as células filhas diretamente via DOM real, evitando overhead de ciclo de vida do React
+    const children = gridRef.current.children;
+    const length = children.length;
+
+    for (let i = 0; i < length; i++) {
+      const child = children[i] as HTMLDivElement;
+      if (!child) continue;
+
+      const r = parseInt(child.getAttribute("data-row") || "0", 10);
+      const c = parseInt(child.getAttribute("data-col") || "0", 10);
+
+      const distance = Math.hypot(r - rowIdx, c - colIdx);
+      const delay = Math.max(0, distance * 55);
+      const duration = 200 + distance * 80;
+
+      // Injeta os valores das propriedades CSS diretamente no style inline
+      child.style.setProperty("--delay", `${delay}ms`);
+      child.style.setProperty("--duration", `${duration}ms`);
+
+      // Reinicia a animação de forma determinística
+      child.classList.remove("animate-cell-ripple");
+      
+      // Força um reflow síncrono no elemento individual para reiniciar o ciclo da animação do browser
+      void child.offsetWidth;
+      
+      child.classList.add("animate-cell-ripple");
+    }
   };
 
   return (
-    <div className={cn("relative", className)} style={gridStyle}>
+    <div
+      ref={gridRef}
+      className={cn("relative", className)}
+      style={gridStyle}
+      onClick={handleGridClick}
+    >
       {cells.map((idx) => {
         const rowIdx = Math.floor(idx / cols);
         const colIdx = idx % cols;
-        const distance = clickedCell ? Math.hypot(clickedCell.row - rowIdx, clickedCell.col - colIdx) : 0;
-        const delay = clickedCell ? Math.max(0, distance * 55) : 0;
-        const duration = 200 + distance * 80;
-
-        const style: CellStyle = clickedCell
-          ? {
-              "--delay": `${delay}ms`,
-              "--duration": `${duration}ms`,
-            }
-          : {};
 
         return (
           <div
             key={idx}
+            data-row={rowIdx}
+            data-col={colIdx}
             className={cn(
-              "cell relative border-[0.5px] opacity-40 transition-opacity duration-150 will-change-transform hover:opacity-80 dark:shadow-[0px_0px_40px_1px_var(--cell-shadow-color)_inset]",
-              clickedCell && "animate-cell-ripple [animation-fill-mode:none]",
-              !interactive && "pointer-events-none",
+              "cell-ripple-item cell relative border-[0.5px] opacity-40 transition-opacity duration-150 will-change-transform hover:opacity-80 dark:shadow-[0px_0px_40px_1px_var(--cell-shadow-color)_inset]",
+              !interactive && "pointer-events-none"
             )}
             style={{
               backgroundColor: fillColor,
               borderColor: borderColor,
-              ...style,
             }}
-            onClick={interactive ? () => onCellClick?.(rowIdx, colIdx) : undefined}
           />
         );
       })}

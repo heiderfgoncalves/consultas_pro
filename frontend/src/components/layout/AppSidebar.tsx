@@ -5,7 +5,7 @@ import {
   LayoutDashboard, Search, History, Receipt,
   Users, UserCircle, LogOut, Settings,
   Menu, X, Shield, PanelLeftClose, PanelLeft, Server, BookOpen,
-  ChevronDown, ClipboardList,
+  ChevronDown, ClipboardList, CreditCard,
 } from 'lucide-react';
 import { useAuthStore, accessLevelLabels } from '@/stores/authStore';
 import ThemeToggle from '@/components/ThemeToggle';
@@ -25,15 +25,12 @@ const navItems = [
   { label: 'Histórico', icon: History, path: '/consulta/historico', minLevel: 2 },
   { label: 'Financeiro', icon: Receipt, path: '/financeiro', minLevel: 1 },
   { label: 'Equipe', icon: Users, path: '/equipe', minLevel: 1 },
+  { label: 'Assinatura', icon: CreditCard, path: '/painel/assinatura', minLevel: 2 },
   { label: 'Documentação API', icon: BookOpen, path: '/documentacao/api', minLevel: 2, apiDocsOnly: true },
   { label: 'Perfil', icon: UserCircle, path: '/perfil', minLevel: 2 },
 ];
 
-const adminSubItems = [
-  { label: 'Painel', icon: LayoutDashboard, path: '/admin' as const },
-  { label: 'Templates Drawer', icon: ClipboardList, path: '/admin/templates-drawer' as const },
-  { label: 'Integrações', icon: Server, path: '/admin/integracoes' as const },
-];
+// Sub-itens do admin serão definidos dinamicamente de acordo com a role do usuário.
 
 function isAdminSubActive(path: string, pathname: string) {
   if (path === '/admin') return pathname === '/admin';
@@ -49,6 +46,17 @@ export default function AppSidebar() {
   const { user, logout } = useAuthStore();
 
   const isPlatformAdmin = user?.backendRole === 'PLATFORM_ADMIN';
+  const isCustomerAdmin = user?.backendRole === 'CUSTOMER_ADMIN';
+  const hasAdminAccess = ['PLATFORM_ADMIN', 'CUSTOMER_ADMIN', 'COMPANY_ADMIN'].includes(user?.backendRole ?? '');
+
+  const adminSubItems = [
+    { label: 'Painel', icon: LayoutDashboard, path: '/admin' as const },
+    ...(isPlatformAdmin || isCustomerAdmin ? [
+      { label: 'Templates Drawer', icon: ClipboardList, path: '/admin/templates-drawer' as const },
+      { label: 'Integrações', icon: Server, path: '/admin/integracoes' as const },
+    ] : []),
+  ];
+
   const adminSectionActive = location.pathname.startsWith('/admin');
 
   useEffect(() => {
@@ -117,7 +125,7 @@ export default function AppSidebar() {
           );
         })}
 
-        {isPlatformAdmin && (
+        {hasAdminAccess && (
           <>
             {collapsed && !isMobile ? (
               <DropdownMenu>

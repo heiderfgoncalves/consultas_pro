@@ -62,6 +62,11 @@ export default function AuthenticatedLayout() {
     return <Navigate to="/login" replace />;
   }
 
+  const { sessionUser } = useAuthStore();
+  if (sessionUser?.mustResetPassword) {
+    return <Navigate to="/reset-senha" replace />;
+  }
+
   return (
     <div className="flex h-screen overflow-hidden bg-background relative font-sans text-foreground isolate">
 

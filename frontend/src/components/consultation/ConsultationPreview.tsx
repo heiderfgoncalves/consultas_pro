@@ -6,6 +6,7 @@ import { buildExpressionContextFromConsultation } from '@/lib/templateSectionUti
 import { useTheme } from '@/hooks/use-theme';
 import { ZoomIn, ZoomOut, Download, Loader2 } from 'lucide-react';
 import { useAuthStore } from '@/stores/authStore';
+import { getStoredToken, apiBase, openConsultationPdfInNewTab } from '@/lib/api';
 
 
 const LUCIDE_STYLE = `
@@ -31,6 +32,7 @@ interface ConsultationPreviewProps {
   realData?: Record<string, unknown>;
   layout?: TemplateDocument;
   rawItems?: any[];
+  consultationId?: string;
 }
 
 // Constrói dinamicamente um TemplateDocument baseado nos blocos selecionados (Fase 5)
@@ -199,6 +201,7 @@ export default function ConsultationPreview({
   realData,
   layout,
   rawItems,
+  consultationId,
 }: ConsultationPreviewProps) {
   const { user } = useAuthStore();
   const [htmlOutput, setHtmlOutput] = React.useState<string | null>(null);
@@ -215,6 +218,12 @@ export default function ConsultationPreview({
     if (pdfLoading) return;
     setPdfLoading(true);
     try {
+      if (consultationId) {
+        openConsultationPdfInNewTab(consultationId);
+        setPdfLoading(false);
+        return;
+      }
+
       const consultationDate = new Date().toLocaleDateString('pt-BR') + ' ' + new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
       const protocol = realData?.protocol ||
                        (realData as any)?.template?.protocol ||
@@ -310,62 +319,77 @@ ${parentStyles}
       const frame = document.createElement('iframe');
       frame.id = '__pdf-render-frame';
       frame.style.cssText = `position:fixed;top:0;left:-9999px;width:${pageWidth}px;height:${pageHeight}px;border:none;z-index:-1;opacity:0.01;pointer-events:none;`;
+
       document.body.appendChild(frame);
-
       frame.srcdoc = fullHtml;
-      frame.onload = async () => {
-        try {
-          const iframeDoc = frame.contentDocument;
-          if (!iframeDoc) throw new Error('iframe sem documento');
 
-          if (iframeDoc.fonts) {
-            await iframeDoc.fonts.ready;
+      let attempts = 0;
+      const checkInterval = setInterval(async () => {
+        attempts++;
+        const iframeDoc = frame.contentDocument;
+        const pages = iframeDoc?.querySelectorAll<HTMLElement>('section.page');
+        const hasError = iframeDoc?.querySelector('.error');
+        const isReady = (pages && pages.length > 0) || hasError || (iframeDoc?.body && iframeDoc.body.innerHTML.trim().length > 100);
+
+        if (isReady || attempts > 100) {
+          clearInterval(checkInterval);
+
+          if (attempts > 100) {
+            console.error('Timeout ao carregar o iframe para PDF');
+            frame.remove();
+            setPdfLoading(false);
+            return;
           }
-          await new Promise(res => setTimeout(res, 500));
 
-          const { default: html2canvas } = await import('html2canvas');
-          const { jsPDF } = await import('jspdf');
+          try {
+            if (iframeDoc && iframeDoc.fonts) {
+              await iframeDoc.fonts.ready;
+            }
+            await new Promise(res => setTimeout(res, 500));
 
-          const pages = iframeDoc.querySelectorAll<HTMLElement>('section.page');
-          const pagesToCapture = pages.length > 0 ? Array.from(pages) : [iframeDoc.body];
+            const { default: html2canvas } = await import('html2canvas');
+            const { jsPDF } = await import('jspdf');
 
-          const pdf = new jsPDF({
-            orientation: pageWidth > pageHeight ? 'landscape' : 'portrait',
-            unit: 'px',
-            format: [pageWidth, pageHeight],
-            compress: true,
-          });
+            const pagesToCapture = pages && pages.length > 0 ? Array.from(pages) : [iframeDoc!.body];
 
-          for (let i = 0; i < pagesToCapture.length; i++) {
-            const el = pagesToCapture[i] as HTMLElement;
-            const canvas = await html2canvas(el, {
-              scale: 2,
-              useCORS: true,
-              allowTaint: true,
-              backgroundColor: '#ffffff',
-              width: el.offsetWidth || pageWidth,
-              height: el.offsetHeight || pageHeight,
-              windowWidth: el.offsetWidth || pageWidth,
-              windowHeight: el.offsetHeight || pageHeight,
+            const pdf = new jsPDF({
+              orientation: pageWidth > pageHeight ? 'landscape' : 'portrait',
+              unit: 'px',
+              format: [pageWidth, pageHeight],
+              compress: true,
             });
 
-            if (i > 0) pdf.addPage();
-            const imgData = canvas.toDataURL('image/jpeg', 0.92);
-            const pdfW = pdf.internal.pageSize.getWidth();
-            const pdfH = pdf.internal.pageSize.getHeight();
-            pdf.addImage(imgData, 'JPEG', 0, 0, pdfW, pdfH);
-          }
+            for (let i = 0; i < pagesToCapture.length; i++) {
+              const el = pagesToCapture[i] as HTMLElement;
+              const canvas = await html2canvas(el, {
+                scale: 2,
+                useCORS: true,
+                allowTaint: false,
+                backgroundColor: '#ffffff',
+                width: el.offsetWidth || pageWidth,
+                height: el.offsetHeight || pageHeight,
+                windowWidth: el.offsetWidth || pageWidth,
+                windowHeight: el.offsetHeight || pageHeight,
+              });
 
-          const docName = (layout as any)?.name || 'Relatorio';
-          const safeDoc = docInput?.replace(/\D/g, '') || 'sem-doc';
-          pdf.save(`${docName}-${safeDoc}.pdf`);
-        } catch (e: any) {
-          console.error('Erro ao gerar PDF:', e);
-        } finally {
-          frame.remove();
-          setPdfLoading(false);
+              if (i > 0) pdf.addPage();
+              const imgData = canvas.toDataURL('image/jpeg', 0.92);
+              const pdfW = pdf.internal.pageSize.getWidth();
+              const pdfH = pdf.internal.pageSize.getHeight();
+              pdf.addImage(imgData, 'JPEG', 0, 0, pdfW, pdfH);
+            }
+
+            const docName = (layout as any)?.name || 'Relatorio';
+            const safeDoc = docInput?.replace(/\D/g, '') || 'sem-doc';
+            pdf.save(`${docName}-${safeDoc}.pdf`);
+          } catch (e: any) {
+            console.error('Erro ao gerar PDF:', e);
+          } finally {
+            frame.remove();
+            setPdfLoading(false);
+          }
         }
-      };
+      }, 100);
     } catch (err: any) {
       console.error('Erro ao preparar PDF:', err);
       setPdfLoading(false);
