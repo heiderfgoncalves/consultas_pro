@@ -33,6 +33,7 @@
     "jsonpath-plus": "^10.3.0",
     "mustache": "^4.2.0",
     "pino": "^9.5.0",
+    "puppeteer": "^25.1.0",
     "ulid": "^2.3.0",
     "zod": "^3.23.8",
     "zod-to-json-schema": "^3.25.2"
