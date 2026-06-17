@@ -434,7 +434,7 @@ export function LeftPanel() {
 
   // 1. Query de Provedores e Consultas (Produtos de Provedor)
   const providersQuery = useQuery({
-    queryKey: ['admin-providers-integration'],
+    queryKey: ['admin-providers'],
     queryFn: () => getProviders(accessToken),
     enabled: !!accessToken,
   });
@@ -465,7 +465,7 @@ export function LeftPanel() {
 
   // 4. Query de Campos Canônicos
   const canonicalFieldsQuery = useQuery({
-    queryKey: ['admin-canonical-fields-integration'],
+    queryKey: ['admin-canonical-fields'],
     queryFn: () => getCanonicalFields(accessToken),
     enabled: !!accessToken,
   });
@@ -745,12 +745,20 @@ export function LeftPanel() {
         : (isDraftModified 
             ? draftResponse 
             : (poolItem?.payload || consultation?.sampleResponse));
+
       if (rawPayload) {
         try {
           const payloadObj = typeof rawPayload === "string"
             ? JSON.parse(rawPayload)
             : rawPayload;
           
+          if (payloadObj && typeof payloadObj === "object" && !Array.isArray(payloadObj)) {
+            const proto = (payloadObj as any).protocol || (payloadObj as any).protocolo || ((payloadObj as any).template && (payloadObj as any).template.protocol);
+            if (proto) {
+              mergedPayload.protocol = proto;
+            }
+          }
+
           const rawPayloadStr = typeof rawPayload === "string"
             ? rawPayload
             : JSON.stringify(rawPayload);
@@ -912,6 +920,19 @@ export function LeftPanel() {
           }
         }
       }
+    }
+
+    if (!mergedPayload.protocol) {
+      let extractedProtocol = "";
+      if (currentLayoutJson.metadata?.protocol) {
+        extractedProtocol = currentLayoutJson.metadata.protocol as string;
+      } else {
+        extractedProtocol = `REQ-${Math.floor(10000000 + Math.random() * 90000000)}`;
+        setTimeout(() => {
+          updateMetadata({ protocol: extractedProtocol });
+        }, 0);
+      }
+      mergedPayload.protocol = extractedProtocol;
     }
 
     const payloadStr = JSON.stringify(mergedPayload, null, 2);
@@ -1655,24 +1676,58 @@ export function LeftPanel() {
                       const c = consultations.find((item) => item.id === id);
                       if (!c) return null;
                       const isFallback = currentLayoutJson.metadata?.sourcesConfig?.[id]?.isFallback;
+                      const selectedTestLogs = (currentLayoutJson.metadata?.selectedTestLogs as Record<string, string>) || {};
+                      const activeLogId = selectedTestLogs[id];
+                      const activeLog = activeLogId ? testLogs.find((l) => l.id === activeLogId) : undefined;
+                      const usingTestLog = !!activeLog;
                       return (
                         <div
                           key={id}
-                          className="flex items-center justify-between p-1.5 rounded bg-slate-50 dark:bg-slate-900/50 border border-slate-100 dark:border-slate-800/80 text-[10px]"
+                          className="flex flex-col gap-0.5 p-1.5 rounded bg-slate-50 dark:bg-slate-900/50 border border-slate-100 dark:border-slate-800/80 text-[10px]"
                         >
-                          <div className="flex items-center gap-1.5 min-w-0 flex-1">
-                            <span className="flex items-center justify-center size-3.5 rounded bg-indigo-500/10 text-indigo-500 font-black text-[9px] shrink-0">
-                              {index + 1}
-                            </span>
-                            <span className="font-semibold text-slate-700 dark:text-slate-300 truncate" title={c.name}>
-                              {c.name}
-                            </span>
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-1.5 min-w-0 flex-1">
+                              <span className="flex items-center justify-center size-3.5 rounded bg-indigo-500/10 text-indigo-500 font-black text-[9px] shrink-0">
+                                {index + 1}
+                              </span>
+                              <span className="font-semibold text-slate-700 dark:text-slate-300 truncate" title={c.name}>
+                                {c.name}
+                              </span>
+                            </div>
+                            {isFallback && (
+                              <span className="px-1 py-0.5 rounded bg-amber-500/10 text-amber-500 text-[7.5px] font-black shrink-0 uppercase tracking-wider scale-90">
+                                Fallback
+                              </span>
+                            )}
                           </div>
-                          {isFallback && (
-                            <span className="px-1 py-0.5 rounded bg-amber-500/10 text-amber-500 text-[7.5px] font-black shrink-0 uppercase tracking-wider scale-90">
-                              Fallback
-                            </span>
-                          )}
+                          {/* Indicador visual da fonte de dados ativa */}
+                          <div className="flex items-center justify-between gap-1 pl-5">
+                            {usingTestLog ? (
+                              <>
+                                <span className="flex items-center gap-0.5 text-[8.5px] text-amber-600 dark:text-amber-400 font-semibold">
+                                  <span className="inline-block size-1.5 rounded-full bg-amber-500 shrink-0" />
+                                  Log {new Date(activeLog!.testedAt).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                                </span>
+                                <button
+                                  type="button"
+                                  title="Usar Mock Estático"
+                                  onClick={() => {
+                                    const nextLogs = { ...selectedTestLogs };
+                                    delete nextLogs[id];
+                                    updateMetadata({ selectedTestLogs: nextLogs });
+                                  }}
+                                  className="text-[8px] text-indigo-500 hover:text-indigo-700 dark:hover:text-indigo-300 font-bold underline underline-offset-1 cursor-pointer shrink-0 transition-colors"
+                                >
+                                  Usar Mock
+                                </button>
+                              </>
+                            ) : (
+                              <span className="flex items-center gap-0.5 text-[8.5px] text-emerald-600 dark:text-emerald-400 font-semibold">
+                                <span className="inline-block size-1.5 rounded-full bg-emerald-500 shrink-0" />
+                                Mock Estático
+                              </span>
+                            )}
+                          </div>
                         </div>
                       );
                     })

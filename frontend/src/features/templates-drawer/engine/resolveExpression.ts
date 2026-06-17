@@ -18,6 +18,67 @@ export function registerCanonicalTypesMetadata(meta: Record<string, CanonicalTyp
   canonicalTypesMetadata = normalized;
 }
 
+export function splitCommaSeparatedArgs(input: string): string[] {
+  const result: string[] = [];
+  let current = "";
+  let inDoubleQuote = false;
+  let inSingleQuote = false;
+  let parenDepth = 0;
+  let bracketDepth = 0;
+  
+  for (let i = 0; i < input.length; i++) {
+    const char = input[i];
+    if (char === '"' && !inSingleQuote) {
+      inDoubleQuote = !inDoubleQuote;
+    } else if (char === "'" && !inDoubleQuote) {
+      inSingleQuote = !inSingleQuote;
+    } else if (char === '(' && !inDoubleQuote && !inSingleQuote) {
+      parenDepth++;
+    } else if (char === ')' && !inDoubleQuote && !inSingleQuote) {
+      parenDepth--;
+    } else if (char === '[' && !inDoubleQuote && !inSingleQuote) {
+      bracketDepth++;
+    } else if (char === ']' && !inDoubleQuote && !inSingleQuote) {
+      bracketDepth--;
+    }
+    
+    if (char === ',' && !inDoubleQuote && !inSingleQuote && parenDepth === 0 && bracketDepth === 0) {
+      result.push(current.trim());
+      current = "";
+    } else {
+      current += char;
+    }
+  }
+  if (current.trim()) {
+    result.push(current.trim());
+  }
+  return result;
+}
+
+export function concatArrays(args: unknown[]): unknown[] {
+  const result: unknown[] = [];
+  for (const arg of args) {
+    if (arg == null) continue;
+    if (Array.isArray(arg)) {
+      result.push(...arg);
+    } else if (typeof arg === "object") {
+      const obj = arg as Record<string, unknown>;
+      if (Array.isArray(obj.linhas)) {
+        result.push(...obj.linhas);
+      } else if (Array.isArray(obj.registros)) {
+        result.push(...obj.registros);
+      } else if (Array.isArray(obj.itens)) {
+        result.push(...obj.itens);
+      } else {
+        result.push(arg);
+      }
+    } else {
+      result.push(arg);
+    }
+  }
+  return result;
+}
+
 /**
  * Safely resolve a dotted/bracketed path on a JSON-like value.
  * Examples: "cliente.nome", "dividas[0].credor"
@@ -26,7 +87,30 @@ export function registerCanonicalTypesMetadata(meta: Record<string, CanonicalTyp
 export function resolveExpression(path: string, data: unknown, collectAllFallback: boolean = false): unknown {
   if (!path) return undefined;
   
-  const trimmed = path.trim();
+  let trimmed = path.trim();
+
+  // Limpa delimitadores de chaves duplas ou simples se existirem
+  if (trimmed.startsWith("{{") && trimmed.endsWith("}}")) {
+    trimmed = trimmed.slice(2, -2).trim();
+  }
+  if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
+    trimmed = trimmed.slice(1, -1).trim();
+  }
+
+  // 1. Tratamento de múltiplos caminhos separados por vírgula no nível raiz (ex: "$DIVIDAS_SERASA, $REFIN_PERFIN")
+  const rootSegments = splitCommaSeparatedArgs(trimmed);
+  if (rootSegments.length > 1) {
+    const resolvedArgs = rootSegments.map(arg => resolveExpression(arg, data, collectAllFallback));
+    return concatArrays(resolvedArgs);
+  }
+
+  // 2. Tratamento explícito da função concat(path1, path2, ...)
+  if (trimmed.startsWith("concat(") && trimmed.endsWith(")")) {
+    const innerArgsStr = trimmed.slice(7, -1).trim();
+    const args = splitCommaSeparatedArgs(innerArgsStr);
+    const resolvedArgs = args.map(arg => resolveExpression(arg, data, collectAllFallback));
+    return concatArrays(resolvedArgs);
+  }
   
   // Remove prefixos "$" se houver (suporta múltiplos cifrões decorrentes de digitação)
   let cleanPath = trimmed;
@@ -367,6 +451,12 @@ export function resolveExpression(path: string, data: unknown, collectAllFallbac
             val = currentObj[keys[index]];
           }
         }
+      }
+    }
+
+    if (val === undefined) {
+      if (cleanSeg === "0" && current !== null && typeof current === "object" && !Array.isArray(current)) {
+        val = current;
       }
     }
 

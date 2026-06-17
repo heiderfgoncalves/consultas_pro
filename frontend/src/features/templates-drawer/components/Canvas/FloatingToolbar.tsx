@@ -330,7 +330,7 @@ export function FloatingToolbar({ containerRef, isIsolated = false, staticLayout
       )}
       {allOfType === "table" && (
         <span className="px-2 text-slate-550 dark:text-slate-450 flex items-center gap-1">
-          <Code2 className="size-3.5" /> Tabela — edite no painel direito
+          <Code2 className="size-3.5" /> Tabela
         </span>
       )}
 

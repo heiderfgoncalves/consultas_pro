@@ -251,4 +251,76 @@ describe("resolveExpression - Core engine tests", () => {
     // Caso 4: Suporte a prefixos '$'
     expect(resolveExpression("$template.date", dataComTemplate)).toBe("10/10/2026 12:00");
   });
+
+  it("deve suportar fallback de array implícito (índice 0) para registros únicos", () => {
+    const singleRecordData = {
+      SCORE_CREDITO: {
+        score: 750,
+        classificacao: "Excelente"
+      },
+      DADO_VAZIO: null,
+      DADO_INDEFINIDO: undefined
+    };
+
+    // Caso 1: Acesso direto com índice [0] em objeto que não é array
+    expect(resolveExpression("SCORE_CREDITO[0].score", singleRecordData)).toBe(750);
+    expect(resolveExpression("$SCORE_CREDITO[0].classificacao", singleRecordData)).toBe("Excelente");
+
+    // Caso 2: Acesso com índice [0] em objeto nulo ou indefinido deve retornar undefined sem quebrar
+    expect(resolveExpression("DADO_VAZIO[0].score", singleRecordData)).toBeUndefined();
+    expect(resolveExpression("DADO_INDEFINIDO[0].score", singleRecordData)).toBeUndefined();
+  });
+
+  describe("concatenação de arrays", () => {
+    it("deve concatenar arrays de forma implícita via vírgula na raiz", () => {
+      const result = resolveExpression("DIVIDAS_SPC, DIVIDAS_SERASA", mockData);
+      expect(result).toEqual([
+        { credor: "Banco A", valor: 500.50, status: "Aberto" },
+        { credor: "Lojista B", valor: 1000.00, status: "Aberto" },
+        { credor: "Cartão C", valor: 2400.00, status: "Aberto" }
+      ]);
+    });
+
+    it("deve concatenar arrays com prefixos de cifrão", () => {
+      const result = resolveExpression("$DIVIDAS_SPC, $DIVIDAS_SERASA", mockData);
+      expect(result).toEqual([
+        { credor: "Banco A", valor: 500.50, status: "Aberto" },
+        { credor: "Lojista B", valor: 1000.00, status: "Aberto" },
+        { credor: "Cartão C", valor: 2400.00, status: "Aberto" }
+      ]);
+    });
+
+    it("deve concatenar de forma explícita via helper concat()", () => {
+      const result = resolveExpression("concat(DIVIDAS_SPC, DIVIDAS_SERASA)", mockData);
+      expect(result).toEqual([
+        { credor: "Banco A", valor: 500.50, status: "Aberto" },
+        { credor: "Lojista B", valor: 1000.00, status: "Aberto" },
+        { credor: "Cartão C", valor: 2400.00, status: "Aberto" }
+      ]);
+    });
+
+    it("deve aceitar elementos únicos não-array na concatenação", () => {
+      const result = resolveExpression("concat(DIVIDAS_SPC, outros_dados)", mockData);
+      expect(result).toEqual([
+        { credor: "Banco A", valor: 500.50, status: "Aberto" },
+        { credor: "Lojista B", valor: 1000.00, status: "Aberto" },
+        { ativo: true }
+      ]);
+    });
+
+    it("deve limpar delimitadores de chaves duplas ou simples", () => {
+      const resultDouble = resolveExpression("{{DIVIDAS_SPC, DIVIDAS_SERASA}}", mockData);
+      expect(resultDouble).toEqual([
+        { credor: "Banco A", valor: 500.50, status: "Aberto" },
+        { credor: "Lojista B", valor: 1000.00, status: "Aberto" },
+        { credor: "Cartão C", valor: 2400.00, status: "Aberto" }
+      ]);
+
+      const resultSingle = resolveExpression("{DIVIDAS_SPC}", mockData);
+      expect(resultSingle).toEqual([
+        { credor: "Banco A", valor: 500.50, status: "Aberto" },
+        { credor: "Lojista B", valor: 1000.00, status: "Aberto" }
+      ]);
+    });
+  });
 });

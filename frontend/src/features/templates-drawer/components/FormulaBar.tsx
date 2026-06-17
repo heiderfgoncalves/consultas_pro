@@ -190,6 +190,11 @@ export function FormulaBar() {
   const properties = getPropertiesForElement(selectedElement);
   const activeProp = properties.find((p) => p.key === activePropKey) ?? properties[0];
 
+  const isHtmlMode = activePropKey === "customHtml" || inputValue.startsWith("html:");
+  const isFormulaMode = activeProp?.isExpression || inputValue.includes("{{") || /\bVAR\b/i.test(inputValue) || /\bRETURN\b/i.test(inputValue) || /\bCASE\b/i.test(inputValue);
+  const shouldShowMonaco = isExpanded && (isHtmlMode || isFormulaMode);
+  const editorLanguage = isHtmlMode ? "html" : (isFormulaMode ? "javascript" : "plaintext");
+
   // Monitora mudança do elemento selecionado ou da propriedade ativa
   useEffect(() => {
     if (selectedElement) {
@@ -446,6 +451,32 @@ export function FormulaBar() {
     }
     setIsSuggestOpen(false);
     toast.success("Alteração de fórmula aplicada!");
+  };
+
+  const handleAutoFormat = () => {
+    if (!inputValue || !selectedElement || !activeProp) {
+      toast.warning("Não há conteúdo para formatar!");
+      return;
+    }
+
+    try {
+      let formatted = "";
+      if (activePropKey === "customHtml" || inputValue.startsWith("html:")) {
+        const isPrefixed = inputValue.startsWith("html:");
+        const rawHtml = isPrefixed ? inputValue.substring(5) : inputValue;
+        const formattedHtml = formatHtml(rawHtml);
+        formatted = isPrefixed ? `html:${formattedHtml}` : formattedHtml;
+      } else {
+        formatted = formatExpressionOnly(inputValue);
+      }
+
+      setInputValue(formatted);
+      activeProp.setValue(selectedElement, formatted, updateElement, updateData);
+      toast.success("Código formatado com sucesso!");
+    } catch (err) {
+      console.error("Erro ao formatar código:", err);
+      toast.error("Ocorreu um erro ao formatar o código.");
+    }
   };
 
   // Fecha dropdown do autocomplete ao clicar fora
@@ -706,14 +737,15 @@ export function FormulaBar() {
                 )}
               >
                 {isExpanded ? (
-                  activePropKey === "customHtml" ? (
-                    <div className="w-full min-h-[140px] h-[140px] border-t border-slate-200 dark:border-slate-800 relative z-0">
+                  shouldShowMonaco ? (
+                    <div className="w-full min-h-[180px] h-[180px] border-t border-slate-200 dark:border-slate-800 relative z-0">
                       <Editor
-                        key={`formulabar-${selectedElement?.id}`}
+                        key={`formulabar-${selectedElement?.id}-${activePropKey}`}
                         height="100%"
-                        language="html"
+                        language={editorLanguage}
                         theme={editorTheme}
                         value={inputValue}
+                        hideHeader={true}
                         onChange={(v) => {
                           setInputValue(v || "");
                           if (selectedElement && activeProp) {
@@ -756,6 +788,20 @@ export function FormulaBar() {
                     disabled={!selectedElement}
                     className="w-full h-full px-2 text-xs font-mono text-slate-950 dark:text-slate-50 bg-transparent border-none outline-none focus:ring-0 focus:outline-none"
                   />
+                )}
+
+                {/* BOTÃO AUTO-FORMATAR */}
+                {selectedElement && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleAutoFormat();
+                    }}
+                    className="p-1 text-slate-400 hover:text-blue-500 dark:hover:text-blue-400 transition-colors h-7 w-7 flex items-center justify-center shrink-0 border-l border-slate-100 dark:border-slate-850 cursor-pointer"
+                    title="Auto-Formatar Código/Fórmula (Sparkles)"
+                  >
+                    <Sparkles className="size-4" />
+                  </button>
                 )}
 
                 {/* BOTÃO EXPANDIR / COLAPSAR */}
@@ -808,4 +854,137 @@ export function FormulaBar() {
       </div>
     </div>
   );
+}
+
+/**
+ * Formata expressões lógicas de forma estruturada e indentada.
+ * Especialmente projetada para tratar blocos "VAR/RETURN" e estruturas "case when ... then ... else ... end".
+ */
+export function formatExpressionOnly(expr: string): string {
+  let text = expr.trim();
+  
+  // Normaliza quebras de linha e formata VAR/RETURN
+  text = text.replace(/\bVAR\s+/gi, "\nVAR ");
+  text = text.replace(/\bRETURN\b/gi, "\nRETURN\n");
+  
+  // Formatar CASE/WHEN/THEN/ELSE/END de forma limpa e estruturada
+  text = text.replace(/\bCASE\b/gi, "\nCASE\n");
+  text = text.replace(/\bWHEN\b/gi, "\n  WHEN ");
+  text = text.replace(/\bTHEN\b/gi, " THEN ");
+  text = text.replace(/\bELSE\b/gi, "\n  ELSE ");
+  text = text.replace(/\bEND\b/gi, "\nEND");
+
+  // Re-processamento linha por linha para manter indentação limpa e proporcional
+  const lines = text.split("\n");
+  let indentLevel = 0;
+  const step = "  ";
+  const resultLines: string[] = [];
+
+  for (let line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+
+    // Se a linha começa com END, reduz a indentação antes de renderizá-la
+    if (trimmed.toUpperCase() === "END" || trimmed.toUpperCase().startsWith("END ")) {
+      indentLevel = Math.max(0, indentLevel - 1);
+    }
+
+    let indent = step.repeat(indentLevel);
+    
+    // Ajusta o nível de indentação para as próximas linhas
+    if (trimmed.toUpperCase() === "CASE" || trimmed.toUpperCase().startsWith("CASE ")) {
+      indentLevel++;
+    }
+    
+    // Se for RETURN, remove recuo para destaque estético de bloco
+    if (trimmed.toUpperCase() === "RETURN") {
+      indent = "";
+    }
+
+    resultLines.push(indent + trimmed);
+  }
+
+  return resultLines.join("\n");
+}
+
+/**
+ * Formata um bloco HTML offline preservando e formatando expressões interpoladas {{ ... }}.
+ */
+export function formatHtml(html: string): string {
+  const expressions: string[] = [];
+  
+  // Captura e protege os blocos de expressões interpoladas {{ ... }}
+  let protectedHtml = html.replace(/\{\{([\s\S]*?)\}\}/g, (_, expr) => {
+    expressions.push(expr);
+    return `__EXPR_PLACEHOLDER_${expressions.length - 1}__`;
+  });
+
+  let result = "";
+  let indentLevel = 0;
+  const step = "  ";
+
+  // Formata o HTML usando quebra de tags estruturais
+  const tagReg = /(<[^>]+>)/g;
+  const parts = protectedHtml.replace(/\s+/g, " ").replace(tagReg, "\n$1\n").split("\n");
+
+  for (let i = 0; i < parts.length; i++) {
+    const part = parts[i].trim();
+    if (!part) continue;
+
+    // Tag de fechamento
+    if (part.startsWith("</")) {
+      indentLevel = Math.max(0, indentLevel - 1);
+      result += step.repeat(indentLevel) + part + "\n";
+    }
+    // Tag autocontida ou instrução especial
+    else if (part.startsWith("<") && (part.endsWith("/>") || part.startsWith("<?") || part.startsWith("<!"))) {
+      result += step.repeat(indentLevel) + part + "\n";
+    }
+    // Tag de abertura comum
+    else if (part.startsWith("<") && !part.startsWith("</")) {
+      result += step.repeat(indentLevel) + part + "\n";
+      indentLevel++;
+    }
+    // Texto simples contendo possivelmente nossos placeholders
+    else {
+      result += step.repeat(indentLevel) + part + "\n";
+    }
+  }
+
+  let formattedHtml = result.trim();
+
+  // Devolve as expressões formatando-as individualmente conforme a complexidade
+  for (let i = 0; i < expressions.length; i++) {
+    const rawExpr = expressions[i];
+    let formattedExpr = "";
+
+    // Se contiver palavras-chave de fórmulas avançadas ou for muito longa, formata-a
+    if (/\bVAR\b/i.test(rawExpr) || /\bCASE\b/i.test(rawExpr) || rawExpr.length > 50) {
+      const internalFormatted = formatExpressionOnly(rawExpr);
+      
+      if (internalFormatted.includes("\n")) {
+        const placeholder = `__EXPR_PLACEHOLDER_${i}__`;
+        const lines = formattedHtml.split("\n");
+        const lineWithPlaceholder = lines.find(l => l.includes(placeholder)) || "";
+        const indentMatch = lineWithPlaceholder.match(/^(\s*)/);
+        const baseIndent = indentMatch ? indentMatch[1] : "";
+        
+        const exprLines = internalFormatted.split("\n");
+        const indentedExpr = exprLines.map((line, idx) => {
+          if (idx === 0) return line.trim();
+          return baseIndent + "  " + line.trim();
+        }).join("\n");
+        
+        formattedExpr = `{{\n${baseIndent}  ${indentedExpr}\n${baseIndent}}}`;
+      } else {
+        formattedExpr = `{{ ${internalFormatted.trim()} }}`;
+      }
+    } else {
+      formattedExpr = `{{${rawExpr.trim()}}}`;
+    }
+
+    formattedHtml = formattedHtml.replace(`__EXPR_PLACEHOLDER_${i}__`, formattedExpr);
+  }
+
+  return formattedHtml;
 }

@@ -56,7 +56,7 @@ export function TitleBar() {
 
   // Query de Provedores para obter produtos e associar ao template se necessário (criação)
   const providersQuery = useQuery({
-    queryKey: ['admin-providers-integration'],
+    queryKey: ['admin-providers'],
     queryFn: () => getProviders(accessToken),
     enabled: !!accessToken,
   });
@@ -101,7 +101,15 @@ export function TitleBar() {
         sortOrder: index,
       }));
 
-      // Se não há um ID ativo, estamos salvando um rascunho local pela primeira vez!
+      const activeTemplate = templatesQuery.data?.find((t) => t.id === activeTemplateId);
+      const isReadOnly = activeTemplateId && activeTemplate && (activeTemplate as any).canEdit === false;
+
+      // Se for somente leitura para o usuário atual, tratamos como novo para salvar uma cópia
+      if (isReadOnly) {
+        targetId = null;
+      }
+
+      // Se não há um ID ativo ou é somente leitura, estamos salvando um rascunho local pela primeira vez!
       if (!targetId) {
         const itemsToCreate = templateItems.length > 0 ? templateItems : defaultItems;
         if (itemsToCreate.length === 0) {
@@ -109,10 +117,11 @@ export function TitleBar() {
         }
 
         if (!vars?.isAutosave) {
-          toast.info("Criando novo template de relatório no servidor...");
+          toast.info(isReadOnly ? "Salvando uma cópia do template padrão na sua sandbox..." : "Criando novo template de relatório no servidor...");
         }
+        
         const createdTpl = await createTemplateApi(accessToken, {
-          name: template.name,
+          name: isReadOnly ? `${template.name} (Cópia)` : template.name,
           visibility: "PRIVATE",
           items: itemsToCreate,
         });
@@ -135,20 +144,23 @@ export function TitleBar() {
 
       // Com o ID real do banco (seja existente ou recém-criado), salva o layout
       const res = await patchTemplateLayoutApi(accessToken, targetId, {
-        name: template.name,
+        name: isReadOnly ? `${template.name} (Cópia)` : template.name,
         layout: payloadTemplate,
         items: templateItems, // Envia a lista de fontes atualizada para salvar no banco
       });
 
-      return { res, isAutosave: vars?.isAutosave };
+      return { res, isAutosave: vars?.isAutosave, wasReadOnly: isReadOnly };
     },
     onSuccess: (data) => {
       if (!data.isAutosave) {
-        toast.success("Layout e nome do template salvos no servidor com sucesso!");
+        toast.success(data.wasReadOnly ? "Cópia criada e salva na sua conta com sucesso!" : "Layout e nome do template salvos no servidor com sucesso!");
       }
 
-      // Se era um template novo, precisamos atualizar o ID ativo no estado global
-      if (!activeTemplateId && data.res?.id) {
+      // Se era um template novo ou somente leitura, precisamos atualizar o ID ativo no estado global
+      const activeTemplate = templatesQuery.data?.find((t) => t.id === activeTemplateId);
+      const isReadOnly = activeTemplateId && activeTemplate && (activeTemplate as any).canEdit === false;
+      
+      if ((!activeTemplateId || isReadOnly) && data.res?.id) {
         setActiveTemplateId(data.res.id);
       }
 
@@ -165,16 +177,20 @@ export function TitleBar() {
     return () => clearInterval(id);
   }, []);
 
-  // Autosave debounced para o servidor (apenas se houver template ativo)
+  // Autosave debounced para o servidor (apenas se houver template ativo e ele não for somente leitura)
   useEffect(() => {
     if (!dirty || !activeTemplateId) return;
+
+    const activeTemplate = templatesQuery.data?.find((t) => t.id === activeTemplateId);
+    const isReadOnly = activeTemplate && (activeTemplate as any).canEdit === false;
+    if (isReadOnly) return; // Não dispara autosave em templates somente leitura
 
     const id = setTimeout(() => {
       saveLayoutMutation.mutate({ isAutosave: true });
     }, 3000); // 3 segundos de inatividade
 
     return () => clearTimeout(id);
-  }, [dirty, template, activeTemplateId]);
+  }, [dirty, template, activeTemplateId, templatesQuery.data]);
 
   // Resetar a flag de sincronização se o template ativo mudar
   useEffect(() => {

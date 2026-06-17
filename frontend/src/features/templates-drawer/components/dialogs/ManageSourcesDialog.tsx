@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useEditorStore } from "../../store/editor.store";
 import { useAuthStore } from "@/stores/authStore";
 import { getProviders, mapApiProduct, getTestLogs, mapTestLogs } from "@/api/admin-integrations";
+import { toast } from "sonner";
 import {
   Dialog,
   DialogContent,
@@ -35,7 +36,7 @@ export function ManageSourcesDialog({ open, onOpenChange }: ManageSourcesDialogP
 
   // 1. Obter todos os Provedores & Produtos cadastrados na Integração
   const providersQuery = useQuery({
-    queryKey: ['admin-providers-integration'],
+    queryKey: ['admin-providers'],
     queryFn: () => getProviders(accessToken),
     enabled: !!accessToken && open,
   });

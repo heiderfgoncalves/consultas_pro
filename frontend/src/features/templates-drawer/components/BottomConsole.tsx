@@ -538,10 +538,13 @@ function splitExpressions(input: string): string[] {
 
 
 function evaluateConsoleExpression(inputExpr: string, data: any, template: any): any {
+  const realProtocol = (data && (data.protocol || data.protocolo || (data.template && data.template.protocol)))
+    || `REQ-${Math.floor(10000000 + Math.random() * 90000000)}`;
+
   const context = {
     ...data,
     template: {
-      protocol: "PR-2026-9876",
+      protocol: realProtocol,
       date: new Date().toLocaleDateString("pt-BR"),
       company: "Consultas PRO S.A.",
       ...template
@@ -644,6 +647,19 @@ function evaluateConsoleExpression(inputExpr: string, data: any, template: any):
   let expr = inputExpr.trim();
   if (!expr) return undefined;
 
+  // Limpa delimitadores de chaves duplas ou simples se parecerem uma lista de concatenação
+  if (expr.startsWith("{{") && expr.endsWith("}}")) {
+    expr = expr.slice(2, -2).trim();
+  }
+  if (expr.startsWith("{") && expr.endsWith("}")) {
+    const inner = expr.slice(1, -1).trim();
+    if (!inner.includes(":") && inner.includes(",")) {
+      expr = `concat(${inner})`;
+    } else if (!inner.includes(":") && !inner.includes(",")) {
+      expr = inner;
+    }
+  }
+
   // Preprocessamento do dedup, idêntico ao do engine de interpolação
   expr = expr.replace(/\$?(dedup)\s*\(\s*(sum|avg|min|max|count)\s*\(\s*([^)]+?)\s*\)\s*,\s*(.+?)\s*\)/g, (match, fnName, aggFn, aggArgsStr, dedupKeysStr) => {
     let baseArrayPath = "";
@@ -720,7 +736,7 @@ function evaluateConsoleExpression(inputExpr: string, data: any, template: any):
   });
 
   const consoleHelpers = [
-    "sum", "avg", "min", "max", "count", "dedup",
+    "sum", "avg", "min", "max", "count", "dedup", "concat",
     "formatCurrency", "formatBacenCurrency", "formatCpfCnpj", "json",
     "toNumber", "asNumber", "toPercent", "asPercent", "toCurrency", "asCurrency", "toDate", "asDate", "toText", "asText",
     "round"
@@ -838,11 +854,34 @@ function evaluateConsoleExpression(inputExpr: string, data: any, template: any):
     return Number(num.toFixed(d));
   };
 
+  const concat = (...args: any[]) => {
+    const result: any[] = [];
+    for (const arg of args) {
+      if (arg == null) continue;
+      if (Array.isArray(arg)) {
+        result.push(...arg);
+      } else if (typeof arg === "object") {
+        if (Array.isArray(arg.linhas)) {
+          result.push(...arg.linhas);
+        } else if (Array.isArray(arg.registros)) {
+          result.push(...arg.registros);
+        } else if (Array.isArray(arg.itens)) {
+          result.push(...arg.itens);
+        } else {
+          result.push(arg);
+        }
+      } else {
+        result.push(arg);
+      }
+    }
+    return result;
+  };
+
   try {
     const keys = [
-      "sum", "avg", "min", "max", "count", 
+      "sum", "avg", "min", "max", "count", "concat",
       "formatCurrency", "formatBacenCurrency", "formatCpfCnpj", "json",
-      "$sum", "$avg", "$min", "$max", "$count", 
+      "$sum", "$avg", "$min", "$max", "$count", "$concat",
       "$formatCurrency", "$formatBacenCurrency", "$formatCpfCnpj", "$json",
       "toNumber", "asNumber", "toPercent", "asPercent", "toCurrency", "asCurrency", "toDate", "asDate", "toText", "asText",
       "$toNumber", "$asNumber", "$toPercent", "$asPercent", "$toCurrency", "$asCurrency", "$toDate", "$asDate", "$toText", "$asText",
@@ -851,9 +890,9 @@ function evaluateConsoleExpression(inputExpr: string, data: any, template: any):
       ...Object.keys(varMap)
     ];
     const args = [
-      sum, avg, min, max, count, 
+      sum, avg, min, max, count, concat,
       formatCurrency, formatBacenCurrency, formatCpfCnpj, json,
-      sum, avg, min, max, count, 
+      sum, avg, min, max, count, concat,
       formatCurrency, formatBacenCurrency, formatCpfCnpj, json,
       toNumber, toNumber, toPercent, toPercent, toCurrency, toCurrency, toDate, toDate, toText, toText,
       toNumber, toNumber, toPercent, toPercent, toCurrency, toCurrency, toDate, toDate, toText, toText,

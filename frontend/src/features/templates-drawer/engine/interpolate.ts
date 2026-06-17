@@ -614,7 +614,7 @@ function preprocessExpression(expr: string, data: unknown): string {
     if (trimmedMatch === "null" || trimmedMatch === "undefined") return "0";
 
     const helpers = [
-      "sum", "avg", "min", "max", "count", "calc", "math", 
+      "sum", "avg", "min", "max", "count", "calc", "math", "concat",
       "formatCurrency", "formatBacenCurrency", "formatCpfCnpj", "json",
       "toNumber", "asNumber", "toPercent", "asPercent", "toCurrency", "asCurrency", "toDate", "asDate", "toText", "asText",
       "round"
@@ -744,7 +744,7 @@ function parseMath(expr: string): number {
 }
 
 function tokenizeLogic(expr: string): string[] {
-  const regex = /\s*(<=|>=|!=|==|>|<|\+|-|\*|\/|\(|\)|,|'[^']+'|"[^"]+"|[a-zA-Z_$][a-zA-Z0-9._$\[\]\*]*|\d+(?:\.\d+)?)\s*/g;
+  const regex = /\s*(<=|>=|!=|==|>|<|\+|-|\*|\/|\(|\)|,|'[^']*'|"[^"]*"|[a-zA-Z_$][a-zA-Z0-9._$\[\]\*]*|\d+(?:\.\d+)?)\s*/g;
   const tokens: string[] = [];
   let match;
   while ((match = regex.exec(expr)) !== null) {
@@ -817,7 +817,41 @@ function parseLogicAST(tokens: string[]): any {
       return expr;
     }
 
-    if (/^(if|and|or|sin|cos|tan|math|calc|round)$/i.test(token)) {
+    if (/^case$/i.test(token)) {
+      const cases: { cond: any; value: any }[] = [];
+      let elseExpr: any = null;
+      
+      while (peek() && !/^end$/i.test(peek())) {
+        const nextToken = peek();
+        if (/^when$/i.test(nextToken)) {
+          consume(); // when
+          const cond = parseExpression();
+          const thenToken = peek();
+          if (/^then$/i.test(thenToken)) {
+            consume(); // then
+            const val = parseExpression();
+            cases.push({ cond, value: val });
+          } else {
+            // Consome se não houver "then" válido para evitar loop
+            consume();
+          }
+        } else if (/^else$/i.test(nextToken)) {
+          consume(); // else
+          elseExpr = parseExpression();
+        } else {
+          // Consumir token inesperado para evitar loop infinito
+          consume();
+        }
+      }
+      
+      if (peek() && /^end$/i.test(peek())) {
+        consume(); // end
+      }
+      
+      return { type: 'case', cases, elseExpr };
+    }
+
+    if (/^(if|and|or|sin|cos|tan|math|calc|round|concatenate|upper|lower|switch|divide|coalesce|len|ifempty|sum|avg|min|max|count)$/i.test(token)) {
       if (peek() === '(') {
         consume();
         const args = [];
@@ -850,6 +884,33 @@ function evaluateLogicAST(node: any, data: unknown): any {
   if (node.type === 'literal') return node.value;
   if (node.type === 'variable') {
     return resolveExpression(node.name, data);
+  }
+
+  if (node.type === 'case') {
+    for (const c of node.cases) {
+      const condVal = evaluateLogicAST(c.cond, data);
+      
+      let isTrue = false;
+      if (condVal != null) {
+        if (Array.isArray(condVal)) {
+          isTrue = condVal.length > 0;
+        } else if (typeof condVal === "boolean") {
+          isTrue = condVal;
+        } else if (typeof condVal === "number") {
+          isTrue = condVal !== 0;
+        } else if (typeof condVal === "string") {
+          isTrue = condVal !== "" && condVal !== "false";
+        } else {
+          isTrue = true;
+        }
+      }
+      
+      if (isTrue) {
+        return evaluateLogicAST(c.value, data);
+      }
+    }
+    
+    return node.elseExpr ? evaluateLogicAST(node.elseExpr, data) : null;
   }
 
   if (node.type === 'binary') {
@@ -914,13 +975,138 @@ function evaluateLogicAST(node: any, data: unknown): any {
     }
     if (node.fn === 'round') {
       const val = evaluateLogicAST(node.args[0], data);
-      const decimals = node.args[1] !== undefined ? evaluateLogicAST(node.args[1], data) : 0;
+      let decimalsVal = node.args[1] !== undefined ? Number(evaluateLogicAST(node.args[1], data)) : 0;
+      if (Number.isNaN(decimalsVal) || decimalsVal < 0) {
+        decimalsVal = 0;
+      } else if (decimalsVal > 20) {
+        decimalsVal = 20;
+      } else {
+        decimalsVal = Math.floor(decimalsVal);
+      }
       const num = toNumber(val);
-      return Number(num.toFixed(Number(decimals)));
+      const safeNum = Number.isNaN(num) ? 0 : num;
+      return Number(safeNum.toFixed(decimalsVal));
+    }
+    if (node.fn === 'concatenate') {
+      return node.args.map((arg: any) => {
+        const val = evaluateLogicAST(arg, data);
+        return val !== null && val !== undefined ? String(val) : '';
+      }).join('');
+    }
+    if (node.fn === 'upper') {
+      const val = evaluateLogicAST(node.args[0], data);
+      return val !== null && val !== undefined ? String(val).toUpperCase() : '';
+    }
+    if (node.fn === 'lower') {
+      const val = evaluateLogicAST(node.args[0], data);
+      return val !== null && val !== undefined ? String(val).toLowerCase() : '';
+    }
+    if (node.fn === 'switch') {
+      if (node.args.length < 2) return null;
+      const exprVal = evaluateLogicAST(node.args[0], data);
+      const numPairs = Math.floor((node.args.length - 1) / 2);
+      for (let i = 0; i < numPairs; i++) {
+        const caseVal = evaluateLogicAST(node.args[1 + i * 2], data);
+        if (String(exprVal) === String(caseVal)) {
+          return evaluateLogicAST(node.args[2 + i * 2], data);
+        }
+      }
+      if ((node.args.length - 1) % 2 === 1) {
+        return evaluateLogicAST(node.args[node.args.length - 1], data);
+      }
+      return null;
+    }
+    if (node.fn === 'divide') {
+      const num = toNumber(evaluateLogicAST(node.args[0], data));
+      const den = toNumber(evaluateLogicAST(node.args[1], data));
+      const alt = node.args[2] !== undefined ? evaluateLogicAST(node.args[2], data) : 0;
+      return den !== 0 ? num / den : alt;
+    }
+    if (node.fn === 'coalesce') {
+      for (const arg of node.args) {
+        const val = evaluateLogicAST(arg, data);
+        if (val !== null && val !== undefined) return val;
+      }
+      return null;
+    }
+    if (node.fn === 'len') {
+      const val = evaluateLogicAST(node.args[0], data);
+      return val !== null && val !== undefined ? String(val).length : 0;
+    }
+    if (node.fn === 'ifempty') {
+      const val = evaluateLogicAST(node.args[0], data);
+      const alt = evaluateLogicAST(node.args[1], data);
+      const isEmpty = val === null || val === undefined || String(val).trim() === "";
+      return isEmpty ? alt : val;
+    }
+    if (node.fn === 'sum') {
+      const val = evaluateLogicAST(node.args[0], data);
+      const field = node.args[1] !== undefined ? String(evaluateLogicAST(node.args[1], data)) : undefined;
+      return sumArray(val, field);
+    }
+    if (node.fn === 'avg') {
+      const val = evaluateLogicAST(node.args[0], data);
+      const field = node.args[1] !== undefined ? String(evaluateLogicAST(node.args[1], data)) : undefined;
+      return avgArray(val, field);
+    }
+    if (node.fn === 'min') {
+      const val = evaluateLogicAST(node.args[0], data);
+      const field = node.args[1] !== undefined ? String(evaluateLogicAST(node.args[1], data)) : undefined;
+      return minArray(val, field);
+    }
+    if (node.fn === 'max') {
+      const val = evaluateLogicAST(node.args[0], data);
+      const field = node.args[1] !== undefined ? String(evaluateLogicAST(node.args[1], data)) : undefined;
+      return maxArray(val, field);
+    }
+    if (node.fn === 'count') {
+      const val = evaluateLogicAST(node.args[0], data);
+      return countArray(val);
     }
   }
 
   return null;
+}
+
+export function parseVarsAndReturn(
+  expression: string,
+  data: unknown,
+  opts: { fallback?: string; format?: BindingFormat; logs?: BindingLog[] } = {}
+): { evaluatedExpr: string; localScope: any } {
+  const trimmed = expression.trim();
+  const localScope = (data && typeof data === "object") ? { ...(data as Record<string, unknown>) } : {};
+  
+  if (!/\bRETURN\b/i.test(trimmed)) {
+    return { evaluatedExpr: expression, localScope: data };
+  }
+  
+  const returnMatch = trimmed.match(/^([\s\S]*?)\bRETURN\b([\s\S]*)$/i);
+  if (!returnMatch) {
+    return { evaluatedExpr: expression, localScope: data };
+  }
+  
+  const varsPart = returnMatch[1].trim();
+  const returnPart = returnMatch[2].trim();
+  
+  const varDeclarations = varsPart.split(/\bVAR\b/i);
+  
+  for (const decl of varDeclarations) {
+    const declTrimmed = decl.trim();
+    if (!declTrimmed) continue;
+    
+    const eqIndex = declTrimmed.indexOf("=");
+    if (eqIndex === -1) continue;
+    
+    const varName = declTrimmed.substring(0, eqIndex).trim();
+    const varExpr = declTrimmed.substring(eqIndex + 1).trim();
+    
+    if (varName) {
+      const evaluatedValue = evaluateExpressionRaw(varExpr, localScope);
+      localScope[varName] = evaluatedValue;
+    }
+  }
+  
+  return { evaluatedExpr: returnPart, localScope };
 }
 
 function resolveVal(
@@ -928,10 +1114,24 @@ function resolveVal(
   data: unknown,
   opts: { fallback?: string; format?: BindingFormat; logs?: BindingLog[] }
 ): string {
-  const trimmed = expression.replace(/\s+/g, " ").trim();
+  let textToEval = expression;
+  if (/\bRETURN\b/i.test(expression)) {
+    const parsed = parseVarsAndReturn(expression, data, opts);
+    textToEval = parsed.evaluatedExpr;
+    data = parsed.localScope;
+  }
+
+  const trimmed = textToEval.replace(/\s+/g, " ").trim();
   if (!trimmed) return "";
 
-  if (/^(if|and|or|math|calc|sin|cos|tan)\s*\(|^\d+\s*[-+*/]/i.test(trimmed)) {
+  // Função interna robusta para detectar se o valor é uma expressão complexa que deve ser processada pelo motor lógico
+  const cleanForCheck = trimmed.replace(/\[\*\]/g, "");
+  const isComplexExpr = 
+    /\b(if|and|or|math|calc|sin|cos|tan|case|when|then|else|end|concatenate|upper|lower|switch|divide|coalesce|len|ifempty)\b/i.test(cleanForCheck) ||
+    /\+|\*|\/|==|!=|>=|<=|>|</.test(cleanForCheck) ||
+    (cleanForCheck.includes("-") && !/^\d{4}-\d{2}-\d{2}(?:\s+\d{2}:\d{2}:\d{2})?$/.test(cleanForCheck) && /\s+-\s+|\b[a-zA-Z0-9_$)]\s*-\s*/.test(cleanForCheck));
+
+  if (isComplexExpr) {
     const tokens = tokenizeLogic(trimmed);
     const ast = parseLogicAST(tokens);
     const result = evaluateLogicAST(ast, data);
@@ -944,7 +1144,7 @@ function resolveVal(
   const matchedHelperName = helperMatch ? helperMatch[0] : "";
   const helpers = [
     "formatCurrency", "formatBacenCurrency", "formatCpfCnpj", "json", 
-    "sum", "avg", "min", "max", "count", "calc", "math", "dedup",
+    "sum", "avg", "min", "max", "count", "calc", "math", "dedup", "concat",
     "toNumber", "asNumber", "toPercent", "asPercent", "toCurrency", "asCurrency", "toDate", "asDate", "toText", "asText",
     "round"
   ];
@@ -1104,6 +1304,12 @@ function resolveVal(
       return String(total);
     }
 
+    if (firstWord === "concat") {
+      const val = resolveExpression(trimmed, data);
+      opts.logs?.push({ expression, reason: "ok", resolved: val });
+      return typeof val === "object" ? JSON.stringify(val) : String(val);
+    }
+
     if (firstWord === "toNumber" || firstWord === "asNumber") {
       const val = resolveExpression(argsStr, data);
       const res = toNumber(val);
@@ -1143,9 +1349,17 @@ function resolveVal(
     if (firstWord === "round") {
       const resolvedArgs = resolveMultipleArgs(argsStr, data);
       const val = resolvedArgs[0];
-      const decimals = resolvedArgs[1] !== undefined ? Number(resolvedArgs[1]) : 0;
+      let decimals = resolvedArgs[1] !== undefined ? Number(resolvedArgs[1]) : 0;
+      if (Number.isNaN(decimals) || decimals < 0) {
+        decimals = 0;
+      } else if (decimals > 20) {
+        decimals = 20;
+      } else {
+        decimals = Math.floor(decimals);
+      }
       const num = toNumber(val);
-      const res = num.toLocaleString("pt-BR", { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
+      const safeNum = Number.isNaN(num) ? 0 : num;
+      const res = safeNum.toLocaleString("pt-BR", { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
       opts.logs?.push({ expression, reason: "ok", resolved: res });
       return res;
     }
@@ -1247,21 +1461,32 @@ export function interpolate(
 }
 
 export function evaluateExpressionRaw(expression: string, data: unknown): unknown {
-  const trimmed = expression.trim();
+  let textToEval = expression;
+  if (/\bRETURN\b/i.test(expression)) {
+    const parsed = parseVarsAndReturn(expression, data, {});
+    textToEval = parsed.evaluatedExpr;
+    data = parsed.localScope;
+  }
+  
+  const trimmed = textToEval.trim();
   // Se for apenas um caminho simples de variável, como "cliente.idade", sem helpers ou math
   // Note que '*' dentro de colchetes '[*]' é um curinga JSONPath, não um operador de multiplicação
   const cleanForCheck = trimmed.replace(/\[\*\]/g, "");
-  const hasHelpers = /\b(sum|count|calc|math|formatCurrency|formatBacenCurrency|formatCpfCnpj|json)\b|\(|\)|\+|-|\*|\//.test(cleanForCheck);
-  if (!hasHelpers) {
+  const isComplexExpr = 
+    /\b(if|and|or|math|calc|sin|cos|tan|case|when|then|else|end|concatenate|upper|lower|switch|divide|coalesce|len|ifempty)\b/i.test(cleanForCheck) ||
+    /\+|\*|\/|==|!=|>=|<=|>|</.test(cleanForCheck) ||
+    (cleanForCheck.includes("-") && !/^\d{4}-\d{2}-\d{2}(?:\s+\d{2}:\d{2}:\d{2})?$/.test(cleanForCheck) && /\s+-\s+|\b[a-zA-Z0-9_$)]\s*-\s*/.test(cleanForCheck));
+
+  if (!isComplexExpr) {
     return resolveExpression(trimmed, data);
   }
   
   // Caso contrário, avalia com interpolate
-  let textToEval = trimmed;
-  if (!textToEval.startsWith("{{") || !textToEval.endsWith("}}")) {
-    textToEval = `{{${trimmed}}}`;
+  let interpolatedText = trimmed;
+  if (!interpolatedText.startsWith("{{") || !interpolatedText.endsWith("}}")) {
+    interpolatedText = `{{${trimmed}}}`;
   }
-  const strResult = interpolate(textToEval, data);
+  const strResult = interpolate(interpolatedText, data);
   
   const trimmedResult = strResult.trim();
   

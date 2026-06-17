@@ -120,6 +120,7 @@ type EditorState = {
   setSelectedConsultaIds: (ids: string[]) => void;
   setSelectedScenarios: (scenarios: Record<string, string>) => void;
   setDraftSampleResponse: (id: string, response: string) => void;
+  clearDraftSampleResponse: (id: string) => void;
 
   // selection
   setSelected: (ids: string[]) => void;
@@ -418,9 +419,14 @@ export const useEditorStore = create<EditorState>()(
       setLeftPanelTab: (tab) => set({ leftPanelTab: tab }),
       setSelectedConsultaIds: (ids) => set({ selectedConsultaIds: ids }),
       setSelectedScenarios: (scenarios) => set({ selectedScenarios: scenarios }),
-      setDraftSampleResponse: (id, response) => set((state) => ({ 
-        draftSampleResponses: { ...state.draftSampleResponses, [id]: response } 
-      })),
+  setDraftSampleResponse: (id, response) => set((state) => ({ 
+    draftSampleResponses: { ...state.draftSampleResponses, [id]: response } 
+  })),
+  clearDraftSampleResponse: (id) => set((state) => {
+    const next = { ...state.draftSampleResponses };
+    delete next[id];
+    return { draftSampleResponses: next };
+  }),
 
       setSelected: (ids) => {
         const { template } = get();

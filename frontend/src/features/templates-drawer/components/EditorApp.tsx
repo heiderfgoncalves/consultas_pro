@@ -20,7 +20,7 @@ import { SaveComponentDialog } from "./dialogs/SaveComponentDialog";
 import { ConfirmDialog } from "./dialogs/ConfirmDialog";
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Sliders, Palette, Code2, Link2, Database } from "lucide-react";
-import { Toaster } from "@/components/ui/sonner";
+
 import { TooltipProvider, Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   ResizableHandle,
@@ -231,7 +231,7 @@ export function EditorApp() {
           <HtmlInspectorPanel />
         </DialogContent>
       </Dialog>
-      <Toaster richColors position="bottom-right" />
+
     </div>
     </TooltipProvider>
   );
