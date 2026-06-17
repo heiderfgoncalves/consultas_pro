@@ -120,6 +120,8 @@ export default {
         "pulse-soft": "pulse-soft 2s ease-in-out infinite",
         "cell-ripple":
           "cell-ripple var(--duration, 200ms) ease-out var(--delay, 0ms) 1 both",
+        "cell-ripple-alt":
+          "cell-ripple var(--duration, 200ms) ease-out var(--delay, 0ms) 1 both",
       },
     },
   },
