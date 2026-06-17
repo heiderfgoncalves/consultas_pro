@@ -207,7 +207,7 @@ export const createAdminUserSchema = z.object({
   document: z.string().min(11),
   phone: z.string().min(8),
   password: z.string().min(8),
-  role: z.enum(['USER', 'COMPANY_MANAGER', 'COMPANY_OWNER']).default('USER'),
+  role: z.enum(['PLATFORM_ADMIN', 'CUSTOMER_ADMIN', 'COMPANY_ADMIN', 'COMPANY_COMMON', 'USER', 'COMPANY_MANAGER', 'COMPANY_OWNER']).default('USER'),
   companyId: z.string().optional(),
 });
 
@@ -246,7 +246,7 @@ export const updateAdminUserSchema = z.object({
   email: z.string().email().optional(),
   document: z.string().min(11).optional().nullable(),
   phone: z.string().min(8).optional().nullable(),
-  role: z.enum(['USER', 'COMPANY_MANAGER', 'COMPANY_OWNER']).optional(),
+  role: z.enum(['PLATFORM_ADMIN', 'CUSTOMER_ADMIN', 'COMPANY_ADMIN', 'COMPANY_COMMON', 'USER', 'COMPANY_MANAGER', 'COMPANY_OWNER']).optional(),
   companyId: z.string().nullable().optional(),
   accountStatus: z.enum(['ACTIVE', 'SUSPENDED', 'BLOCKED']).optional(),
   password: z.string().min(8).optional(),
@@ -284,7 +284,7 @@ export const patchAdminTokenSchema = z.object({
   isActive: z.boolean(),
 });
 
-const roleEnum = z.enum(['PLATFORM_ADMIN', 'COMPANY_OWNER', 'COMPANY_MANAGER', 'USER']);
+const roleEnum = z.enum(['PLATFORM_ADMIN', 'CUSTOMER_ADMIN', 'COMPANY_ADMIN', 'COMPANY_COMMON', 'COMPANY_OWNER', 'COMPANY_MANAGER', 'USER']);
 
 export const putRoleEndpointAccessSchema = z.object({
   matrix: z.array(

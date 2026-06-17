@@ -62,6 +62,15 @@ export async function testProviderProduct(app: FastifyInstance, input: {
   const execution = await callProviderProduct(app, product.provider, forCall, input.context);
   const normalized = normalizeProviderPayload(execution.response.payload, product.mappings);
 
+  // Gerar um protocolo único no formato REQ-xxxxxxxx no ato do teste
+  const protocol = `REQ-${Math.floor(10000000 + Math.random() * 90000000)}`;
+  if (execution.response.payload && typeof execution.response.payload === 'object' && !Array.isArray(execution.response.payload)) {
+    (execution.response.payload as any).protocol = protocol;
+  }
+  if (normalized && typeof normalized === 'object' && !Array.isArray(normalized)) {
+    (normalized as any).protocol = protocol;
+  }
+
   const adminTenant = await getAdminTargetTenant(app.prisma);
   const integrationSettings = await getEffectiveIntegrationSettingsForTenant(
     app.prisma,
@@ -119,6 +128,12 @@ export async function testProviderProductDraft(app: FastifyInstance, input: {
   } as ProviderProduct;
 
   const execution = await callProviderProduct(app, provider, productStub, input.context);
+
+  // Gerar um protocolo único no formato REQ-xxxxxxxx no ato do teste
+  const protocol = `REQ-${Math.floor(10000000 + Math.random() * 90000000)}`;
+  if (execution.response.payload && typeof execution.response.payload === 'object' && !Array.isArray(execution.response.payload)) {
+    (execution.response.payload as any).protocol = protocol;
+  }
 
   const adminTenantDraft = await getAdminTargetTenant(app.prisma);
   const integrationSettingsDraft = await getEffectiveIntegrationSettingsForTenant(

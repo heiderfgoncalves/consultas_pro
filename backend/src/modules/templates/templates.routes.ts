@@ -13,6 +13,20 @@ export async function registerTemplateRoutes(app: FastifyInstance) {
 
     if (role === 'PLATFORM_ADMIN') {
       // Platform Admin visualiza todos os templates (sem restrições)
+    } else if (role === 'CUSTOMER_ADMIN') {
+      // Parceiros visualizam templates criados por eles mesmos (usuário ou empresa deles)
+      // e os templates globais do Master
+      filters.push({ userId });
+      if (companyId) {
+        filters.push({ companyId });
+      }
+      filters.push({
+        visibility: 'GLOBAL',
+        OR: [
+          { userId: null },
+          { user: { role: 'PLATFORM_ADMIN' } }
+        ]
+      });
     } else {
       // 1. Carrega as restrições da empresa (se houver)
       const company = companyId ? await app.prisma.company.findUnique({ where: { id: companyId } }) : null;
@@ -20,65 +34,57 @@ export async function registerTemplateRoutes(app: FastifyInstance) {
         ? (company.metadata as any).allowedGlobalTemplates as string[] | undefined
         : undefined;
 
-      if (role === 'COMPANY_OWNER' || role === 'COMPANY_MANAGER') {
-        // Admins da empresa visualizam templates privados, da empresa e globais permitidos
-        filters.push({ visibility: 'PRIVATE', userId });
-        if (companyId) {
-          filters.push({ visibility: 'COMPANY', companyId });
-        }
+      const partnerId = company?.metadata && typeof company.metadata === 'object'
+        ? (company.metadata as any).partnerId as string | undefined
+        : undefined;
 
-        const globalFilter: any = { visibility: 'GLOBAL' };
-        if (allowedGlobalIds) {
-          globalFilter.OR = [
-            { id: { in: allowedGlobalIds } },
-            { name: { mode: 'insensitive', equals: 'Default' } }
-          ];
-        }
-        filters.push(globalFilter);
-      } else {
-        // Usuário comum (USER)
-        // 2. Carrega as restrições do usuário (se houver)
-        const user = await app.prisma.user.findUnique({ where: { id: userId } });
-        const allowedUserTemplateIds = user?.metadata && typeof user.metadata === 'object'
-          ? (user.metadata as any).allowedTemplates as string[] | undefined
-          : undefined;
+      // Ele vê os templates criados por ele mesmo (privados)
+      filters.push({ visibility: 'PRIVATE', userId });
 
-        filters.push({ visibility: 'PRIVATE', userId });
+      // Ele vê os templates da própria empresa
+      if (companyId) {
+        filters.push({ visibility: 'COMPANY', companyId });
+      }
 
-        if (allowedUserTemplateIds) {
-          // Se o admin explicitamente delegou quais templates este usuário pode ver:
-          filters.push({
-            id: { in: allowedUserTemplateIds },
-            OR: [
-              ...(companyId ? [{ visibility: 'COMPANY', companyId }] : []),
-              { visibility: 'GLOBAL' }
-            ]
-          });
-          // Sempre inclui templates globais chamados "Default" como segurança
-          filters.push({
-            visibility: 'GLOBAL',
-            name: { mode: 'insensitive', equals: 'Default' }
-          });
-        } else {
-          // Se não há delegação explícita, o usuário vê os templates da empresa e os globais autorizados para a empresa
-          if (companyId) {
-            filters.push({ visibility: 'COMPANY', companyId });
-          }
-          const globalFilter: any = { visibility: 'GLOBAL' };
-          if (allowedGlobalIds) {
-            globalFilter.OR = [
-              { id: { in: allowedGlobalIds } },
-              { name: { mode: 'insensitive', equals: 'Default' } }
-            ];
-          }
-          filters.push(globalFilter);
+      // Templates globais do Master e do parceiro vinculado (se houver)
+      const globalOrConditions: any[] = [
+        { userId: null },
+        { user: { role: 'PLATFORM_ADMIN' } }
+      ];
+
+      if (partnerId) {
+        // Se houver parceiro vinculado à empresa, permite ver os templates globais criados por esse parceiro
+        globalOrConditions.push({ userId: partnerId });
+        // O parceiro pode ter associado templates à empresa dele também, que devem estar disponíveis
+        const partnerUser = await app.prisma.user.findUnique({ where: { id: partnerId } });
+        if (partnerUser?.companyId) {
+          filters.push({ visibility: 'COMPANY', companyId: partnerUser.companyId });
         }
       }
+
+      const globalFilter: any = {
+        visibility: 'GLOBAL',
+        OR: globalOrConditions
+      };
+
+      if (allowedGlobalIds) {
+        globalFilter.OR = [
+          { id: { in: allowedGlobalIds } },
+          { name: { mode: 'insensitive', equals: 'Default' } }
+        ];
+      }
+
+      filters.push(globalFilter);
     }
 
     const templates = await app.prisma.template.findMany({
       where: filters.length > 0 ? { OR: filters } : {},
       include: {
+        user: {
+          select: {
+            role: true
+          }
+        },
         items: {
           orderBy: { sortOrder: 'asc' },
           include: {
@@ -91,16 +97,35 @@ export async function registerTemplateRoutes(app: FastifyInstance) {
       orderBy: [{ isFavorite: 'desc' }, { updatedAt: 'desc' }],
     });
 
-    return ok(reply, templates);
+    // Injeta o campo virtual canEdit para o frontend saber se o usuário pode modificar este template
+    const templatesWithPermissions = templates.map((t) => {
+      const canEdit =
+        role === 'PLATFORM_ADMIN' ||
+        (t.userId !== null && t.userId === userId) ||
+        (t.companyId !== null && t.companyId === companyId);
+      
+      return {
+        ...t,
+        canEdit,
+      };
+    });
+
+    return ok(reply, templatesWithPermissions);
   });
 
   app.post('/templates', { preHandler: [authenticate] }, async (request, reply) => {
     const payload = createTemplateSchema.parse(request.body);
+    const auth = request.authUser!;
+
+    // Apenas Master e Parceiro podem criar novos templates no editor
+    if (auth.role !== 'PLATFORM_ADMIN' && auth.role !== 'CUSTOMER_ADMIN') {
+      return reply.code(403).send({ ok: false, error: { code: 'FORBIDDEN', message: 'Sem permissão para criar templates' } });
+    }
 
     const template = await app.prisma.template.create({
       data: {
-        companyId: payload.visibility === 'COMPANY' ? request.authUser?.companyId ?? null : null,
-        userId: payload.visibility === 'PRIVATE' ? request.authUser!.userId : null,
+        companyId: payload.visibility === 'COMPANY' ? auth.companyId ?? null : null,
+        userId: auth.userId, // Sempre associa o criador para rastreamento
         name: payload.name,
         description: payload.description,
         visibility: payload.visibility,
@@ -122,7 +147,7 @@ export async function registerTemplateRoutes(app: FastifyInstance) {
       },
     });
 
-    return ok(reply, template, 201);
+    return ok(reply, { ...template, canEdit: true }, 201);
   });
 
   app.delete('/templates/:templateId', { preHandler: [authenticate] }, async (request, reply) => {

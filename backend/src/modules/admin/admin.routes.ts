@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { Prisma, Role } from '@prisma/client';
 import { authenticate, requireRoles } from '../../core/auth';
-import { ConflictError, NotFoundError } from '../../core/errors';
+import { ConflictError, NotFoundError, ForbiddenError } from '../../core/errors';
 import { ok } from '../../core/http';
 import {
   createInvite,
@@ -92,13 +92,15 @@ function collectTemplateVariableExpressions(input: unknown): string[] {
 }
 
 export async function registerAdminRoutes(app: FastifyInstance) {
-  const adminOnly = { preHandler: [authenticate, requireRoles(['PLATFORM_ADMIN'])] };
+  const adminOnly = { preHandler: [authenticate, requireRoles(['PLATFORM_ADMIN', 'CUSTOMER_ADMIN', 'COMPANY_ADMIN'])] };
+  const platformAdminOnly = { preHandler: [authenticate, requireRoles(['PLATFORM_ADMIN'])] };
+  const masterOrPartnerOnly = { preHandler: [authenticate, requireRoles(['PLATFORM_ADMIN', 'CUSTOMER_ADMIN'])] };
 
-  app.get('/admin/access/endpoints', adminOnly, async (_request, reply) => {
+  app.get('/admin/access/endpoints', platformAdminOnly, async (_request, reply) => {
     return ok(reply, await getEndpointAccessSnapshot(app));
   });
 
-  app.put('/admin/access/endpoints', adminOnly, async (request, reply) => {
+  app.put('/admin/access/endpoints', platformAdminOnly, async (request, reply) => {
     const payload = putRoleEndpointAccessSchema.parse(request.body);
     await replaceEndpointAccessMatrix(app, payload.matrix);
 
@@ -132,7 +134,7 @@ export async function registerAdminRoutes(app: FastifyInstance) {
     });
   });
 
-  app.get('/admin/technical/overview', adminOnly, async (_request, reply) => {
+  app.get('/admin/technical/overview', platformAdminOnly, async (_request, reply) => {
     const [failedExecutions, queuedConsultations, recentTests] = await Promise.all([
       app.prisma.consultationExecution.count({ where: { status: 'FAILED' } }),
       app.prisma.consultation.count({ where: { status: 'QUEUED' } }),
@@ -149,11 +151,11 @@ export async function registerAdminRoutes(app: FastifyInstance) {
     });
   });
 
-  app.get('/admin/integration-settings', adminOnly, async (_request, reply) => {
+  app.get('/admin/integration-settings', platformAdminOnly, async (_request, reply) => {
     return ok(reply, await getIntegrationSettingsAdmin(app));
   });
 
-  app.patch('/admin/integration-settings', adminOnly, async (request, reply) => {
+  app.patch('/admin/integration-settings', platformAdminOnly, async (request, reply) => {
     const updated = await patchIntegrationSettingsAdmin(app, request.body);
     await logAdminAudit(app, {
       actorUserId: request.authUser?.userId,
@@ -165,8 +167,26 @@ export async function registerAdminRoutes(app: FastifyInstance) {
     return ok(reply, updated);
   });
 
-  app.get('/admin/users', adminOnly, async (_request, reply) => {
+  app.get('/admin/users', adminOnly, async (request, reply) => {
+    const role = request.authUser?.role;
+    const userId = request.authUser?.userId;
+    const companyId = request.authUser?.companyId;
+
+    const where: Prisma.UserWhereInput = {};
+
+    if (role === 'CUSTOMER_ADMIN') {
+      where.company = {
+        metadata: {
+          path: ['partnerId'],
+          equals: userId,
+        },
+      };
+    } else if (role === 'COMPANY_ADMIN') {
+      where.companyId = companyId;
+    }
+
     const users = await app.prisma.user.findMany({
+      where,
       include: { company: true },
       orderBy: { createdAt: 'desc' },
       take: 200,
@@ -177,16 +197,54 @@ export async function registerAdminRoutes(app: FastifyInstance) {
 
   app.get('/admin/users/:userId', adminOnly, async (request, reply) => {
     const params = request.params as { userId: string };
+    const role = request.authUser?.role;
+    const companyId = request.authUser?.companyId;
+
     const user = await app.prisma.user.findUnique({
       where: { id: params.userId },
       include: { company: true },
     });
+
     if (!user) throw new NotFoundError('Usuário não encontrado');
+
+    // Validação de acesso multi-tenant
+    if (role === 'CUSTOMER_ADMIN') {
+      const partnerId = (user.company?.metadata as Record<string, unknown> | null)?.partnerId;
+      if (partnerId !== request.authUser?.userId) {
+        throw new ForbiddenError('Sem acesso a este usuário');
+      }
+    } else if (role === 'COMPANY_ADMIN') {
+      if (user.companyId !== companyId) {
+        throw new ForbiddenError('Sem acesso a este usuário');
+      }
+    }
+
     return ok(reply, stripPassword(user));
   });
 
   app.post('/admin/users', adminOnly, async (request, reply) => {
     const payload = createAdminUserSchema.parse(request.body);
+    const role = request.authUser?.role;
+    const companyId = request.authUser?.companyId;
+
+    let finalCompanyId = payload.companyId ?? null;
+    let finalRole = payload.role as Role;
+
+    if (role === 'CUSTOMER_ADMIN') {
+      if (finalRole !== 'COMPANY_ADMIN' && finalRole !== 'COMPANY_COMMON') {
+        finalRole = 'COMPANY_COMMON';
+      }
+      if (finalCompanyId) {
+        const targetCompany = await app.prisma.company.findUnique({ where: { id: finalCompanyId } });
+        const partnerId = (targetCompany?.metadata as Record<string, unknown> | null)?.partnerId;
+        if (partnerId !== request.authUser?.userId) {
+          return reply.status(403).send({ success: false, error: { code: 'FORBIDDEN', message: 'Empresa destino não vinculada a este parceiro' } });
+        }
+      }
+    } else if (role === 'COMPANY_ADMIN') {
+      finalCompanyId = companyId ?? null;
+      finalRole = 'COMPANY_COMMON';
+    }
 
     const user = await app.prisma.user.create({
       data: {
@@ -195,8 +253,8 @@ export async function registerAdminRoutes(app: FastifyInstance) {
         document: normalizeDocument(payload.document),
         phone: payload.phone,
         passwordHash: await hashPassword(payload.password),
-        role: payload.role as Role,
-        companyId: payload.companyId ?? null,
+        role: finalRole,
+        companyId: finalCompanyId,
       },
       include: { company: true },
     });
@@ -215,11 +273,46 @@ export async function registerAdminRoutes(app: FastifyInstance) {
   app.patch('/admin/users/:userId', adminOnly, async (request, reply) => {
     const params = request.params as { userId: string };
     const payload = updateAdminUserSchema.parse(request.body);
+    const role = request.authUser?.role;
+    const userId = request.authUser?.userId;
+    const companyId = request.authUser?.companyId;
 
-    const existing = await app.prisma.user.findUnique({ where: { id: params.userId } });
+    const existing = await app.prisma.user.findUnique({ where: { id: params.userId }, include: { company: true } });
     if (!existing) throw new NotFoundError('Usuário não encontrado');
     if (existing.role === 'PLATFORM_ADMIN' && payload.role !== undefined) {
       throw new ConflictError('Não é permitido alterar o papel de administradores da plataforma');
+    }
+
+    // Validação de acesso multi-tenant para edição de usuário
+    if (role === 'CUSTOMER_ADMIN') {
+      const partnerId = (existing.company?.metadata as Record<string, unknown> | null)?.partnerId;
+      if (partnerId !== userId) {
+        throw new ForbiddenError('Sem permissão para alterar este usuário');
+      }
+      // Não pode alterar o papel para algo maior que COMPANY_ADMIN/COMPANY_COMMON
+      if (payload.role && payload.role !== 'COMPANY_ADMIN' && payload.role !== 'COMPANY_COMMON') {
+        payload.role = 'COMPANY_COMMON';
+      }
+      // Não pode mover o usuário para uma empresa não vinculada a ele
+      if (payload.companyId) {
+        const targetCompany = await app.prisma.company.findUnique({ where: { id: payload.companyId } });
+        const targetPartnerId = (targetCompany?.metadata as Record<string, unknown> | null)?.partnerId;
+        if (targetPartnerId !== userId) {
+          throw new ForbiddenError('Empresa destino não vinculada a este parceiro');
+        }
+      }
+    } else if (role === 'COMPANY_ADMIN') {
+      if (existing.companyId !== companyId) {
+        throw new ForbiddenError('Sem permissão para alterar este usuário');
+      }
+      // Sempre força que o papel atualizado seja COMPANY_COMMON ou não mude
+      if (payload.role) {
+        payload.role = 'COMPANY_COMMON';
+      }
+      // Não pode alterar a empresa do usuário
+      if (payload.companyId !== undefined && payload.companyId !== companyId) {
+        throw new ForbiddenError('Não é permitido alterar a empresa do usuário');
+      }
     }
 
     if (payload.email && payload.email !== existing.email) {
@@ -275,14 +368,29 @@ export async function registerAdminRoutes(app: FastifyInstance) {
 
   app.delete('/admin/users/:userId', adminOnly, async (request, reply) => {
     const params = request.params as { userId: string };
+    const role = request.authUser?.role;
+    const companyId = request.authUser?.companyId;
+
     if (request.authUser?.userId === params.userId) {
       throw new ConflictError('Não é possível excluir o próprio usuário');
     }
 
-    const existing = await app.prisma.user.findUnique({ where: { id: params.userId } });
+    const existing = await app.prisma.user.findUnique({ where: { id: params.userId }, include: { company: true } });
     if (!existing) throw new NotFoundError('Usuário não encontrado');
     if (existing.role === 'PLATFORM_ADMIN') {
       throw new ConflictError('Não é possível excluir administradores da plataforma');
+    }
+
+    // Validação de acesso multi-tenant para exclusão de usuário
+    if (role === 'CUSTOMER_ADMIN') {
+      const partnerId = (existing.company?.metadata as Record<string, unknown> | null)?.partnerId;
+      if (partnerId !== request.authUser?.userId) {
+        throw new ForbiddenError('Sem permissão para excluir este usuário');
+      }
+    } else if (role === 'COMPANY_ADMIN') {
+      if (existing.companyId !== companyId) {
+        throw new ForbiddenError('Sem permissão para excluir este usuário');
+      }
     }
 
     try {
@@ -325,8 +433,24 @@ export async function registerAdminRoutes(app: FastifyInstance) {
     return ok(reply, stripPassword(updated));
   });
 
-  app.get('/admin/companies', adminOnly, async (_request, reply) => {
+  app.get('/admin/companies', adminOnly, async (request, reply) => {
+    const role = request.authUser?.role;
+    const userId = request.authUser?.userId;
+    const companyId = request.authUser?.companyId;
+
+    const where: Prisma.CompanyWhereInput = {};
+
+    if (role === 'CUSTOMER_ADMIN') {
+      where.metadata = {
+        path: ['partnerId'],
+        equals: userId,
+      };
+    } else if (role === 'COMPANY_ADMIN') {
+      where.id = companyId || 'NENHUMA_EMPRESA_VINCULADA';
+    }
+
     const companies = await app.prisma.company.findMany({
+      where,
       include: {
         wallet: true,
         _count: { select: { users: true, consultations: true } },
@@ -339,6 +463,11 @@ export async function registerAdminRoutes(app: FastifyInstance) {
   });
 
   app.post('/admin/companies', adminOnly, async (request, reply) => {
+    const role = request.authUser?.role;
+    if (role === 'COMPANY_ADMIN') {
+      throw new ForbiddenError('Administradores de empresa não podem criar novas empresas');
+    }
+
     const payload = createAdminCompanySchema.parse(request.body);
     const slugBase = slugify(payload.name);
     let slug = slugBase;
@@ -349,6 +478,11 @@ export async function registerAdminRoutes(app: FastifyInstance) {
       slug = `${slugBase}-${cursor}`;
     }
 
+    // Injetar partnerId na metadata para CUSTOMER_ADMIN
+    const metadata: Prisma.InputJsonValue = role === 'CUSTOMER_ADMIN'
+      ? { partnerId: request.authUser?.userId }
+      : {};
+
     const company = await app.prisma.company.create({
       data: {
         tenantId: payload.tenantId,
@@ -357,6 +491,7 @@ export async function registerAdminRoutes(app: FastifyInstance) {
         document: normalizeDocument(payload.document),
         email: payload.email,
         phone: payload.phone,
+        metadata,
         wallet: { create: { balance: 0 } },
       },
       include: { wallet: true },
@@ -376,9 +511,30 @@ export async function registerAdminRoutes(app: FastifyInstance) {
   app.patch('/admin/companies/:companyId', adminOnly, async (request, reply) => {
     const params = request.params as { companyId: string };
     const payload = updateAdminCompanySchema.parse(request.body);
+    const role = request.authUser?.role;
+    const userId = request.authUser?.userId;
+    const companyId = request.authUser?.companyId;
 
     const existing = await app.prisma.company.findUnique({ where: { id: params.companyId } });
     if (!existing) throw new NotFoundError('Empresa não encontrada');
+
+    // Validação de acesso multi-tenant para edição de empresa
+    if (role === 'CUSTOMER_ADMIN') {
+      const partnerId = (existing.metadata as Record<string, unknown> | null)?.partnerId;
+      if (partnerId !== userId) {
+        throw new ForbiddenError('Sem acesso para editar esta empresa');
+      }
+      if (payload.tenantId !== undefined) {
+        throw new ForbiddenError('Não é permitido alterar o Tenant desta empresa');
+      }
+    } else if (role === 'COMPANY_ADMIN') {
+      if (params.companyId !== companyId) {
+        throw new ForbiddenError('Sem acesso para editar esta empresa');
+      }
+      if (payload.tenantId !== undefined || payload.isActive !== undefined) {
+        throw new ForbiddenError('Operação não permitida para administradores de empresa');
+      }
+    }
 
     if (payload.document !== undefined) {
       const doc = normalizeDocument(payload.document);
@@ -423,9 +579,24 @@ export async function registerAdminRoutes(app: FastifyInstance) {
   app.get('/admin/companies/:companyId/ledger', adminOnly, async (request, reply) => {
     const params = request.params as { companyId: string };
     const q = listCompanyLedgerQuerySchema.parse(request.query);
+    const role = request.authUser?.role;
+    const userId = request.authUser?.userId;
+    const companyId = request.authUser?.companyId;
 
     const company = await app.prisma.company.findUnique({ where: { id: params.companyId } });
     if (!company) throw new NotFoundError('Empresa não encontrada');
+
+    // Validação de acesso multi-tenant para extrato
+    if (role === 'CUSTOMER_ADMIN') {
+      const partnerId = (company.metadata as Record<string, unknown> | null)?.partnerId;
+      if (partnerId !== userId) {
+        throw new ForbiddenError('Sem acesso ao extrato desta empresa');
+      }
+    } else if (role === 'COMPANY_ADMIN') {
+      if (params.companyId !== companyId) {
+        throw new ForbiddenError('Sem acesso ao extrato desta empresa');
+      }
+    }
 
     const entries = await app.prisma.ledgerEntry.findMany({
       where: { companyId: params.companyId },
@@ -437,12 +608,23 @@ export async function registerAdminRoutes(app: FastifyInstance) {
   });
 
   app.post('/admin/invites/company', adminOnly, async (request, reply) => {
+    const role = request.authUser?.role;
+    if (role === 'COMPANY_ADMIN') {
+      throw new ForbiddenError('Administradores de empresa não podem convidar outras empresas');
+    }
+
     const payload = createCompanyInviteSchema.parse(request.body);
+    const metadata = payload.metadata ?? {};
+
+    if (role === 'CUSTOMER_ADMIN') {
+      metadata.partnerId = request.authUser?.userId;
+    }
+
     const created = await createInvite(app, {
       type: 'COMPANY',
       email: payload.email,
       invitedByUserId: request.authUser?.userId,
-      metadata: payload.metadata as Prisma.InputJsonValue | undefined,
+      metadata: metadata as Prisma.InputJsonValue | undefined,
     });
     await logAdminAudit(app, {
       actorUserId: request.authUser?.userId,
@@ -458,15 +640,35 @@ export async function registerAdminRoutes(app: FastifyInstance) {
     const body = request.body as {
       email: string;
       companyId: string;
-      roleToAssign: 'COMPANY_MANAGER' | 'USER';
+      roleToAssign: 'COMPANY_ADMIN' | 'COMPANY_COMMON' | 'COMPANY_MANAGER' | 'USER';
       metadata?: Record<string, unknown>;
     };
+
+    const role = request.authUser?.role;
+    const companyId = request.authUser?.companyId;
+
+    let targetCompanyId = body.companyId;
+    let finalRole = body.roleToAssign;
+
+    if (role === 'CUSTOMER_ADMIN') {
+      const targetCompany = await app.prisma.company.findUnique({ where: { id: targetCompanyId } });
+      const partnerId = (targetCompany?.metadata as Record<string, unknown> | null)?.partnerId;
+      if (partnerId !== request.authUser?.userId) {
+        throw new ForbiddenError('Empresa de destino não vinculada a este parceiro');
+      }
+      if (finalRole !== 'COMPANY_ADMIN' && finalRole !== 'COMPANY_COMMON') {
+        finalRole = 'COMPANY_COMMON';
+      }
+    } else if (role === 'COMPANY_ADMIN') {
+      targetCompanyId = companyId!;
+      finalRole = 'COMPANY_COMMON';
+    }
 
     const created = await createInvite(app, {
       type: 'USER',
       email: body.email,
-      companyId: body.companyId,
-      roleToAssign: body.roleToAssign,
+      companyId: targetCompanyId,
+      roleToAssign: finalRole as any,
       invitedByUserId: request.authUser?.userId,
       metadata: body.metadata as Prisma.InputJsonValue | undefined,
     });
@@ -475,16 +677,31 @@ export async function registerAdminRoutes(app: FastifyInstance) {
       action: 'INVITE_USER_CREATED',
       entityType: 'INVITE',
       entityId: created.inviteId,
-      metadata: { email: body.email, companyId: body.companyId },
+      metadata: { email: body.email, companyId: targetCompanyId },
     });
     return ok(reply, created, 201);
   });
 
   app.get('/admin/invites', adminOnly, async (request, reply) => {
     const q = listAdminInvitesQuerySchema.parse(request.query);
+    const role = request.authUser?.role;
+    const userId = request.authUser?.userId;
+    const companyId = request.authUser?.companyId;
+
     const where: Prisma.InviteWhereInput = {};
     if (q.companyId) where.companyId = q.companyId;
     if (q.status) where.status = q.status;
+
+    if (role === 'CUSTOMER_ADMIN') {
+      where.company = {
+        metadata: {
+          path: ['partnerId'],
+          equals: userId,
+        },
+      };
+    } else if (role === 'COMPANY_ADMIN') {
+      where.companyId = companyId;
+    }
 
     const invites = await app.prisma.invite.findMany({
       where,
@@ -498,6 +715,25 @@ export async function registerAdminRoutes(app: FastifyInstance) {
 
   app.post('/admin/invites/:inviteId/revoke', adminOnly, async (request, reply) => {
     const params = request.params as { inviteId: string };
+    const role = request.authUser?.role;
+    const userId = request.authUser?.userId;
+    const companyId = request.authUser?.companyId;
+
+    const invite = await app.prisma.invite.findUnique({ where: { id: params.inviteId }, include: { company: true } });
+    if (!invite) throw new NotFoundError('Convite não encontrado');
+
+    // Validação de acesso multi-tenant
+    if (role === 'CUSTOMER_ADMIN') {
+      const partnerId = (invite.company?.metadata as Record<string, unknown> | null)?.partnerId ?? (invite.metadata as Record<string, unknown> | null)?.partnerId;
+      if (partnerId !== userId) {
+        throw new ForbiddenError('Sem acesso a este convite');
+      }
+    } else if (role === 'COMPANY_ADMIN') {
+      if (invite.companyId !== companyId) {
+        throw new ForbiddenError('Sem acesso a este convite');
+      }
+    }
+
     const revoked = await revokeInviteById(app, params.inviteId);
     await logAdminAudit(app, {
       actorUserId: request.authUser?.userId,
@@ -510,6 +746,25 @@ export async function registerAdminRoutes(app: FastifyInstance) {
 
   app.post('/admin/invites/:inviteId/resend', adminOnly, async (request, reply) => {
     const params = request.params as { inviteId: string };
+    const role = request.authUser?.role;
+    const userId = request.authUser?.userId;
+    const companyId = request.authUser?.companyId;
+
+    const invite = await app.prisma.invite.findUnique({ where: { id: params.inviteId }, include: { company: true } });
+    if (!invite) throw new NotFoundError('Convite não encontrado');
+
+    // Validação de acesso multi-tenant
+    if (role === 'CUSTOMER_ADMIN') {
+      const partnerId = (invite.company?.metadata as Record<string, unknown> | null)?.partnerId ?? (invite.metadata as Record<string, unknown> | null)?.partnerId;
+      if (partnerId !== userId) {
+        throw new ForbiddenError('Sem acesso a este convite');
+      }
+    } else if (role === 'COMPANY_ADMIN') {
+      if (invite.companyId !== companyId) {
+        throw new ForbiddenError('Sem acesso a este convite');
+      }
+    }
+
     const next = await resendInviteById(app, params.inviteId, request.authUser?.userId);
     await logAdminAudit(app, {
       actorUserId: request.authUser?.userId,
@@ -523,7 +778,35 @@ export async function registerAdminRoutes(app: FastifyInstance) {
 
   app.get('/admin/audit', adminOnly, async (request, reply) => {
     const q = listAdminAuditQuerySchema.parse(request.query);
+    const role = request.authUser?.role;
+    const userId = request.authUser?.userId;
+    const companyId = request.authUser?.companyId;
+
+    const where: Prisma.AdminAuditLogWhereInput = {};
+
+    if (role === 'CUSTOMER_ADMIN') {
+      where.OR = [
+        { actorUserId: userId },
+        {
+          actor: {
+            company: {
+              metadata: {
+                path: ['partnerId'],
+                equals: userId,
+              },
+            },
+          },
+        },
+      ];
+    } else if (role === 'COMPANY_ADMIN') {
+      where.OR = [
+        { actorUserId: userId },
+        { actor: { companyId: companyId } },
+      ];
+    }
+
     const logs = await app.prisma.adminAuditLog.findMany({
+      where,
       include: {
         actor: { select: { id: true, fullName: true, email: true } },
       },
@@ -533,24 +816,24 @@ export async function registerAdminRoutes(app: FastifyInstance) {
     return ok(reply, logs);
   });
 
-  app.get('/admin/catalog/consultation-types', adminOnly, async (_request, reply) => {
+  app.get('/admin/catalog/consultation-types', masterOrPartnerOnly, async (_request, reply) => {
     return ok(reply, await app.prisma.consultationType.findMany({
       orderBy: { name: 'asc' },
     }));
   });
 
-  app.post('/admin/catalog/consultation-types', adminOnly, async (request, reply) => {
+  app.post('/admin/catalog/consultation-types', platformAdminOnly, async (request, reply) => {
     const payload = createConsultationTypeSchema.parse(request.body);
     return ok(reply, await app.prisma.consultationType.create({ data: payload }), 201);
   });
 
-  app.get('/admin/catalog/canonical-fields', adminOnly, async (_request, reply) => {
+  app.get('/admin/catalog/canonical-fields', masterOrPartnerOnly, async (_request, reply) => {
     return ok(reply, await app.prisma.canonicalFieldCatalog.findMany({
       orderBy: { pathKey: 'asc' },
     }));
   });
 
-  app.post('/admin/catalog/canonical-fields', adminOnly, async (request, reply) => {
+  app.post('/admin/catalog/canonical-fields', platformAdminOnly, async (request, reply) => {
     const payload = createCanonicalFieldSchema.parse(request.body);
     return ok(reply, await app.prisma.canonicalFieldCatalog.create({
       data: {
@@ -562,7 +845,7 @@ export async function registerAdminRoutes(app: FastifyInstance) {
     }), 201);
   });
 
-  app.patch('/admin/catalog/canonical-fields/:fieldId', adminOnly, async (request, reply) => {
+  app.patch('/admin/catalog/canonical-fields/:fieldId', platformAdminOnly, async (request, reply) => {
     const params = request.params as { fieldId: string };
     const payload = updateCanonicalFieldSchema.parse(request.body);
 
@@ -581,7 +864,7 @@ export async function registerAdminRoutes(app: FastifyInstance) {
     return ok(reply, updated);
   });
 
-  app.delete('/admin/catalog/canonical-fields/:fieldId', adminOnly, async (request, reply) => {
+  app.delete('/admin/catalog/canonical-fields/:fieldId', platformAdminOnly, async (request, reply) => {
     const params = request.params as { fieldId: string };
 
     const mappingCount = await app.prisma.providerFieldMapping.count({
@@ -598,8 +881,11 @@ export async function registerAdminRoutes(app: FastifyInstance) {
     return ok(reply, { deleted: true });
   });
 
-  app.get('/admin/providers', adminOnly, async (_request, reply) => {
-    return ok(reply, await app.prisma.provider.findMany({
+  app.get('/admin/providers', masterOrPartnerOnly, async (request, reply) => {
+    const role = request.authUser?.role;
+    const userId = request.authUser?.userId;
+
+    const allProviders = await app.prisma.provider.findMany({
       include: {
         operations: { orderBy: { createdAt: 'asc' } },
         products: {
@@ -618,20 +904,82 @@ export async function registerAdminRoutes(app: FastifyInstance) {
         },
       },
       orderBy: { createdAt: 'desc' },
-    }));
+    });
+
+    if (role === 'PLATFORM_ADMIN') {
+      const formatted = allProviders.map(p => ({
+        ...p,
+        canEdit: true,
+        operations: p.operations.map(o => ({ ...o, canEdit: true })),
+        products: p.products.map(pr => ({ ...pr, canEdit: true }))
+      }));
+      return ok(reply, formatted);
+    }
+
+    if (role === 'CUSTOMER_ADMIN') {
+      const filtered = allProviders.filter(p => {
+        const creds = p.credentials as Record<string, any> | null;
+        const partnerId = creds?.partnerId;
+        return !partnerId || partnerId === userId;
+      });
+
+      const formatted = filtered.map(p => {
+        const creds = p.credentials as Record<string, any> | null;
+        const partnerId = creds?.partnerId;
+        const canEdit = partnerId === userId;
+
+        return {
+          ...p,
+          canEdit,
+          operations: p.operations.map(o => ({ ...o, canEdit })),
+          products: p.products.map(pr => ({ ...pr, canEdit }))
+        };
+      });
+
+      return ok(reply, formatted);
+    }
+
+    throw new ForbiddenError('Acesso não autorizado');
   });
 
-  app.post('/admin/providers', adminOnly, async (request, reply) => {
+  app.post('/admin/providers', masterOrPartnerOnly, async (request, reply) => {
     const payload = createProviderSchema.parse(request.body);
+    const role = request.authUser?.role;
+    const userId = request.authUser?.userId;
+
+    if (role === 'CUSTOMER_ADMIN') {
+      const credentials = (payload.credentials as Record<string, any> | null) || {};
+      payload.credentials = {
+        ...credentials,
+        partnerId: userId
+      };
+    }
+
     return ok(reply, await createProvider(app, payload), 201);
   });
 
-  app.patch('/admin/providers/:providerId', adminOnly, async (request, reply) => {
+  app.patch('/admin/providers/:providerId', masterOrPartnerOnly, async (request, reply) => {
     const params = request.params as { providerId: string };
     const payload = updateProviderSchema.parse(request.body);
+    const role = request.authUser?.role;
+    const userId = request.authUser?.userId;
 
     const current = await app.prisma.provider.findUnique({ where: { id: params.providerId } });
     if (!current) throw new NotFoundError('Provedor não encontrado');
+
+    if (role === 'CUSTOMER_ADMIN') {
+      const creds = current.credentials as Record<string, any> | null;
+      if (creds?.partnerId !== userId) {
+        throw new ForbiddenError('Não é permitido alterar provedores globais ou de outros parceiros');
+      }
+      if (payload.credentials !== undefined) {
+        const newCreds = (payload.credentials as Record<string, any> | null) || {};
+        payload.credentials = {
+          ...newCreds,
+          partnerId: userId
+        };
+      }
+    }
 
     if (payload.slug && payload.slug !== current.slug) {
       const taken = await app.prisma.provider.findUnique({ where: { slug: payload.slug } });
@@ -657,11 +1005,31 @@ export async function registerAdminRoutes(app: FastifyInstance) {
       },
     });
 
-    return ok(reply, updated);
+    const isPartner = role === 'CUSTOMER_ADMIN';
+    const formatted = {
+      ...updated,
+      canEdit: !isPartner || (updated.credentials as Record<string, any> | null)?.partnerId === userId,
+      operations: updated.operations.map(o => ({ ...o, canEdit: !isPartner || (updated.credentials as Record<string, any> | null)?.partnerId === userId })),
+      products: updated.products.map(pr => ({ ...pr, canEdit: !isPartner || (updated.credentials as Record<string, any> | null)?.partnerId === userId }))
+    };
+
+    return ok(reply, formatted);
   });
 
-  app.delete('/admin/providers/:providerId', adminOnly, async (request, reply) => {
+  app.delete('/admin/providers/:providerId', masterOrPartnerOnly, async (request, reply) => {
     const params = request.params as { providerId: string };
+    const role = request.authUser?.role;
+    const userId = request.authUser?.userId;
+
+    const current = await app.prisma.provider.findUnique({ where: { id: params.providerId } });
+    if (!current) throw new NotFoundError('Provedor não encontrado');
+
+    if (role === 'CUSTOMER_ADMIN') {
+      const creds = current.credentials as Record<string, any> | null;
+      if (creds?.partnerId !== userId) {
+        throw new ForbiddenError('Não é permitido remover provedores globais ou de outros parceiros');
+      }
+    }
 
     const execCount = await app.prisma.consultationExecution.count({
       where: { providerId: params.providerId },
@@ -713,19 +1081,44 @@ export async function registerAdminRoutes(app: FastifyInstance) {
     return ok(reply, { deleted: true });
   });
 
-  app.post('/admin/providers/operations', adminOnly, async (request, reply) => {
+  app.post('/admin/providers/operations', masterOrPartnerOnly, async (request, reply) => {
     const payload = createProviderOperationSchema.parse(request.body);
+    const role = request.authUser?.role;
+    const userId = request.authUser?.userId;
+
+    const provider = await app.prisma.provider.findUnique({ where: { id: payload.providerId } });
+    if (!provider) throw new NotFoundError('Provedor não encontrado');
+
+    if (role === 'CUSTOMER_ADMIN') {
+      const creds = provider.credentials as Record<string, any> | null;
+      if (creds?.partnerId !== userId) {
+        throw new ForbiddenError('Sem permissão para adicionar operações a provedores globais ou de outros parceiros');
+      }
+    }
+
     return ok(reply, await app.prisma.providerOperation.create({
       data: payload,
     }), 201);
   });
 
-  app.patch('/admin/providers/operations/:operationId', adminOnly, async (request, reply) => {
+  app.patch('/admin/providers/operations/:operationId', masterOrPartnerOnly, async (request, reply) => {
     const params = request.params as { operationId: string };
     const payload = updateProviderOperationSchema.parse(request.body);
+    const role = request.authUser?.role;
+    const userId = request.authUser?.userId;
 
-    const op = await app.prisma.providerOperation.findUnique({ where: { id: params.operationId } });
+    const op = await app.prisma.providerOperation.findUnique({
+      where: { id: params.operationId },
+      include: { provider: true }
+    });
     if (!op) throw new NotFoundError('Operação não encontrada');
+
+    if (role === 'CUSTOMER_ADMIN') {
+      const creds = op.provider.credentials as Record<string, any> | null;
+      if (creds?.partnerId !== userId) {
+        throw new ForbiddenError('Sem permissão para modificar operações de provedores globais ou de outros parceiros');
+      }
+    }
 
     const updated = await app.prisma.providerOperation.update({
       where: { id: params.operationId },
@@ -734,8 +1127,23 @@ export async function registerAdminRoutes(app: FastifyInstance) {
     return ok(reply, updated);
   });
 
-  app.delete('/admin/providers/operations/:operationId', adminOnly, async (request, reply) => {
+  app.delete('/admin/providers/operations/:operationId', masterOrPartnerOnly, async (request, reply) => {
     const params = request.params as { operationId: string };
+    const role = request.authUser?.role;
+    const userId = request.authUser?.userId;
+
+    const op = await app.prisma.providerOperation.findUnique({
+      where: { id: params.operationId },
+      include: { provider: true }
+    });
+    if (!op) throw new NotFoundError('Operação não encontrada');
+
+    if (role === 'CUSTOMER_ADMIN') {
+      const creds = op.provider.credentials as Record<string, any> | null;
+      if (creds?.partnerId !== userId) {
+        throw new ForbiddenError('Sem permissão para remover operações de provedores globais ou de outros parceiros');
+      }
+    }
 
     try {
       await app.prisma.providerTestLog.deleteMany({ where: { operationId: params.operationId } });
@@ -750,8 +1158,21 @@ export async function registerAdminRoutes(app: FastifyInstance) {
     return ok(reply, { deleted: true });
   });
 
-  app.post('/admin/providers/products', adminOnly, async (request, reply) => {
+  app.post('/admin/providers/products', masterOrPartnerOnly, async (request, reply) => {
     const payload = createProviderProductSchema.parse(request.body);
+    const role = request.authUser?.role;
+    const userId = request.authUser?.userId;
+
+    const provider = await app.prisma.provider.findUnique({ where: { id: payload.providerId } });
+    if (!provider) throw new NotFoundError('Provedor não encontrado');
+
+    if (role === 'CUSTOMER_ADMIN') {
+      const creds = provider.credentials as Record<string, any> | null;
+      if (creds?.partnerId !== userId) {
+        throw new ForbiddenError('Sem permissão para adicionar produtos a provedores globais ou de outros parceiros');
+      }
+    }
+
     if (payload.templateLayout !== undefined) {
       const expressions = collectTemplateVariableExpressions(payload.templateLayout);
       for (const expression of expressions) {
@@ -768,9 +1189,24 @@ export async function registerAdminRoutes(app: FastifyInstance) {
     }), 201);
   });
 
-  app.patch('/admin/providers/products/:productId', adminOnly, async (request, reply) => {
+  app.patch('/admin/providers/products/:productId', masterOrPartnerOnly, async (request, reply) => {
     const params = request.params as { productId: string };
     const payload = updateProviderProductSchema.parse(request.body);
+    const role = request.authUser?.role;
+    const userId = request.authUser?.userId;
+
+    const product = await app.prisma.providerProduct.findUnique({
+      where: { id: params.productId },
+      include: { provider: true }
+    });
+    if (!product) throw new NotFoundError('Produto não encontrado');
+
+    if (role === 'CUSTOMER_ADMIN') {
+      const creds = product.provider.credentials as Record<string, any> | null;
+      if (creds?.partnerId !== userId) {
+        throw new ForbiddenError('Sem permissão para modificar produtos de provedores globais ou de outros parceiros');
+      }
+    }
 
     if (payload.templateLayout !== undefined && payload.templateLayout !== null) {
       const expressions = collectTemplateVariableExpressions(payload.templateLayout);
@@ -778,9 +1214,6 @@ export async function registerAdminRoutes(app: FastifyInstance) {
         templateVariableExpressionSchema.parse(expression);
       }
     }
-
-    const product = await app.prisma.providerProduct.findUnique({ where: { id: params.productId } });
-    if (!product) throw new NotFoundError('Produto não encontrado');
 
     if (payload.code && payload.code !== product.code) {
       const taken = await app.prisma.providerProduct.findUnique({
@@ -850,8 +1283,23 @@ export async function registerAdminRoutes(app: FastifyInstance) {
     return ok(reply, updated);
   });
 
-  app.delete('/admin/providers/products/:productId', adminOnly, async (request, reply) => {
+  app.delete('/admin/providers/products/:productId', masterOrPartnerOnly, async (request, reply) => {
     const params = request.params as { productId: string };
+    const role = request.authUser?.role;
+    const userId = request.authUser?.userId;
+
+    const product = await app.prisma.providerProduct.findUnique({
+      where: { id: params.productId },
+      include: { provider: true }
+    });
+    if (!product) throw new NotFoundError('Produto não encontrado');
+
+    if (role === 'CUSTOMER_ADMIN') {
+      const creds = product.provider.credentials as Record<string, any> | null;
+      if (creds?.partnerId !== userId) {
+        throw new ForbiddenError('Sem permissão para remover produtos de provedores globais ou de outros parceiros');
+      }
+    }
 
     const execCount = await app.prisma.consultationExecution.count({
       where: { productId: params.productId },
@@ -892,19 +1340,47 @@ export async function registerAdminRoutes(app: FastifyInstance) {
     return ok(reply, { deleted: true });
   });
 
-  app.post('/admin/providers/mappings', adminOnly, async (request, reply) => {
+  app.post('/admin/providers/mappings', masterOrPartnerOnly, async (request, reply) => {
     const payload = createMappingSchema.parse(request.body);
+    const role = request.authUser?.role;
+    const userId = request.authUser?.userId;
+
+    const product = await app.prisma.providerProduct.findUnique({
+      where: { id: payload.productId },
+      include: { provider: true }
+    });
+    if (!product) throw new NotFoundError('Produto não encontrado');
+
+    if (role === 'CUSTOMER_ADMIN') {
+      const creds = product.provider.credentials as Record<string, any> | null;
+      if (creds?.partnerId !== userId) {
+        throw new ForbiddenError('Sem permissão para adicionar mapeamentos a produtos de provedores globais ou de outros parceiros');
+      }
+    }
+
     return ok(reply, await app.prisma.providerFieldMapping.create({
       data: payload,
     }), 201);
   });
 
-  app.patch('/admin/providers/mappings/:mappingId', adminOnly, async (request, reply) => {
+  app.patch('/admin/providers/mappings/:mappingId', masterOrPartnerOnly, async (request, reply) => {
     const params = request.params as { mappingId: string };
     const payload = updateMappingSchema.parse(request.body);
+    const role = request.authUser?.role;
+    const userId = request.authUser?.userId;
 
-    const mapping = await app.prisma.providerFieldMapping.findUnique({ where: { id: params.mappingId } });
+    const mapping = await app.prisma.providerFieldMapping.findUnique({
+      where: { id: params.mappingId },
+      include: { product: { include: { provider: true } } }
+    });
     if (!mapping) throw new NotFoundError('Mapeamento não encontrado');
+
+    if (role === 'CUSTOMER_ADMIN') {
+      const creds = mapping.product.provider.credentials as Record<string, any> | null;
+      if (creds?.partnerId !== userId) {
+        throw new ForbiddenError('Sem permissão para modificar mapeamentos de provedores globais ou de outros parceiros');
+      }
+    }
 
     const updated = await app.prisma.providerFieldMapping.update({
       where: { id: params.mappingId },
@@ -915,22 +1391,47 @@ export async function registerAdminRoutes(app: FastifyInstance) {
     return ok(reply, updated);
   });
 
-  app.delete('/admin/providers/mappings/:mappingId', adminOnly, async (request, reply) => {
+  app.delete('/admin/providers/mappings/:mappingId', masterOrPartnerOnly, async (request, reply) => {
     const params = request.params as { mappingId: string };
+    const role = request.authUser?.role;
+    const userId = request.authUser?.userId;
 
-    const mapping = await app.prisma.providerFieldMapping.findUnique({ where: { id: params.mappingId } });
+    const mapping = await app.prisma.providerFieldMapping.findUnique({
+      where: { id: params.mappingId },
+      include: { product: { include: { provider: true } } }
+    });
     if (!mapping) throw new NotFoundError('Mapeamento não encontrado');
+
+    if (role === 'CUSTOMER_ADMIN') {
+      const creds = mapping.product.provider.credentials as Record<string, any> | null;
+      if (creds?.partnerId !== userId) {
+        throw new ForbiddenError('Sem permissão para remover mapeamentos de provedores globais ou de outros parceiros');
+      }
+    }
 
     await app.prisma.providerFieldMapping.delete({ where: { id: params.mappingId } });
     return ok(reply, { deleted: true });
   });
 
-  app.get('/admin/providers/products/:productId/session-assignments', adminOnly, async (request, reply) => {
+  app.get('/admin/providers/products/:productId/session-assignments', masterOrPartnerOnly, async (request, reply) => {
     const params = request.params as { productId: string };
     const query = listProductSessionAssignmentsQuerySchema.parse(request.query);
+    const role = request.authUser?.role;
+    const userId = request.authUser?.userId;
 
-    const product = await app.prisma.providerProduct.findUnique({ where: { id: params.productId } });
+    const product = await app.prisma.providerProduct.findUnique({
+      where: { id: params.productId },
+      include: { provider: true }
+    });
     if (!product) throw new NotFoundError('Produto não encontrado');
+
+    if (role === 'CUSTOMER_ADMIN') {
+      const creds = product.provider.credentials as Record<string, any> | null;
+      const partnerId = creds?.partnerId;
+      if (partnerId && partnerId !== userId) {
+        throw new ForbiddenError('Sem acesso a este produto');
+      }
+    }
 
     const where: Prisma.ProductSessionFieldAssignmentWhereInput = { productId: params.productId };
     if (query.sessionKey) where.sessionKey = query.sessionKey;
@@ -944,12 +1445,24 @@ export async function registerAdminRoutes(app: FastifyInstance) {
     return ok(reply, assignments);
   });
 
-  app.put('/admin/providers/products/:productId/session-assignments', adminOnly, async (request, reply) => {
+  app.put('/admin/providers/products/:productId/session-assignments', masterOrPartnerOnly, async (request, reply) => {
     const params = request.params as { productId: string };
     const payload = putProductSessionAssignmentsSchema.parse(request.body);
+    const role = request.authUser?.role;
+    const userId = request.authUser?.userId;
 
-    const product = await app.prisma.providerProduct.findUnique({ where: { id: params.productId } });
+    const product = await app.prisma.providerProduct.findUnique({
+      where: { id: params.productId },
+      include: { provider: true }
+    });
     if (!product) throw new NotFoundError('Produto não encontrado');
+
+    if (role === 'CUSTOMER_ADMIN') {
+      const creds = product.provider.credentials as Record<string, any> | null;
+      if (creds?.partnerId !== userId) {
+        throw new ForbiddenError('Sem permissão para modificar atribuições de sessão de produtos globais ou de outros parceiros');
+      }
+    }
 
     const canonicalIds = payload.assignments.map((a) => a.canonicalFieldId);
     if (canonicalIds.length > 0) {
@@ -987,9 +1500,12 @@ export async function registerAdminRoutes(app: FastifyInstance) {
     return ok(reply, updated);
   });
 
-  app.get('/admin/providers/:providerId/config', adminOnly, async (request, reply) => {
+  app.get('/admin/providers/:providerId/config', masterOrPartnerOnly, async (request, reply) => {
     const params = request.params as { providerId: string };
-    return ok(reply, await app.prisma.provider.findUnique({
+    const role = request.authUser?.role;
+    const userId = request.authUser?.userId;
+
+    const provider = await app.prisma.provider.findUnique({
       where: { id: params.providerId },
       include: {
         operations: true,
@@ -1007,11 +1523,45 @@ export async function registerAdminRoutes(app: FastifyInstance) {
           },
         },
       },
-    }));
+    });
+
+    if (!provider) throw new NotFoundError('Provedor não encontrado');
+
+    if (role === 'CUSTOMER_ADMIN') {
+      const creds = provider.credentials as Record<string, any> | null;
+      const partnerId = creds?.partnerId;
+      if (partnerId && partnerId !== userId) {
+        throw new ForbiddenError('Sem acesso a este provedor');
+      }
+    }
+
+    const isPartner = role === 'CUSTOMER_ADMIN';
+    const canEdit = !isPartner || (provider.credentials as Record<string, any> | null)?.partnerId === userId;
+
+    const formatted = {
+      ...provider,
+      canEdit,
+      operations: provider.operations.map(o => ({ ...o, canEdit })),
+      products: provider.products.map(pr => ({ ...pr, canEdit }))
+    };
+
+    return ok(reply, formatted);
   });
 
-  app.post('/admin/providers/products/test-draft', adminOnly, async (request, reply) => {
+  app.post('/admin/providers/products/test-draft', masterOrPartnerOnly, async (request, reply) => {
     const payload = testProductDraftSchema.parse(request.body);
+    const role = request.authUser?.role;
+    const userId = request.authUser?.userId;
+
+    const provider = await app.prisma.provider.findUnique({ where: { id: payload.providerId } });
+    if (!provider) throw new NotFoundError('Provedor não encontrado');
+
+    if (role === 'CUSTOMER_ADMIN') {
+      const creds = provider.credentials as Record<string, any> | null;
+      if (creds?.partnerId !== userId) {
+        throw new ForbiddenError('Sem permissão para testar em provedores globais ou de outros parceiros');
+      }
+    }
 
     return ok(reply, await testProviderProductDraft(app, {
       providerId: payload.providerId,
@@ -1025,9 +1575,24 @@ export async function registerAdminRoutes(app: FastifyInstance) {
     }));
   });
 
-  app.post('/admin/providers/products/:productId/test', adminOnly, async (request, reply) => {
+  app.post('/admin/providers/products/:productId/test', masterOrPartnerOnly, async (request, reply) => {
     const params = request.params as { productId: string };
     const payload = testProductSchema.parse(request.body);
+    const role = request.authUser?.role;
+    const userId = request.authUser?.userId;
+
+    const product = await app.prisma.providerProduct.findUnique({
+      where: { id: params.productId },
+      include: { provider: true }
+    });
+    if (!product) throw new NotFoundError('Produto não encontrado');
+
+    if (role === 'CUSTOMER_ADMIN') {
+      const creds = product.provider.credentials as Record<string, any> | null;
+      if (creds?.partnerId !== userId) {
+        throw new ForbiddenError('Sem permissão para testar produtos de provedores globais ou de outros parceiros');
+      }
+    }
 
     return ok(reply, await testProviderProduct(app, {
       productId: params.productId,
@@ -1039,9 +1604,24 @@ export async function registerAdminRoutes(app: FastifyInstance) {
     }));
   });
 
-  app.post('/admin/providers/operations/:operationId/test', adminOnly, async (request, reply) => {
+  app.post('/admin/providers/operations/:operationId/test', masterOrPartnerOnly, async (request, reply) => {
     const params = request.params as { operationId: string };
     const payload = testProductSchema.parse(request.body);
+    const role = request.authUser?.role;
+    const userId = request.authUser?.userId;
+
+    const op = await app.prisma.providerOperation.findUnique({
+      where: { id: params.operationId },
+      include: { provider: true }
+    });
+    if (!op) throw new NotFoundError('Operação não encontrada');
+
+    if (role === 'CUSTOMER_ADMIN') {
+      const creds = op.provider.credentials as Record<string, any> | null;
+      if (creds?.partnerId !== userId) {
+        throw new ForbiddenError('Sem permissão para testar operações de provedores globais ou de outros parceiros');
+      }
+    }
 
     return ok(reply, await testProviderOperation(app, {
       operationId: params.operationId,
@@ -1050,8 +1630,26 @@ export async function registerAdminRoutes(app: FastifyInstance) {
     }));
   });
 
-  app.post('/admin/merge/preview', adminOnly, async (request, reply) => {
+  app.post('/admin/merge/preview', masterOrPartnerOnly, async (request, reply) => {
     const payload = previewMergeSchema.parse(request.body);
+    const role = request.authUser?.role;
+    const userId = request.authUser?.userId;
+
+    if (role === 'CUSTOMER_ADMIN') {
+      if (payload.testLogIds && payload.testLogIds.length > 0) {
+        const logs = await app.prisma.providerTestLog.findMany({
+          where: { id: { in: payload.testLogIds } },
+          include: { provider: true }
+        });
+        for (const log of logs) {
+          const creds = log.provider?.credentials as Record<string, any> | null;
+          if (creds?.partnerId !== userId) {
+            throw new ForbiddenError('Sem permissão para mesclar dados de outros provedores');
+          }
+        }
+      }
+    }
+
     return ok(reply, await previewMerge(app, {
       actorUserId: request.authUser?.userId,
       executionIds: payload.executionIds,
@@ -1059,20 +1657,55 @@ export async function registerAdminRoutes(app: FastifyInstance) {
     }));
   });
 
-  app.get('/admin/test-logs', adminOnly, async (_request, reply) => {
-    return ok(reply, await app.prisma.providerTestLog.findMany({
+  app.get('/admin/test-logs', masterOrPartnerOnly, async (request, reply) => {
+    const role = request.authUser?.role;
+    const userId = request.authUser?.userId;
+
+    const logs = await app.prisma.providerTestLog.findMany({
       include: {
         provider: true,
         product: true,
         operation: true,
       },
       orderBy: { createdAt: 'desc' },
-      take: 100,
-    }));
+      take: role === 'CUSTOMER_ADMIN' ? 1000 : 100,
+    });
+
+    if (role === 'PLATFORM_ADMIN') {
+      return ok(reply, logs.slice(0, 100));
+    }
+
+    if (role === 'CUSTOMER_ADMIN') {
+      const filtered = logs.filter(log => {
+        const creds = log.provider?.credentials as Record<string, any> | null;
+        return creds?.partnerId === userId;
+      });
+      return ok(reply, filtered.slice(0, 100));
+    }
+
+    throw new ForbiddenError('Acesso não autorizado');
   });
 
-  app.get('/admin/tokens', adminOnly, async (_request, reply) => {
+  app.get('/admin/tokens', adminOnly, async (request, reply) => {
+    const role = request.authUser?.role;
+    const userId = request.authUser?.userId;
+    const companyId = request.authUser?.companyId;
+
+    const where: Prisma.ApiTokenWhereInput = {};
+
+    if (role === 'CUSTOMER_ADMIN') {
+      where.company = {
+        metadata: {
+          path: ['partnerId'],
+          equals: userId,
+        },
+      };
+    } else if (role === 'COMPANY_ADMIN') {
+      where.companyId = companyId;
+    }
+
     return ok(reply, await app.prisma.apiToken.findMany({
+      where,
       include: { tenant: true, company: { select: { id: true, name: true, slug: true } } },
       orderBy: { createdAt: 'desc' },
       take: 100,
@@ -1081,10 +1714,28 @@ export async function registerAdminRoutes(app: FastifyInstance) {
 
   app.post('/admin/tokens', adminOnly, async (request, reply) => {
     const payload = createTokenSchema.parse(request.body);
+    const role = request.authUser?.role;
+    const userId = request.authUser?.userId;
+    const companyId = request.authUser?.companyId;
+
+    let targetCompanyId = payload.companyId;
+
+    if (role === 'CUSTOMER_ADMIN') {
+      if (!targetCompanyId) {
+        throw new ForbiddenError('Informe o id da empresa para criar o token');
+      }
+      const targetCompany = await app.prisma.company.findUnique({ where: { id: targetCompanyId } });
+      const partnerId = (targetCompany?.metadata as Record<string, unknown> | null)?.partnerId;
+      if (partnerId !== userId) {
+        throw new ForbiddenError('Empresa não vinculada a este parceiro');
+      }
+    } else if (role === 'COMPANY_ADMIN') {
+      targetCompanyId = companyId ?? undefined;
+    }
 
     const result = await createApiToken(app, {
-      tenantId: payload.tenantId,
-      companyId: payload.companyId,
+      tenantId: role === 'PLATFORM_ADMIN' ? payload.tenantId : undefined,
+      companyId: targetCompanyId,
       label: payload.label,
       scopes: payload.scopes,
       expiresAt: payload.expiresAt ? new Date(payload.expiresAt) : null,
@@ -1098,8 +1749,8 @@ export async function registerAdminRoutes(app: FastifyInstance) {
       entityId: result.apiToken.id,
       metadata: {
         label: payload.label,
-        companyId: payload.companyId ?? null,
-        tenantId: payload.tenantId ?? null,
+        companyId: targetCompanyId ?? null,
+        tenantId: role === 'PLATFORM_ADMIN' ? (payload.tenantId ?? null) : null,
       },
     });
 
@@ -1109,9 +1760,26 @@ export async function registerAdminRoutes(app: FastifyInstance) {
   app.patch('/admin/tokens/:tokenId', adminOnly, async (request, reply) => {
     const params = request.params as { tokenId: string };
     const payload = patchAdminTokenSchema.parse(request.body);
+    const role = request.authUser?.role;
+    const userId = request.authUser?.userId;
+    const companyId = request.authUser?.companyId;
 
-    const existing = await app.prisma.apiToken.findUnique({ where: { id: params.tokenId } });
+    const existing = await app.prisma.apiToken.findUnique({
+      where: { id: params.tokenId },
+      include: { company: true },
+    });
     if (!existing) throw new NotFoundError('Token não encontrado');
+
+    if (role === 'CUSTOMER_ADMIN') {
+      const partnerId = (existing.company?.metadata as Record<string, unknown> | null)?.partnerId;
+      if (partnerId !== userId) {
+        throw new ForbiddenError('Sem acesso a este token');
+      }
+    } else if (role === 'COMPANY_ADMIN') {
+      if (existing.companyId !== companyId) {
+        throw new ForbiddenError('Sem acesso a este token');
+      }
+    }
 
     const updated = await app.prisma.apiToken.update({
       where: { id: params.tokenId },
@@ -1132,30 +1800,130 @@ export async function registerAdminRoutes(app: FastifyInstance) {
   app.post('/admin/companies/:companyId/credit', adminOnly, async (request, reply) => {
     const params = request.params as { companyId: string };
     const body = adminCompanyCreditSchema.parse(request.body);
+    const role = request.authUser?.role;
+    const userId = request.authUser?.userId;
+    const userCompanyId = request.authUser?.companyId;
 
-    const wallet = await app.prisma.wallet.findUnique({
-      where: { companyId: params.companyId },
+    const targetCompany = await app.prisma.company.findUnique({
+      where: { id: params.companyId },
+      include: { wallet: true },
     });
 
-    if (!wallet) {
-      return reply.status(404).send({ success: false, error: { code: 'NOT_FOUND', message: 'Carteira não encontrada' } });
+    if (!targetCompany || !targetCompany.wallet) {
+      return reply.status(404).send({ success: false, error: { code: 'NOT_FOUND', message: 'Empresa ou carteira de destino não encontrada' } });
     }
 
+    if (role === 'CUSTOMER_ADMIN') {
+      // Verificar vínculo da empresa de destino
+      const partnerId = (targetCompany.metadata as Record<string, unknown> | null)?.partnerId;
+      if (partnerId !== userId) {
+        throw new ForbiddenError('Sem acesso para gerenciar saldo desta empresa');
+      }
+
+      // Buscar carteira do parceiro
+      if (!userCompanyId) {
+        throw new ForbiddenError('Parceiro não possui uma empresa vinculada');
+      }
+
+      const partnerCompany = await app.prisma.company.findUnique({
+        where: { id: userCompanyId },
+        include: { wallet: true },
+      });
+
+      if (!partnerCompany || !partnerCompany.wallet) {
+        throw new ForbiddenError('Carteira do parceiro não encontrada');
+      }
+
+      const amountDecimal = new Prisma.Decimal(body.amount);
+      if (partnerCompany.wallet.balance.lessThan(amountDecimal)) {
+        throw new ConflictError('Saldo insuficiente na sua carteira de parceiro');
+      }
+
+      // Realizar transação de transferência
+      const [partnerWallet, targetWallet, debitEntry, creditEntry] = await app.prisma.$transaction(async (tx) => {
+        const nextPartnerBalance = partnerCompany.wallet!.balance.sub(amountDecimal);
+        const nextTargetBalance = targetCompany.wallet!.balance.add(amountDecimal);
+
+        // Atualiza carteira do parceiro
+        await tx.wallet.update({
+          where: { id: partnerCompany.wallet!.id },
+          data: { balance: nextPartnerBalance },
+        });
+
+        // Atualiza carteira de destino
+        const updatedTargetWallet = await tx.wallet.update({
+          where: { id: targetCompany.wallet!.id },
+          data: { balance: nextTargetBalance },
+        });
+
+        // Cria entrada de débito no extrato do parceiro
+        const debit = await tx.ledgerEntry.create({
+          data: {
+            walletId: partnerCompany.wallet!.id,
+            companyId: userCompanyId,
+            type: 'DEBIT',
+            amount: amountDecimal,
+            balanceBefore: partnerCompany.wallet!.balance,
+            balanceAfter: nextPartnerBalance,
+            description: body.description ?? `Transferência para ${targetCompany.name}`,
+            metadata: { source: 'ADMIN_TRANSFER', targetCompanyId: targetCompany.id },
+          },
+        });
+
+        // Cria entrada de crédito no extrato do destino
+        const credit = await tx.ledgerEntry.create({
+          data: {
+            walletId: targetCompany.wallet!.id,
+            companyId: targetCompany.id,
+            type: 'CREDIT',
+            amount: amountDecimal,
+            balanceBefore: targetCompany.wallet!.balance,
+            balanceAfter: nextTargetBalance,
+            description: body.description ?? `Saldo recebido do parceiro ${request.authUser?.email ?? 'Parceiro'}`,
+            metadata: { source: 'ADMIN_TRANSFER', sourceCompanyId: userCompanyId },
+          },
+        });
+
+        return [partnerCompany.wallet, updatedTargetWallet, debit, credit];
+      });
+
+      await logAdminAudit(app, {
+        actorUserId: userId,
+        action: 'COMPANY_CREDIT_TRANSFER',
+        entityType: 'COMPANY',
+        entityId: params.companyId,
+        metadata: {
+          amount: String(body.amount),
+          debitEntryId: debitEntry.id,
+          creditEntryId: creditEntry.id,
+          description: body.description ?? null,
+        },
+      });
+
+      return ok(reply, creditEntry, 201);
+
+    } else if (role === 'COMPANY_ADMIN') {
+      // Administrador de empresa não pode creditar ou debitar saldo externamente
+      throw new ForbiddenError('Administrador de empresa não possui permissão para transferir saldo');
+    }
+
+    // Fluxo para PLATFORM_ADMIN (Master) - Cria crédito do nada
     const updated = await app.prisma.$transaction(async (tx) => {
-      const nextBalance = wallet.balance.add(body.amount);
+      const amountDecimal = new Prisma.Decimal(body.amount);
+      const nextBalance = targetCompany.wallet!.balance.add(amountDecimal);
 
       await tx.wallet.update({
-        where: { id: wallet.id },
+        where: { id: targetCompany.wallet!.id },
         data: { balance: nextBalance },
       });
 
       return tx.ledgerEntry.create({
         data: {
-          walletId: wallet.id,
+          walletId: targetCompany.wallet!.id,
           companyId: params.companyId,
           type: 'CREDIT',
-          amount: body.amount,
-          balanceBefore: wallet.balance,
+          amount: amountDecimal,
+          balanceBefore: targetCompany.wallet!.balance,
           balanceAfter: nextBalance,
           description: body.description ?? 'Crédito administrativo',
           metadata: { source: 'ADMIN_PANEL' },
@@ -1178,8 +1946,26 @@ export async function registerAdminRoutes(app: FastifyInstance) {
     return ok(reply, updated, 201);
   });
 
-  app.get('/admin/consultations', adminOnly, async (_request, reply) => {
+  app.get('/admin/consultations', adminOnly, async (request, reply) => {
+    const role = request.authUser?.role;
+    const userId = request.authUser?.userId;
+    const companyId = request.authUser?.companyId;
+
+    const where: Prisma.ConsultationWhereInput = {};
+
+    if (role === 'CUSTOMER_ADMIN') {
+      where.company = {
+        metadata: {
+          path: ['partnerId'],
+          equals: userId,
+        },
+      };
+    } else if (role === 'COMPANY_ADMIN') {
+      where.companyId = companyId;
+    }
+
     const consultations = await app.prisma.consultation.findMany({
+      where,
       select: {
         id: true,
         subjectDocument: true,
@@ -1202,11 +1988,15 @@ export async function registerAdminRoutes(app: FastifyInstance) {
 
   app.get('/admin/consultations/:id', adminOnly, async (request, reply) => {
     const params = request.params as { id: string };
+    const role = request.authUser?.role;
+    const userId = request.authUser?.userId;
+    const companyId = request.authUser?.companyId;
+
     const consultation = await app.prisma.consultation.findUnique({
       where: { id: params.id },
       include: {
         requestedByUser: { select: { id: true, fullName: true, email: true } },
-        company: { select: { id: true, name: true } },
+        company: { select: { id: true, name: true, metadata: true } },
         template: { select: { id: true, name: true } },
         executions: {
           include: {
@@ -1234,6 +2024,18 @@ export async function registerAdminRoutes(app: FastifyInstance) {
 
     if (!consultation) {
       return reply.status(404).send({ success: false, error: { code: 'NOT_FOUND', message: 'Consulta não encontrada' } });
+    }
+
+    // Validação de acesso multi-tenant para consulta
+    if (role === 'CUSTOMER_ADMIN') {
+      const partnerId = (consultation.company?.metadata as Record<string, unknown> | null)?.partnerId;
+      if (partnerId !== userId) {
+        throw new ForbiddenError('Sem acesso a esta consulta');
+      }
+    } else if (role === 'COMPANY_ADMIN') {
+      if (consultation.companyId !== companyId) {
+        throw new ForbiddenError('Sem acesso a esta consulta');
+      }
     }
 
     return ok(reply, consultation);

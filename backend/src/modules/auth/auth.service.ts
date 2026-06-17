@@ -345,8 +345,10 @@ export function sanitizeUser<T extends {
   companyId?: string | null;
   isActive?: boolean;
   accountStatus?: 'ACTIVE' | 'SUSPENDED' | 'BLOCKED';
+  mustResetPassword?: boolean;
   lastLoginAt?: Date | null;
   createdAt?: Date;
+  googleId?: string | null;
 }>(user: T) {
   return {
     id: user.id,
@@ -358,8 +360,10 @@ export function sanitizeUser<T extends {
     companyId: user.companyId ?? null,
     isActive: user.isActive ?? true,
     accountStatus: user.accountStatus ?? 'ACTIVE',
+    mustResetPassword: user.mustResetPassword ?? false,
     lastLoginAt: user.lastLoginAt ?? null,
     createdAt: user.createdAt ?? null,
+    googleId: user.googleId ?? null,
   };
 }
 
