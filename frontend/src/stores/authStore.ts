@@ -13,7 +13,7 @@ import {
 // 0 = admin, 1 = master (empresa), 2 = operator (UI / navegação)
 export type AccessLevel = 0 | 1 | 2;
 
-export type BackendRole = 'PLATFORM_ADMIN' | 'COMPANY_OWNER' | 'COMPANY_MANAGER' | 'USER';
+export type BackendRole = 'PLATFORM_ADMIN' | 'CUSTOMER_ADMIN' | 'COMPANY_ADMIN' | 'COMPANY_COMMON' | 'COMPANY_OWNER' | 'COMPANY_MANAGER' | 'USER';
 
 export interface SessionUser {
   id: string;
@@ -23,8 +23,10 @@ export interface SessionUser {
   phone: string | null;
   role: BackendRole;
   companyId: string | null;
+  googleId?: string | null;
   /** Presente quando o backend envia (login /users/me futuro) */
   accountStatus?: 'ACTIVE' | 'SUSPENDED' | 'BLOCKED';
+  mustResetPassword?: boolean;
 }
 
 export interface User {
@@ -87,7 +89,7 @@ const previewProfiles: Record<Exclude<AccessLevel, 0>, Omit<User, 'backendRole'>
 
 function roleToAccessLevel(role: BackendRole): AccessLevel {
   if (role === 'PLATFORM_ADMIN') return 0;
-  if (role === 'COMPANY_OWNER' || role === 'COMPANY_MANAGER') return 1;
+  if (role === 'CUSTOMER_ADMIN' || role === 'COMPANY_ADMIN' || role === 'COMPANY_OWNER' || role === 'COMPANY_MANAGER') return 1;
   return 2;
 }
 
