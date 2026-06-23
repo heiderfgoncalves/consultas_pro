@@ -1,84 +1,83 @@
 ---
 name: template-management
-description: Guia técnico avançado para IA e desenvolvedores gerirem o motor de templates, layout canvas JSON, expressões premium (VAR/case when) e a conversão de documentos para o Consultas PRO.
+description: Diretrizes e especificações técnicas de referência do motor de layouts em canvas físico, interpretador de expressões estruturadas e engenharia de templates para sistemas de relatórios analíticos.
 ---
 
-# 🎨 Playbook de Gestão de Templates, Layouts e Integrações (Consultas PRO)
+# 🎨 Playbook Técnico: Engenharia de Layouts e Motor de Renderização de Canvas Dinâmico
 
-Este guia estabelece os padrões de arquitetura, mapeamentos físicos e lógicos, engenharia de renderização de expressões condicionais e o processo de conversão de mockups/imagens/PDFs para o formato de Canvas do **Consultas PRO**. Ele foi desenhado para servir de instrução definitiva para desenvolvedores e agentes de Inteligência Artificial operarem com máxima precisão no sistema.
+Este documento define os padrões conceituais de arquitetura, mapeamentos estruturais, engenharia de renderização de expressões lógicas e o processo avançado de conversão de mockups estáticos para o motor de **Canvas Dinâmico** do sistema. Ele serve como instrução definitiva para desenvolvedores e agentes autônomos operarem com máxima fidelidade e previsibilidade matemática no processamento de layouts.
 
 ---
 
-## 🏛️ 1. Visão Geral da Arquitetura de Apresentação
+## 🏛️ 1. Arquitetura Geral do Motor de Apresentação
 
-O Consultas PRO utiliza um sistema de renderização baseado em **Canvas Dinâmico**. Ao contrário de relatórios gerados via HTML/CSS bruto que quebram layouts e paginação, o sistema utiliza coordenadas fixas `(x, y, width, height)` e paginação estruturada em **Frames** no formato A4, permitindo renderizar layouts extremamente ricos de alta fidelidade visual (com direito a grafismos, velocímetros SVG, micro-interações e cartões responsivos) que são exportados idênticos para impressão ou PDF.
+O sistema utiliza um paradigma de exibição baseado em um **Canvas Dinâmico Multicamadas** parametrizado via JSON. Diferente de fluxos HTML/CSS tradicionais que estão sujeitos a quebras dinâmicas de renderização de acordo com o tamanho do conteúdo e comportamento do navegador, este motor utiliza um sistema de posicionamento absoluto em coordenadas físicas `(x, y, width, height)` e paginação estruturada em **Frames Lógicos** estanques.
+
+Este design garante que o layout final gerado em tela seja reproduzido de maneira idêntica na exportação física para formatos de documento estáticos (como PDF ou impressão).
 
 ```mermaid
 graph TD
-    A[Birôs / Provedores externos] -->|Response Payload| B[ProviderClientService]
-    B -->|Normalização & Campos Canônicos| C[ConsultationContext]
-    C -->|Filtros / UI Item Filters| D[Seções de Relatório]
-    D -->|Mustache / Expressões Complexas| E[Renderizador de Templates]
-    E -->|Canvas JSON / Coordenadas| F[Tela de Exibição / PDF Export]
+    A[APIs / Provedores de Dados Externos] -->|Payload Bruto| B[Módulo de Integração]
+    B -->|Normalização & Mapeamento Canônico| C[Contexto de Dados da Consulta]
+    C -->|Filtros de Interface e Agrupadores| D[Dicionário de Variáveis Lógicas]
+    D -->|Engine de Expressões / Mustache Avançado| E[Motor de Renderização]
+    E -->|Canvas JSON / Coordenadas e Frames| F[Visualização na Interface / Exportador PDF]
 ```
 
 ---
 
-## 💾 2. Modelagem de Dados (Prisma DB Schema)
+## 💾 2. Modelagem Arquitetural de Dados (Esquema de Banco)
 
-O gerenciamento de relatórios e integrações é controlado por relacionamentos precisos entre os seguintes modelos do banco de dados:
+O acoplamento entre os dados brutos e os templates de exibição baseia-se em relacionamentos estruturados no banco de dados para garantir reusabilidade e idempotência:
 
-### 2.1. O Modelo `Template`
-Armazena a folha de desenho (canvas) e todos os elementos de posicionamento.
-* **`id`**: Identificador único (`cuid()`).
-* **`layout`**: Campo do tipo `Json` contendo a especificação do grid, frames de página e o array de `elements`.
-* **`logo`**: Imagem padrão de cabeçalho.
+### 2.1. O Modelo de Template (`Template`)
+Armazena a folha de desenho virtual (canvas), as configurações do grid de design e todo o conteúdo do layout.
+* **`id`**: Identificador único do template (em formato `cuid` ou chave única do sistema).
+* **`layout`**: Objeto do tipo `Json` contendo a especificação das páginas físicas (`frames`) e a coleção de objetos individuais (`elements`).
+* **`logo`**: Metadados ou binários de identidade visual padrão para cabeçalho do documento.
 
-### 2.2. O Modelo `TemplateItem`
-Faz o acoplamento físico entre um `Template` e os produtos de provedor (`ProviderProduct`) que alimentam esse template com dados.
-* **`alias`**: Nome de escopo lógico no contexto JSON da consulta (ex: `Bacen`, `Spc`, `SerasaPremium`), de forma que as variáveis no layout possam ser acessadas via `{{Bacen.valorTotal}}`.
+### 2.2. O Modelo de Associação de Contexto (`TemplateItem`)
+Realiza a ponte lógica entre o layout abstrato do template e as fontes de dados físicas (produtos de integração) que o alimentam.
+* **`alias`**: Namespace lógico definido na associação (ex: `DadosBasicos`, `HistoricoFinanceiro`, `AnaliseRisco`). As variáveis dinâmicas no template são interpretadas sob este escopo (ex: `{{DadosBasicos.nome_completo}}` ou `{{AnaliseRisco.pontuacao_score}}`).
+* **`sortOrder`**: Ordem de prioridade na injeção de dados.
 
-### 2.3. O Modelo `ProviderProduct`
-Controla a integração física de requisição.
-* **`bodyTemplate`**: Payload JSON parametrizado enviado ao provedor. Deve conter tags dinâmicas como `{{document}}` nos campos apropriados (como `CPFCNPJ` ou `document`).
-* **`typeItemFilters`**: JSON de regras de agrupamento de dados no relatório (mapeando quais trechos da resposta bruta alimentam quais tabelas).
-
-### 2.4. Modelos de Campos Canônicos e Pastas
-* **`CanonicalFolder`**: Cria as pastas estruturais de renderização rápida na UI (ex: `Dívidas Birôs`, `Pronampe`).
-* **`CanonicalFieldCatalog`**: Catálogo unificado de chaves padronizadas (ex: `DADOS_PESSOAIS.NOME`).
-* **`CanonicalFieldFolderAssociation`**: Associa os campos canônicos às pastas correspondentes para exibição ordenada na tela do cliente.
+### 2.3. O Modelo de Produto de Integração (`ProviderProduct`)
+Controla o comportamento de requisição e regras de filtragem.
+* **`bodyTemplate`**: Payload de requisição (JSON ou outro formato estruturado) enviado ao provedor de dados, contendo tags parametrizadas.
+* **`typeItemFilters`**: Objeto JSON com regras de filtro de dados, mapeando como o payload de resposta bruto deve ser transformado para alimentar as tabelas e variáveis lógicas.
 
 ---
 
 ## 📐 3. Estrutura do Layout Canvas JSON
 
-O campo `layout` do modelo `Template` segue rigidamente a especificação abaixo:
+O campo `layout` do modelo de template segue rigidamente a especificação esquemática abaixo:
 
 ```json
 {
-  "id": "import_test_1",
-  "name": "Import_test_1",
+  "id": "template_identificador_unico",
+  "name": "Nome de Referência do Layout",
   "canvas": {
     "grid": 10,
     "background": "#f1f5f9"
   },
   "frames": [
     {
-      "id": "frame_page_1",
-      "name": "Página 1 (Resumo & Score)",
-      "x": 10,
-      "y": 10,
+      "id": "frame_pagina_1",
+      "name": "Página 1 (Título Lógico)",
+      "x": 0,
+      "y": 0,
       "width": 794,
       "height": 1123,
       "preset": "a4-p",
-      "background": "#ffffff"
+      "background": "#ffffff",
+      "customHtml": null
     }
   ],
   "version": 3,
   "elements": [
     {
-      "id": "el_logo_p1",
-      "frameId": "frame_page_1",
+      "id": "el_identidade_visual",
+      "frameId": "frame_pagina_1",
       "type": "image",
       "x": 40,
       "y": 30,
@@ -86,7 +85,7 @@ O campo `layout` do modelo `Template` segue rigidamente a especificação abaixo
       "height": 50,
       "zIndex": 1,
       "data": {
-        "src": "{{logoDataUrl}}",
+        "src": "{{logo_contexto_dados}}",
         "fit": "contain"
       },
       "style": {}
@@ -95,140 +94,99 @@ O campo `layout` do modelo `Template` segue rigidamente a especificação abaixo
 }
 ```
 
-### 3.1. Tipos de Elementos Disponíveis no Canvas
-1. **`text`**: Renderiza textos simples ou blocos de Rich HTML (quando prefixados com `html:<div...`). Suporta tags Handlebars e expressões condicionais.
-2. **`image`**: Exibe imagens estáticas ou dinâmicas (`base64` ou URLs).
-3. **`icon`**: Renderiza ícones vetoriais da biblioteca Lucide (ex: `User`, `TrendingUp`, `Compass`, `Activity`, `CheckCircle2`, `FileText`).
-4. **`divider`**: Cria separadores de conteúdo estilizados.
-5. **`container`**: Blocos estruturais de background com suporte a bordas arredondadas e cores tailwind/HSL para agrupar elementos (cards).
-6. **`table`**: Tabelas dinâmicas que iteram sobre arrays de retorno de birôs (ex: lista de cheques devolvidos ou protestos).
+### 3.1. Primitivos de Elementos Disponíveis no Canvas
+1. **`text`**: Exibe textos simples ou blocos de **HTML Rico** (quando o valor é prefixado com `html:<div...`). Suporta interpolações complexas e tags do interpretador.
+2. **`image`**: Renderiza imagens estáticas ou dinâmicas via URL ou strings no formato Base64.
+3. **`icon`**: Renderiza elementos gráficos vetoriais de uma biblioteca canônica de ícones (ex: `User`, `TrendingUp`, `Activity`, `FileText`).
+4. **`divider`**: Elementos de separação visual horizontal ou vertical para delimitação de seções.
+5. **`container`**: Caixas estruturais de agrupamento (cards) com suporte a estilização de bordas, cores e sombras de fundo. Servem para criar layouts base de cartões ricos com elementos sobrepostos.
+6. **`table`**: Tabelas dinâmicas que iteram de forma automatizada sobre matrizes/arrays de dados injetados (como históricos de transações ou registros de apontamentos).
 
 ---
 
-## 🧠 4. Interpretador Lógico e Sintaxe de Expressões
+## 🧠 4. Interpretador Lógico e Sintaxe de Expressões Complexas
 
-O interpretador do backend (`renderTemplateObject`) estende os recursos de renderização para suportar fórmulas de alta complexidade matemática e condicional estruturada.
+O backend da plataforma executa uma rotina de renderização (`renderTemplateObject`) que interpreta expressões lógicas e fórmulas avançadas em tempo de compilação do layout.
 
-### 4.1. Sintaxe de Expressões Premium (Novo Interpretador)
-Para evitar if-else gigantescos e aninhados que quebram o interpretador de JSON padrão, implementou-se a sintaxe baseada em `VAR` de escopo e condicionais estruturadas `case when`:
+### 4.1. Sintaxe de Expressões com Escopo e Condicionais Estruturadas
+Para permitir a tomada de decisões dinâmicas diretamente na camada de visualização (evitando a necessidade de criar regras complexas no backend para cada variação de estilo), o motor suporta a atribuição de variáveis locais e estruturas condicionais equivalentes a `case when`:
 
-* **Atribuição de Variáveis**: `VAR nome_variavel = valor`
-* **Condicional Avançada**: `case when expressao_1 then valor_1 when expressao_2 then valor_2 else valor_padrao end`
-* **Retorno de Expressão**: `RETURN nome_variavel` ou `RETURN valor`
+* **Atribuição de Variáveis**: `VAR nome_variavel = valor` (define uma variável no escopo local da expressão).
+* **Condicionais Complexas**: `case when expressao_1 then valor_1 when expressao_2 then valor_2 else valor_padrao end`.
+* **Retorno de Expressão**: `RETURN nome_variavel_ou_valor` (declaração final do valor a ser injetado no campo).
 
-#### Exemplo Prático (Colorização Dinâmica de Score):
+#### Exemplo Teórico (Bandeamento de Cores Dinâmico):
 ```handlebars
-{{VAR score = $SCORE_CREDITO[0].score VAR cor = case when score <= 200 then "#ef4444" when score <= 400 then "#f97316" when score <= 600 then "#eab308" when score <= 800 then "#84cc16" else "#22c55e" end RETURN cor}}
+{{VAR pontuacao = $DADOS_PONTUACAO[0].valor_score VAR cor = case when pontuacao <= 250 then "#ef4444" when pontuacao <= 500 then "#f97316" when pontuacao <= 750 then "#eab308" else "#22c55e" end RETURN cor}}
 ```
 
-#### Exemplo de Velocímetro SVG com Ponteiro Rotativo:
-O velocímetro utiliza equações de trigonometria dinâmicas baseadas no ângulo do score:
+#### Exemplo de Velocímetro SVG com Rotação Matemática Dinâmica:
+Para renderizar velocímetros vetoriais de alta fidelidade visual, a agulha de rotação é calculada via equações matemáticas com base na pontuação normalizada:
+* Semicírculo padrão: amplitude de **180 graus** (começando em **-90 graus** na extrema esquerda e terminando em **+90 graus** na extrema direita).
+* Equação de mapeamento linear de um valor $V$ de 0 a 1000 para graus de rotação ($\theta$):
+$$\theta = (V \times 0.18) - 90$$
+
+No SVG, isso se traduz no seguinte elemento rotativo:
 ```svg
-<svg viewBox='0 0 200 110'>
-  <path d='M 20 90 A 80 80 0 0 1 180 90' fill='none' stroke='#e5e7eb' stroke-width='14' />
-  <!-- Arcos com cores de risco -->
-  ...
-  <!-- Ponteiro calculando posição trigonométrica -->
-  <line x1='100' y1='90' x2='{{scorePointer.x}}' y2='{{scorePointer.y}}' stroke='{{scoreBandColor}}' stroke-width='2.5' />
-</svg>
+<line x1="100" y1="92" x2="100" y2="36" stroke="#334155" stroke-width="4" stroke-linecap="round" transform="rotate({{calc($DADOS_PONTUACAO.score * 0.18 - 90)}} 100 92)"/>
 ```
+*(Onde `100 92` representam as coordenadas centrais `cx cy` de ancoragem da agulha de medição).*
 
 ---
 
-## 🔄 5. Processo de Conversão e Importação de Mockups (Imagem/PDF ➔ Canvas JSON)
+## 🔄 5. Engenharia Reversa e Conversão de Mockups (Imagem/PDF ➔ Canvas JSON)
 
-No futuro, para automatizar a conversão de layouts estáticos (recebidos do cliente em imagem ou PDF) para o formato JSON nativo do Consultas PRO, a IA ou ferramenta de automação deve seguir o pipeline abaixo:
+A conversão automática ou manual de mockups visuais estáticos para a estrutura de dados em coordenadas do Canvas Dinâmico segue um fluxo de trabalho estruturado para garantir fidelidade de pixels:
 
-```
-[ Mockup PDF / Imagem ]
-          │
-          ▼
-[ Etapa 1: OCR & Análise de Layout (YOLO / Vision Model) ]
-          │
-          ├─► Extrai blocos de texto, ícones, logotipos e contêineres
-          └─► Obtém Bounding Boxes em pixels [x, y, largura, altura]
-          │
-          ▼
-[ Etapa 2: Normalização de Resolução ]
-          │
-          ├─► Mapeia dimensões para o grid A4 Retrato (794px x 1123px)
-          └─► Projeta coordenadas proporcionais
-          │
-          ▼
-[ Etapa 3: Mapeamento de Variáveis Dinâmicas ]
-          │
-          ├─► Substitui textos estáticos por tags lógicas (ex: "Nome do Cliente" ➔ {{clientName}})
-          └─► Converte tabelas estáticas no elemento nativo "table" do Canvas
-          │
-          ▼
-[ Etapa 4: Geração de Canvas JSON ]
-          │
-          └─► Cospe o array estruturado de frames e elements
-```
-
-### 📝 Algoritmo Recomendado de Mapeamento para IAs Visionárias:
-1. **Analise a Página**: Uma página A4 retrato padrão tem proporção `794` de largura por `1123` de altura.
-2. **Defina os Margens**: Mantenha margens padrão de `40px` nas laterais para que os elementos não fiquem colados na borda física.
-3. **Mapeamento de Cores**: Identifique a paleta de cores dominante da imagem. Converta cores hexadecimais brutas para chaves harmônicas.
-4. **Agrupamento de Contêineres**: Sempre que houver cartões ou agrupamento de informações (ex: bloco com dados de endereço), crie primeiro um elemento `type: "container"` para servir de background e insira os elementos de texto e ícone sobre ele com `zIndex` incremental.
+1. **Análise de Resolução Física**: A proporção de uma folha no padrão **A4 Retrato** sob resolução de 96 DPI é de exatamente `794px` (largura) por `1123px` (altura).
+2. **Definição de Margem de Segurança**: Elementos interativos e blocos de conteúdo devem manter um distanciamento mínimo de `40px` em relação às bordas laterais do frame para evitar cortes físicos na impressão.
+3. **Mapeamento de Cores e Tipografia**: Identificar a paleta de cores predominantes e convertê-las para valores harmoniosos (HSL ou Hexadecimal) compatíveis com a identidade estética pré-estabelecida no motor CSS.
+4. **Agrupamento de Contêineres (Bounding Boxes)**:
+   - Identificar blocos lógicos de informações correlatas (ex: cartões de resumo ou seções cadastrais).
+   - Desenhar um elemento `type: "container"` servindo de background estrutural.
+   - Posicionar os elementos filhos de texto, ícones ou tabelas no plano superior, controlando a hierarquia de renderização através do `zIndex`.
 
 ---
 
-## 🛠️ 6. Gerenciamento de Integrações e Corpos de Requisição
+## 🛠️ 6. Engenharia de Integração e Corpos de Requisição
 
-Ao configurar novos birôs de consulta ou corrigir integrações existentes:
+Ao configurar novos endpoints de APIs externas ou ajustar integrações existentes no banco de dados:
 
-### 6.1. Variáveis Dinâmicas Globais
-O backend intercepta as requisições de consulta e injeta no contexto de template as seguintes variáveis padronizadas de documento:
-* **`{{document}}`**: Documento limpo (apenas números).
-* **`{{documento}}`**: Sinônimo de `document`.
-* **`{{is_cpf}}`**: Retorna `true` se o documento for CPF (comprimento <= 11) ou do tipo CPF.
-* **`{{is_cnpj}}`**: Retorna `true` se o documento for CNPJ (comprimento > 11).
+### 6.1. Variáveis Dinâmicas Globais de Controle
+O motor injeta metadados padronizados no contexto de resolução dos templates de forma transparente:
+* **`{{document}}`**: Documento alvo limpo (apenas algarismos numéricos).
+* **`{{documento}}`**: Sinônimo para retrocompatibilidade.
+* **`{{is_cpf}}`**: Booleano reativo que avalia se o documento possui tamanho correspondente a uma pessoa física.
+* **`{{is_cnpj}}`**: Booleano reativo que avalia se o documento possui tamanho correspondente a uma pessoa jurídica.
 
-### 6.2. Regra de Ouro para `bodyTemplate`
-O corpo da requisição de produtos de integração deve manter **toda a estrutura estática exigida pelo birô**, substituindo dinamicamente apenas a chave de documento.
+### 6.2. Regra de Preservação Estrita de Payloads (`bodyTemplate`)
+O corpo da requisição registrado em `bodyTemplate` deve manter **toda a estrutura estática original exigida pelo provedor externo de dados**, limitando-se a substituir cirurgicamente as variáveis dinâmicas de parâmetros para garantir que chaves de autenticação e credenciais não sejam corrompidas.
 
-* ❌ **Errado** (Simplificação incorreta):
+* ❌ **Inadequado** (Simplificação estrutural drástica):
   ```json
-  { "document": "{{document}}" } // Isso destrói credenciais e chaves específicas de outros provedores!
+  { "document": "{{document}}" } // Descarta dados de contexto obrigatórios do endpoint!
   ```
-*  **Correto** (Payload preservado com campo de documento dinâmico):
+*  **Recomendado** (Preservação estrita da estrutura da API com interpolação precisa):
   ```json
   {
-    "Info": {
-      "Solicitante": "IDENTIFICAÇÃO OPCIONAL"
+    "RequestHeader": {
+      "ClientCode": "CHAVE_AUTENTICACAO_ESTATICA"
     },
-    "Versao": "20180521",
-    "Parametros": {
-      "CPFCNPJ": "{{document}}",
-      "TipoPessoa": "F"
+    "Parameters": {
+      "TargetIdentifier": "{{document}}",
+      "ScopeType": "A"
     },
-    "ChaveAcesso": "TOKEN_ESTATICO_DE_AUTORIZACAO",
-    "CodigoProduto": "1079"
+    "ApiVersion": "1.0.0"
   }
   ```
 
 ---
 
-## 🛑 7. Troubleshooting e Resolução de Problemas Comuns
+## 📚 7. Documentos Complementares e Direcionamentos de Leitura
 
-### 7.1. Banco de Dados com Drift ou Resets Acidentais
-Se um comando `prisma migrate reset` for executado acidentalmente e limpar as tabelas remotas:
-1. **Reconstrua o Schema de Produção**:
-   ```bash
-   npx prisma migrate deploy
-   ```
-2. **Suba o Backup Físico Bruto**: Use o utilitário temporário `pg_restore` do docker com `--data-only` e `--disable-triggers` apontado para o banco de produção para restabelecer os templates históricos, contas e logs antigos.
-3. **Rode as Sementes Modernas**: Execute os scripts de sementes isolados para não conflitar com dados recuperados:
-   ```bash
-   npx ts-node prisma/seed-folders.ts
-   npx ts-node prisma/seed-brasil-cred.ts
-   npx ts-node prisma/seed-new-admins.ts
-   ```
-4. **Aplique o Patch de Layouts/Expressões Premium**:
-   ```bash
-   npx ts-node prisma/update-premium-templates.ts
-   ```
+Para aprofundar-se em aspectos de implementação prática, consulte as seguintes folhas de especificação técnica e guias de suporte disponíveis:
 
-### 7.2. Erro de Truncamento em Logs de Terminal
-Ao listar o layout do template no console usando scripts Node, as saídas gigantes de JSON podem ser truncadas pelo terminal. Use sempre scripts focados ou escreva saídas extensas para arquivos de buffer temporários usando `fs.writeFileSync`.
+1. 📐 **[multipages-a4-layout-pattern.md](file:///consultas-pro-app/docs/skills/template-management/multipages-a4-layout-pattern.md)**: Detalha o padrão de encapsulamento geométrico para relatórios multipáginas baseados em injeção de HTML/CSS em frames físicos estanques A4.
+2. 📊 **[context-data-mappings.md](file:///consultas-pro-app/docs/skills/template-management/context-data-mappings.md)**: Catálogo de referência prática contendo o mapeamento de variáveis dinâmicas reais de um produto financeiro corporativo complexo.
+3. 📖 **[GUIA_CRIACAO_TEMPLATES.md](file:///consultas-pro-app/docs/skills/template-management/GUIA_CRIACAO_TEMPLATES.md)**: Manual operacional focado no fluxo de trabalho passo a passo para sementes (seed), replicação e validação prática de layouts no banco de dados.
+
