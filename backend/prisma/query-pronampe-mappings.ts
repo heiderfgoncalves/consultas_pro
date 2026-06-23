@@ -5,18 +5,19 @@ const prisma = new PrismaClient();
 async function main() {
   const mappings = await prisma.providerFieldMapping.findMany({
     where: {
-      providerProduct: {
+      product: {
         code: 'RADAR_PRONAMPE_PJ'
       }
     },
     include: {
-      providerProduct: true
+      product: true,
+      canonicalField: true
     }
   });
 
   console.log('=== MAPEAMENTOS DO PRODUTOR RADAR_PRONAMPE_PJ ===');
   for (const m of mappings) {
-    console.log(`ID: ${m.id} | SourcePath: ${m.sourcePath} | PathKey: ${m.pathKey}`);
+    console.log(`ID: ${m.id} | SourcePath: ${m.sourcePath} | PathKey: ${m.canonicalField.pathKey}`);
   }
 }
 
@@ -27,3 +28,4 @@ main()
   .finally(async () => {
     await prisma.$disconnect();
   });
+
