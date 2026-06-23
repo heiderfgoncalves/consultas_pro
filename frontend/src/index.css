@@ -69,25 +69,25 @@
 
   /* Noite "viva" de extrema elegância: Cinza profundo ("Midnight Tech") estilo Compozy */
   .dark {
-    --background: 240 10% 3.9%; /* stone-950 puro sofisticado */
-    --foreground: 0 0% 98%;
+    --background: 240 4% 8%; /* Nível 0: Grafite profundo (#141416) */
+    --foreground: 0 0% 90%; /* Texto principal (#dadada) */
 
-    --card: 240 10% 3.9% / 0.97; /* Sólido com blur */
-    --card-foreground: 0 0% 98%;
+    --card: 240 3% 13.5%; /* Nível 1: Cards elevados (#202023) */
+    --card-foreground: 0 0% 90%;
 
-    --popover: 240 10% 5.9%;
-    --popover-foreground: 0 0% 98%;
+    --popover: 240 3% 16%; /* Nível 2: Popovers flutuantes (#27272a) */
+    --popover-foreground: 0 0% 95%;
 
     --primary: 174 90% 43%;
     --primary-foreground: 180 50% 8%;
 
-    --secondary: 240 3.7% 15.9%;
-    --secondary-foreground: 0 0% 98%;
+    --secondary: 240 3% 17%; /* Botões e secundários (#2a2a2d) */
+    --secondary-foreground: 0 0% 95%;
 
-    --muted: 240 3.7% 12%;
-    --muted-foreground: 240 5% 64.9%;
+    --muted: 240 3% 10.5%; /* Baixo relevo / Inputs dentro do card (#1a1a1c) */
+    --muted-foreground: 240 2% 76%;
 
-    --accent: 240 3.7% 15.9%;
+    --accent: 240 3% 20%; /* Hover e destaques de lista (#313135) */
     --accent-foreground: 0 0% 98%;
 
     --destructive: 0 62.8% 30.6%;
@@ -102,31 +102,57 @@
     --info: 199 85% 52%;
     --info-foreground: 222 40% 8%;
 
-    --border: 240 3.7% 13%; /* Borda super sutil e escura */
-    --input: 240 3.7% 12%;
+    --border: 240 3% 16%; /* Divisórias nítidas (#28282b) */
+    --input: 240 3% 12%; /* Fundo de inputs (#1e1e20) */
     --ring: 174 90% 43%;
 
-    --sidebar-background: 240 10% 2.5%; /* Barra lateral mais escura estilo console */
-    --sidebar-foreground: 240 5% 80%;
+    --sidebar-background: 240 4% 6.5%; /* Barra lateral ultra profunda (#101012) */
+    --sidebar-foreground: 240 3% 88%;
     --sidebar-primary: 174 90% 43%;
     --sidebar-primary-foreground: 180 50% 8%;
-    --sidebar-accent: 240 3.7% 10%;
+    --sidebar-accent: 240 3% 12%;
     --sidebar-accent-foreground: 0 0% 98%;
-    --sidebar-border: 240 3.7% 8%;
+    --sidebar-border: 240 3% 10%;
     --sidebar-ring: 174 90% 43%;
-    --sidebar-muted: 240 5% 60%;
+    --sidebar-muted: 240 2% 74%;
     --brand: oklch(0.65 0.15 190);
     --brand-glow: oklch(0.75 0.13 185);
 
-    --surface: oklch(0.19 0.02 256);
-    --hud-bg-1: oklch(0.14 0.015 256 / 0.98);
-    --hud-bg-2: oklch(0.09 0.01 256 / 0.96);
-    --border-hairline: oklch(1 0 0 / 0.08);
-    --glass-bg-1: oklch(0.16 0.015 256 / 0.97);
-    --glass-bg-2: oklch(0.10 0.01 256 / 0.94);
-    --hud-shadow: 0 -20px 50px -15px oklch(0.01 0.01 256 / 0.85), 0 30px 80px -25px oklch(0.01 0.01 256 / 0.95);
-    --grid-color: rgba(255, 255, 255, 0.03);
+    --surface: oklch(0.15 0.005 240);
+    --hud-bg-1: oklch(0.13 0.005 240 / 0.98);
+    --hud-bg-2: oklch(0.11 0.005 240 / 0.96);
+    --border-hairline: oklch(1 0 0 / 0.06);
+    --glass-bg-1: oklch(0.14 0.005 240 / 0.97);
+    --glass-bg-2: oklch(0.12 0.005 240 / 0.94);
+    --hud-shadow: 0 -20px 50px -15px oklch(0.01 0.005 240 / 0.85), 0 30px 80px -25px oklch(0.01 0.005 240 / 0.95);
+    --grid-color: rgba(255, 255, 255, 0.02);
   }
+}
+
+/* Sobrescreve sombras do Tailwind em modo escuro para dar profundidade visível sobre o grafite */
+.dark .shadow-sm {
+  --tw-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.4);
+  box-shadow: var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000), var(--tw-shadow);
+}
+.dark .shadow {
+  --tw-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.45), 0 1px 2px -1px rgba(0, 0, 0, 0.45);
+  box-shadow: var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000), var(--tw-shadow);
+}
+.dark .shadow-md {
+  --tw-shadow: 0 4px 12px -1px rgba(0, 0, 0, 0.55), 0 2px 4px -2px rgba(0, 0, 0, 0.55);
+  box-shadow: var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000), var(--tw-shadow);
+}
+.dark .shadow-lg {
+  --tw-shadow: 0 10px 25px -3px rgba(0, 0, 0, 0.65), 0 4px 6px -4px rgba(0, 0, 0, 0.65);
+  box-shadow: var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000), var(--tw-shadow);
+}
+.dark .shadow-xl {
+  --tw-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.75), 0 8px 10px -6px rgba(0, 0, 0, 0.75);
+  box-shadow: var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000), var(--tw-shadow);
+}
+.dark .shadow-2xl {
+  --tw-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.9);
+  box-shadow: var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000), var(--tw-shadow);
 }
 
 /* Subtemas Modulares de Cores (Agressivos) */
@@ -139,7 +165,7 @@
   --brand: oklch(0.68 0.18 250);
   --brand-glow: oklch(0.78 0.16 245);
 }
-.theme-classic .dark, .theme-classic.dark {
+.dark .theme-classic, .dark.theme-classic {
   --primary: 212 95% 56%;
   --ring: 212 95% 56%;
   --primary-foreground: 222 40% 8%;
@@ -158,7 +184,7 @@
   --brand: oklch(0.75 0.18 72);
   --brand-glow: oklch(0.86 0.15 82);
 }
-.theme-cyberpunk .dark, .theme-cyberpunk.dark {
+.dark .theme-cyberpunk, .dark.theme-cyberpunk {
   --primary: 38 92% 50%;
   --ring: 38 92% 50%;
   --primary-foreground: 0 0% 100%;
@@ -177,7 +203,7 @@
   --brand: oklch(0.65 0.15 190);
   --brand-glow: oklch(0.75 0.13 185);
 }
-.theme-oceanic .dark, .theme-oceanic.dark {
+.dark .theme-oceanic, .dark.theme-oceanic {
   --primary: 174 90% 43%;
   --ring: 174 90% 43%;
   --primary-foreground: 180 50% 8%;
@@ -196,7 +222,7 @@
   --brand: oklch(0.68 0.2 150);
   --brand-glow: oklch(0.78 0.18 145);
 }
-.theme-emerald .dark, .theme-emerald.dark {
+.dark .theme-emerald, .dark.theme-emerald {
   --primary: 142 76% 51%;
   --ring: 142 76% 51%;
   --primary-foreground: 144 50% 8%;
@@ -215,7 +241,7 @@
   --brand: oklch(0.2 0.01 250);
   --brand-glow: oklch(0.4 0.01 250);
 }
-.theme-minimal .dark, .theme-minimal.dark {
+.dark .theme-minimal, .dark.theme-minimal {
   --primary: 0 0% 100%;
   --ring: 0 0% 100%;
   --primary-foreground: 240 5.9% 10%;
@@ -501,19 +527,19 @@
 }
 
 .dark {
-  --canvas: 240 10% 5.9%;
-  --chrome: 240 10% 2.5%;
-  --chrome-elevated: 240 10% 4.5%;
+  --canvas: 240 2% 11.8%; /* VS Code Editor Background */
+  --chrome: 240 3% 9.5%; /* VS Code Sidebar Background */
+  --chrome-elevated: 240 2% 14.5%; /* VS Code Card/Elevated */
 
   /* Tema escuro para o Templates Drawer */
   --editor-bg: hsl(var(--background));
-  --editor-panel: hsl(240 10% 5.9% / 0.9);
+  --editor-panel: hsl(240 2% 14.5% / 0.9);
   --editor-panel-border: hsl(var(--border));
-  --editor-ribbon: hsl(240 10% 3%);
+  --editor-ribbon: hsl(240 3% 9.5%);
   --editor-ribbon-accent: hsl(var(--primary));
-  --editor-canvas-bg: hsl(240 10% 2%);
+  --editor-canvas-bg: hsl(240 3% 8%);
   --editor-frame-bg: hsl(var(--background));
-  --editor-grid: rgba(255, 255, 255, 0.035);
+  --editor-grid: rgba(255, 255, 255, 0.02);
   --editor-selected: hsl(var(--primary));
 }
 
