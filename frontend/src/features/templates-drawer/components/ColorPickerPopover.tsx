@@ -81,17 +81,17 @@ export function ColorPickerPopover({ value, onChange, children, align = "start",
       <PopoverContent
         align={align}
         side={side}
-        className="w-64 p-3.5 space-y-3.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xl rounded-xl"
+        className="w-64 p-3.5 space-y-3.5 bg-white dark:bg-popover border border-slate-200 dark:border-border shadow-xl rounded-xl"
         onMouseDown={(e) => e.stopPropagation()}
       >
-        {title && <div className="text-xs font-semibold text-slate-700 dark:text-slate-300">{title}</div>}
+        {title && <div className="text-xs font-semibold text-slate-700 dark:text-foreground">{title}</div>}
         
         <div className="flex items-center gap-2">
           <input
             type="color"
             value={hex6}
             onChange={(e) => handleColorChange(e.target.value)}
-            className="w-10 h-8 p-0.5 border border-slate-200 dark:border-slate-700 rounded-lg cursor-pointer bg-transparent"
+            className="w-10 h-8 p-0.5 border border-slate-200 dark:border-border rounded-lg cursor-pointer bg-transparent"
           />
           <input
             type="text"
@@ -99,15 +99,15 @@ export function ColorPickerPopover({ value, onChange, children, align = "start",
             onChange={(e) => onChange(e.target.value)}
             onBlur={(e) => e.target.value && push(e.target.value)}
             placeholder="#000000 ou transparent"
-            className="flex-1 h-8 px-2 py-1 text-xs border border-slate-200 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 rounded-lg font-mono outline-none focus:ring-1 ring-indigo-500"
+            className="flex-1 h-8 px-2 py-1 text-xs border border-slate-200 dark:border-border dark:bg-muted dark:text-foreground rounded-lg font-mono outline-none focus:ring-1 ring-indigo-500"
           />
         </div>
 
         {/* Range Slider de Opacidade */}
-        <div className="space-y-1.5 border-t border-slate-100 dark:border-slate-800 pt-2.5">
-          <div className="flex justify-between items-center text-[10px] font-medium text-slate-500 dark:text-slate-400">
+        <div className="space-y-1.5 border-t border-slate-100 dark:border-border pt-2.5">
+          <div className="flex justify-between items-center text-[10px] font-medium text-slate-500 dark:text-muted-foreground">
             <span>Opacidade</span>
-            <span className="font-mono text-xs font-semibold text-slate-800 dark:text-slate-200">{opacityValue}%</span>
+            <span className="font-mono text-xs font-semibold text-slate-800 dark:text-foreground">{opacityValue}%</span>
           </div>
           <div className="flex items-center gap-2.5">
             <input
@@ -116,7 +116,7 @@ export function ColorPickerPopover({ value, onChange, children, align = "start",
               max="100"
               value={opacityValue}
               onChange={(e) => handleOpacityChange(Number(e.target.value))}
-              className="flex-1 h-1.5 bg-slate-100 dark:bg-slate-800 rounded-lg appearance-none cursor-pointer accent-indigo-600"
+              className="flex-1 h-1.5 bg-slate-100 dark:bg-muted rounded-lg appearance-none cursor-pointer accent-indigo-600"
             />
             <button
               onClick={() => handleOpacityChange(0)}
@@ -124,7 +124,7 @@ export function ColorPickerPopover({ value, onChange, children, align = "start",
                 "px-2 py-1 text-[10px] font-semibold border rounded-md transition-colors",
                 opacityValue === 0
                   ? "bg-red-50 dark:bg-red-950/20 text-red-600 dark:text-red-400 border-red-200 dark:border-red-900"
-                  : "bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700"
+                  : "bg-slate-50 dark:bg-muted text-slate-600 dark:text-muted-foreground border-slate-200 dark:border-border hover:bg-slate-100 dark:hover:bg-accent"
               )}
             >
               Transparente
@@ -133,8 +133,8 @@ export function ColorPickerPopover({ value, onChange, children, align = "start",
         </div>
 
         {recent.length > 0 && (
-          <div className="border-t border-slate-100 dark:border-slate-800 pt-2.5">
-            <div className="text-[10px] text-slate-500 dark:text-slate-400 mb-1.5 font-medium">Recentes</div>
+          <div className="border-t border-slate-100 dark:border-border pt-2.5">
+            <div className="text-[10px] text-slate-500 dark:text-muted-foreground mb-1.5 font-medium">Recentes</div>
             <div className="grid grid-cols-8 gap-1.5">
               {recent.slice(0, 16).map((c) => (
                 <button
@@ -142,7 +142,7 @@ export function ColorPickerPopover({ value, onChange, children, align = "start",
                   onClick={() => apply(c)}
                   title={c}
                   className={cn(
-                    "w-5 h-5 rounded-md border border-slate-200 dark:border-slate-700 shadow-sm transition-transform hover:scale-110",
+                    "w-5 h-5 rounded-md border border-slate-200 dark:border-border shadow-sm transition-transform hover:scale-110",
                     value === c && "ring-2 ring-indigo-500 ring-offset-1 dark:ring-offset-slate-900"
                   )}
                   style={{ background: c }}
@@ -152,8 +152,8 @@ export function ColorPickerPopover({ value, onChange, children, align = "start",
           </div>
         )}
 
-        <div className="border-t border-slate-100 dark:border-slate-800 pt-2.5">
-          <div className="text-[10px] text-slate-500 dark:text-slate-400 mb-1.5 font-medium">Paleta Padrão</div>
+        <div className="border-t border-slate-100 dark:border-border pt-2.5">
+          <div className="text-[10px] text-slate-500 dark:text-muted-foreground mb-1.5 font-medium">Paleta Padrão</div>
           <div className="grid grid-cols-8 gap-1.5">
             {PRESETS.map((c) => (
               <button
@@ -161,7 +161,7 @@ export function ColorPickerPopover({ value, onChange, children, align = "start",
                 onClick={() => apply(c)}
                 title={c}
                 className={cn(
-                  "w-5 h-5 rounded-md border border-slate-200 dark:border-slate-700 shadow-sm transition-transform hover:scale-110",
+                  "w-5 h-5 rounded-md border border-slate-200 dark:border-border shadow-sm transition-transform hover:scale-110",
                   value === c && "ring-2 ring-indigo-500 ring-offset-1 dark:ring-offset-slate-900"
                 )}
                 style={{ background: c }}
