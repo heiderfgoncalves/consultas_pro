@@ -1,0 +1,52 @@
+<div class="report-container">
+    <header class="report-header">
+      <div class="brand-wrap">
+        <div class="brand-mark">
+          <svg viewBox="0 0 80 64" aria-hidden="true">
+            <ellipse cx="34" cy="32" rx="29" ry="12" transform="rotate(-35 34 32)" fill="none" stroke="#008ec4" stroke-width="6" opacity=".9"/>
+            <ellipse cx="34" cy="32" rx="29" ry="12" transform="rotate(35 34 32)" fill="none" stroke="#1e64c8" stroke-width="6" opacity=".9"/>
+            <ellipse cx="34" cy="32" rx="18" ry="29" fill="none" stroke="#123a7c" stroke-width="6" opacity=".9"/>
+            <circle cx="34" cy="32" r="8" fill="#10adc7" stroke="#0b2b69" stroke-width="3"/>
+          </svg>
+        </div>
+        <div class="brand-text"><strong>BRASIL CRED</strong><span>PRONAMPE</span></div>
+      </div>
+      <div class="head-meta">
+        <h1>Relatório Analítico PRONAMPE</h1>
+        <p>{{template.date}}</p>
+        <p>PROT: {{template.protocol}}</p>
+      </div>
+    </header>
+    <div class="accent-line"></div>
+    <div class="section-title"><span class="section-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></span><h2>ANÁLISE DE RESTRIÇÕES INDIVIDUAIS DE SÓCIOS</h2><span class="dash"></span></div>
+    <p class="section-sub" style="margin-bottom: 20px;">Fichas cadastrais e de restrições de cada um dos participantes na estrutura social.</p>
+    
+    {{#each $PRONAMPE_SOCIOS}}
+    <div class="hero-card" style="margin-bottom: 20px; border: 1px solid var(--line); border-radius: 16px; background: white; padding: 20px;">
+      <h3 style="margin: 0 0 12px; font-size: 16px; color: var(--ink); text-transform: uppercase;">{{nome}}</h3>
+      <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 12px;">
+        <div><small style="display: block; color: #657188; font-size: 10px; font-weight: 800; text-transform: uppercase;">CPF / Documento</small><strong style="font-size: 13px;">{{formatCpfCnpj documento}}</strong></div>
+        <div><small style="display: block; color: #657188; font-size: 10px; font-weight: 800; text-transform: uppercase;">Qualificação / Vínculo</small><strong style="font-size: 13px;">{{vinculo}}</strong></div>
+        <div><small style="display: block; color: #657188; font-size: 10px; font-weight: 800; text-transform: uppercase;">Participação</small><strong style="font-size: 13px;">{{participacao}}%</strong></div>
+      </div>
+      <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px;">
+        <div style="border: 1px solid var(--line); border-radius: 10px; padding: 10px; background: {{#if total_refin}}var(--danger-soft){{else}}var(--green-soft){{/if}};">
+          <small style="display: block; color: #657188; font-size: 9px; font-weight: 800; text-transform: uppercase;">PEFIN / REFIN</small>
+          <strong style="color: {{#if total_refin}}#c62233{{else}}#10905d{{/if}};">{{qtd_refin}} apontamentos</strong>
+          <span style="display: block; font-size: 11px; color: var(--muted); margin-top: 2px;">Total: R$ {{formatBacenCurrency total_refin}}</span>
+        </div>
+        <div style="border: 1px solid var(--line); border-radius: 10px; padding: 10px; background: {{#if total_protestos}}var(--danger-soft){{else}}var(--green-soft){{/if}};">
+          <small style="display: block; color: #657188; font-size: 9px; font-weight: 800; text-transform: uppercase;">PROTESTOS</small>
+          <strong style="color: {{#if total_protestos}}#c62233{{else}}#10905d{{/if}};">{{qtd_protestos}} protesto(s)</strong>
+          <span style="display: block; font-size: 11px; color: var(--muted); margin-top: 2px;">Total: R$ {{formatBacenCurrency total_protestos}}</span>
+        </div>
+        <div style="border: 1px solid var(--line); border-radius: 10px; padding: 10px; background: var(--soft);">
+          <small style="display: block; color: #657188; font-size: 9px; font-weight: 800; text-transform: uppercase;">SCORE INDIVIDUAL</small>
+          <strong>{{#if score}}{{score}}{{else}}350{{/if}}</strong>
+          <span style="display: block; font-size: 11px; color: var(--muted); margin-top: 2px;">Risco Direcionado</span>
+        </div>
+      </div>
+    </div>
+    {{/each}}
+    
+    <div class="section-title"><span class="section-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><path d="M12 9v4M12 17h.01"/></svg></span><h2>INFORMAÇÕES IMPORTANTES</h2><span class="dash"></span></div><div class="legal-card"><p>Este relatório contém informações confidenciais e protegidas por sigilo profissional. A autenticidade deste documento pode ser verificada através do código de protocolo. O uso indevido destas informações é passível de sanções legais conforme a legislação vigente.</p><p>© 2026 Brasil Cred Consultas<br>Protocolo: {{template.protocol}}</p></div><div class="section-title"><span class="section-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg></span><h2>NOTA DE LAYOUT</h2><span class="dash"></span></div><div class="text-card"><p>Documento recriado em HTML com identidade visual inspirada no relatório Consultas Pro: cabeçalho institucional, linha de acento azul, cards com bordas arredondadas, seções com ícone e divisória tracejada, tabelas leves, indicadores em cards e boxes de alerta/ação.</p></div></div>

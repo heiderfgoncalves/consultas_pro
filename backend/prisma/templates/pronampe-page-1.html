@@ -1,0 +1,61 @@
+<div class="report-container">
+    <header class="report-header">
+      <div class="brand-wrap">
+        <div class="brand-mark">
+          <svg viewBox="0 0 80 64" aria-hidden="true">
+            <ellipse cx="34" cy="32" rx="29" ry="12" transform="rotate(-35 34 32)" fill="none" stroke="#008ec4" stroke-width="6" opacity=".9"/>
+            <ellipse cx="34" cy="32" rx="29" ry="12" transform="rotate(35 34 32)" fill="none" stroke="#1e64c8" stroke-width="6" opacity=".9"/>
+            <ellipse cx="34" cy="32" rx="18" ry="29" fill="none" stroke="#123a7c" stroke-width="6" opacity=".9"/>
+            <circle cx="34" cy="32" r="8" fill="#10adc7" stroke="#0b2b69" stroke-width="3"/>
+          </svg>
+        </div>
+        <div class="brand-text"><strong>BRASIL CRED</strong><span>PRONAMPE</span></div>
+      </div>
+      <div class="head-meta">
+        <h1>Relatório Analítico PRONAMPE</h1>
+        <p>{{template.date}}</p>
+        <p>PROT: {{template.protocol}}</p>
+      </div>
+    </header>
+    <div class="accent-line"></div>
+    <div class="info-strip">
+        <div class="strip-card">
+          <span class="mini-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18M5 21V10h14v11M3 10l9-6 9 6M8 14v3M12 14v3M16 14v3"/></svg></span>
+          <div><small>CLIENTE ANALISADO</small><strong>{{$PRONAMPE_RECEITA.razao_social}}</strong><em>CNPJ {{formatCpfCnpj document}}</em></div>
+        </div>
+        <div class="strip-card">
+          <span class="mini-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg></span>
+          <div><small>TIPO DE RELATÓRIO</small><strong>Radar PRONAMPE PJ</strong><em>Resultado da Consulta</em></div>
+        </div>
+        <div class="strip-card">
+          <span class="mini-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 8h10M7 12h4M7 16h6"/></svg></span>
+          <div><small>PROTOCOLO</small><strong>{{template.protocol}}</strong><em>Consulta em {{template.date}}</em></div>
+        </div></div><div class="section-title"><span class="section-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6" width="18" height="12" rx="2"/><circle cx="12" cy="12" r="3"/><path d="M6 9h.01M18 15h.01"/></svg></span><h2>RESUMO FINANCEIRO E DECISÃO</h2><span class="dash"></span></div><div class="metrics six"><div class="metric-card {{VAR rec = $PRONAMPE_RESULTADO.recomendacao_final VAR classe = case when rec == 'Apto' then 'green' else 'red' end RETURN classe}}"><small>RECOMENDAÇÃO FINAL</small><strong>{{$PRONAMPE_RESULTADO.recomendacao_final}}</strong><span>Crédito PRONAMPE</span></div><div class="metric-card {{VAR prob = $PRONAMPE_RESULTADO.prob_inadimplencia VAR classe = case when prob == 'Baixa' then 'green' when prob == 'Moderada' then 'amber' else 'red' end RETURN classe}}"><small>PROB. INADIMPLÊNCIA</small><strong style="text-transform: uppercase;">{{$PRONAMPE_RESULTADO.prob_inadimplencia}}</strong><span>Risco indicado pelo motor</span></div><div class="metric-card blue"><small>CRÉDITO ESTIMADO</small><strong>R$ {{formatBacenCurrency $PRONAMPE_RESULTADO.credito_estimado}}</strong><span>Referência da operação</span></div><div class="metric-card {{VAR rec = $PRONAMPE_RESULTADO.recomendacao_final VAR classe = case when rec == 'Apto' then 'green' else 'red' end RETURN classe}}"><small>LIMITE RECOMENDADO</small><strong>R$ {{VAR rec = $PRONAMPE_RESULTADO.recomendacao_final VAR lim = case when rec == 'Apto' then $PRONAMPE_RESULTADO.credito_estimado else 0 end RETURN lim}}</strong><span>Limite sugerido</span></div><div class="metric-card green"><small>FATURAMENTO ESTIMADO</small><strong>R$ {{formatBacenCurrency $PRONAMPE_RESULTADO.faturamento_estimado}}</strong><span>Base estimada por bureau</span></div><div class="metric-card amber"><small>ORIENTAÇÃO DE VENDA</small><strong>Venda 50% à vista</strong><span>Restante do limite sugerido pode ser parcelado</span></div></div>
+<div class="hero-card">
+  <div class="hero-title"><h3>Como o banco enxerga o CNPJ hoje</h3><p>Radar PRONAMPE PJ · {{$PRONAMPE_RECEITA.cnae_principal}}</p></div>
+  
+    <div class="score-panel">
+      <div class="score-left">
+        <small>SCORE DE CRÉDITO</small>
+        <div class="score-number"><strong>{{$PRONAMPE_RESULTADO.score}}</strong><span>/ 1000</span></div>
+        <em style="background: {{VAR score = $PRONAMPE_RESULTADO.score VAR bg = case when score <= 500 then 'var(--danger-soft)' else 'var(--green-soft)' end RETURN bg}}; color: {{VAR score = $PRONAMPE_RESULTADO.score VAR cor = case when score <= 500 then '#c62233' else '#10905d' end RETURN cor}};">{{VAR score = $PRONAMPE_RESULTADO.score VAR faixa = case when score <= 250 then 'Risco Alto' when score <= 500 then 'Risco Médio-Alto' when score <= 750 then 'Risco Médio' else 'Risco Baixo' end RETURN faixa}}</em>
+      </div>
+      <div class="scale-wrap">
+        <div class="scale"><span class="needle" style="left:{{calc($PRONAMPE_RESULTADO.score / 10)}}%"></span></div>
+        <div class="scale-labels"><span>0</span><span>250</span><span>500</span><span>750</span><span>1000</span></div>
+      </div>
+    </div>
+  <div class="hero-grid">
+    <div class="wide-info"><span class="mini-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41 12 22l-9-9V4h9z"/><circle cx="7.5" cy="7.5" r="1.5"/></svg></span><div><small>TRILHA</small><strong>Pronampe</strong><p>Trilha primária por enquadramento operacional e faturamento estimado.</p></div></div>
+    <div class="wide-info"><span class="mini-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 15l4-4 3 3 5-7"/></svg></span><div><small>RATING BANCÁRIO</small><strong>{{$PRONAMPE_RESULTADO.rating_bancario}}</strong><p>Rating de apetite de crédito</p><div class="rating-row"><span class="{{VAR rating = $PRONAMPE_RESULTADO.rating_bancario VAR cls = case when rating == 'AA' then 'active' else '' end RETURN cls}}">AA</span><span class="{{VAR rating = $PRONAMPE_RESULTADO.rating_bancario VAR cls = case when rating == 'A' then 'active' else '' end RETURN cls}}">A</span><span class="{{VAR rating = $PRONAMPE_RESULTADO.rating_bancario VAR cls = case when rating == 'B' then 'active' else '' end RETURN cls}}">B</span><span class="{{VAR rating = $PRONAMPE_RESULTADO.rating_bancario VAR cls = case when rating == 'C' then 'active' else '' end RETURN cls}}">C</span><span class="{{VAR rating = $PRONAMPE_RESULTADO.rating_bancario VAR cls = case when rating == 'D' then 'active' else '' end RETURN cls}}">D</span><span class="{{VAR rating = $PRONAMPE_RESULTADO.rating_bancario VAR cls = case when rating == 'E' then 'active' else '' end RETURN cls}}">E</span><span class="{{VAR rating = $PRONAMPE_RESULTADO.rating_bancario VAR cls = case when rating == 'F' then 'active' else '' end RETURN cls}}">F</span></div></div></div>
+  </div>
+  <div class="legend-bar"><span class="red-dot"></span> Alto risco / correção necessária <span class="sep"></span><span class="green-dot"></span> Elegibilidade estrutural preservada</div>
+</div>
+<div class="section-title"><span class="section-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><path d="M12 9v4M12 17h.01"/></svg></span><h2>HARD STOPS IDENTIFICADOS</h2><span class="dash"></span></div>
+{{#if $PRONAMPE_SOCIOS}}
+<div class="alert danger"><span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><path d="M12 9v4M12 17h.01"/></svg></span><div><strong>CPF de sócios com negativação ativa (PEFIN/REFIN)</strong><p>Bloqueio no eixo sócios por apontamentos nos participantes.</p></div></div>
+{{/if}}
+{{#if $PRONAMPE_BACEN.faixa_risco}}
+<div class="alert danger"><span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><path d="M12 9v4M12 17h.01"/></svg></span><div><strong>Rating SCR/CNPJ inferido como risco altíssimo</strong><p>Equivalente a faixa de corte duro (Faixa de Risco: {{VAR fr = $PRONAMPE_BACEN.faixa_risco VAR fr_alt = $PRONAMPE_BACEN.faixa_de_risco VAR res = case when fr != null then fr else fr_alt end RETURN res}}).</p></div></div>
+{{/if}}
+<div class="alert danger"><span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><path d="M12 9v4M12 17h.01"/></svg></span><div><strong>Capacidade mensal de pagamento insuficiente</strong><p>Frente à operação estimada; DSCR não verificável e proxy indica estresse.</p></div></div><div class="alert warning"><span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><path d="M12 9v4M12 17h.01"/></svg></span><div><strong>Base de cálculo do limite</strong><p>50% do faturamento estimado (não declarado), teto R$ 500.000,00. Base percentual a confirmar na Portaria 1.243/2026.</p></div></div></div>
