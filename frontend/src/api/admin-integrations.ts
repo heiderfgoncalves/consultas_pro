@@ -13,6 +13,7 @@ import type {
   TemplateMvpPoolItem,
   TestLogEntry,
   TypeReportFieldConfig,
+  ReportFieldDataType,
 } from '@/types/integrations';
 import type {
   CreateCustomBlockPayload,
@@ -187,9 +188,13 @@ export function parseReportFieldConfig(raw: unknown): TypeReportFieldConfig | un
       id: typeof field.id === 'string' && field.id.trim() ? field.id : `field_${fieldIndex + 1}`,
       label: typeof field.label === 'string' ? field.label : '',
       sortOrder: typeof field.sortOrder === 'number' && Number.isFinite(field.sortOrder) ? field.sortOrder : fieldIndex,
-      dataType: typeof field.dataType === 'string'
-        ? field.dataType as TypeReportFieldConfig['fields'][number]['dataType']
-        : 'text',
+      dataType: (() => {
+        if (typeof field.dataType !== 'string') return 'text';
+        const type = field.dataType.toLowerCase();
+        if (type === 'string') return 'text';
+        if (type === 'number') return 'numeric';
+        return type as ReportFieldDataType;
+      })(),
       conditionalRules: Array.isArray(field.conditionalRules)
         ? field.conditionalRules
             .filter((rule): rule is Record<string, unknown> => !!rule && typeof rule === 'object' && !Array.isArray(rule))
@@ -880,3 +885,69 @@ export async function revokeCompanyTokenApi(accessToken: string | null, tokenId:
     token: tok(accessToken),
   });
 }
+
+export interface ApiCanonicalFolder {
+  id: string;
+  name: string;
+  parentId: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ApiCanonicalFieldFolderAssociation {
+  id: string;
+  fieldTypeKey: string;
+  folderId: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export async function getCanonicalFolders(accessToken: string | null): Promise<ApiCanonicalFolder[]> {
+  return apiRequest<ApiCanonicalFolder[]>('/admin/catalog/folders', { method: 'GET', token: tok(accessToken) });
+}
+
+export async function createCanonicalFolder(
+  accessToken: string | null,
+  body: { name: string; parentId?: string | null },
+): Promise<ApiCanonicalFolder> {
+  return apiRequest<ApiCanonicalFolder>('/admin/catalog/folders', {
+    method: 'POST',
+    token: tok(accessToken),
+    body: JSON.stringify(body),
+  });
+}
+
+export async function patchCanonicalFolder(
+  accessToken: string | null,
+  folderId: string,
+  body: { name?: string; parentId?: string | null },
+): Promise<ApiCanonicalFolder> {
+  return apiRequest<ApiCanonicalFolder>(`/admin/catalog/folders/${folderId}`, {
+    method: 'PATCH',
+    token: tok(accessToken),
+    body: JSON.stringify(body),
+  });
+}
+
+export async function deleteCanonicalFolder(accessToken: string | null, folderId: string): Promise<{ deleted: boolean }> {
+  return apiRequest<{ deleted: boolean }>(`/admin/catalog/folders/${folderId}`, {
+    method: 'DELETE',
+    token: tok(accessToken),
+  });
+}
+
+export async function getCanonicalFolderAssociations(accessToken: string | null): Promise<ApiCanonicalFieldFolderAssociation[]> {
+  return apiRequest<ApiCanonicalFieldFolderAssociation[]>('/admin/catalog/folders/associations', { method: 'GET', token: tok(accessToken) });
+}
+
+export async function postCanonicalFolderAssociation(
+  accessToken: string | null,
+  body: { fieldTypeKey: string; folderId: string | null },
+): Promise<ApiCanonicalFieldFolderAssociation | { deleted: boolean }> {
+  return apiRequest<ApiCanonicalFieldFolderAssociation | { deleted: boolean }>('/admin/catalog/folders/associations', {
+    method: 'POST',
+    token: tok(accessToken),
+    body: JSON.stringify(body),
+  });
+}
+

@@ -1,4 +1,6 @@
 import 'dotenv/config';
+import * as fs from 'fs';
+import * as path from 'path';
 
 import {
   PrismaClient,
@@ -36,14 +38,14 @@ const mockProviders = [
     isActive: true,
   },
   {
-    slug: 'brasil-consultas',
-    name: 'Brasil Consultas',
-    baseUrl: 'https://api.brasilconsultas.com.br',
-    balancePath: '/v1/balance',
-    rechargePath: '/v1/recharge',
-    authType: ProviderAuthType.BASIC_AUTH,
-    credentials: { username: 'demo', password: '***demo***' },
-    isActive: false,
+    slug: 'brasil-cred',
+    name: 'Brasil Cred',
+    baseUrl: 'https://sets.brasilcred.com.br/functions/v1/api-gateway/api/v1',
+    balancePath: '/account',
+    rechargePath: '/recharge',
+    authType: ProviderAuthType.BEARER,
+    credentials: { token: 'bc_live_demo' },
+    isActive: true,
   },
   {
     slug: 'ksi',
@@ -156,15 +158,95 @@ async function main() {
     });
   }
 
+  // Configurações padrão de reportFieldConfig para cada seção canônica
+  const defaultSectionReportFields: Record<string, { version: number; title: string; fields: Array<{ id: string; key: string; label: string; dataType: string; sortOrder: number }> }> = {
+    DADOS_PESSOAIS: {
+      version: 1, title: 'Dados Pessoais',
+      fields: [
+        { id: 'field_dados_pessoais_nome_completo', key: 'nome_completo', label: 'Nome Completo', dataType: 'text', sortOrder: 0 },
+        { id: 'field_dados_pessoais_documento', key: 'documento', label: 'Documento', dataType: 'document', sortOrder: 1 },
+        { id: 'field_dados_pessoais_data_nascimento', key: 'data_nascimento', label: 'Data de Nascimento', dataType: 'date', sortOrder: 2 },
+        { id: 'field_dados_pessoais_nome_mae', key: 'nome_mae', label: 'Nome da Mãe', dataType: 'text', sortOrder: 3 },
+        { id: 'field_dados_pessoais_telefone', key: 'telefone', label: 'Telefone', dataType: 'text', sortOrder: 4 },
+        { id: 'field_dados_pessoais_email', key: 'email', label: 'Email', dataType: 'text', sortOrder: 5 },
+      ]
+    },
+    SCORE: {
+      version: 1, title: 'Score de Crédito',
+      fields: [
+        { id: 'field_score_valor', key: 'valor', label: 'Valor do Score', dataType: 'numeric', sortOrder: 0 },
+        { id: 'field_score_faixa', key: 'faixa', label: 'Faixa do Score', dataType: 'text', sortOrder: 1 },
+        { id: 'field_score_chance_pagar', key: 'chancePagar', label: 'Chance de Pagar', dataType: 'percent', sortOrder: 2 },
+        { id: 'field_score_prob_inadimplencia', key: 'probabilidadeInadimplencia', label: 'Probabilidade de Inadimplência', dataType: 'percent', sortOrder: 3 },
+      ]
+    },
+    RATING: {
+      version: 1, title: 'Rating de Crédito',
+      fields: [
+        { id: 'field_rating_classificacao', key: 'classificacao', label: 'Classificação', dataType: 'text', sortOrder: 0 },
+        { id: 'field_rating_renda_presumida', key: 'renda_presumida', label: 'Renda Presumida', dataType: 'currency', sortOrder: 1 },
+        { id: 'field_rating_capacidade_pagamento', key: 'capacidade_pagamento', label: 'Capacidade de Pagamento', dataType: 'currency', sortOrder: 2 },
+        { id: 'field_rating_risco_credito', key: 'risco_credito', label: 'Risco de Crédito', dataType: 'text', sortOrder: 3 },
+      ]
+    },
+    DIVIDAS_SPC: {
+      version: 1, title: 'Dívidas SPC',
+      fields: [
+        { id: 'field_dividas_spc_credor', key: 'credor', label: 'Credor', dataType: 'text', sortOrder: 0 },
+        { id: 'field_dividas_spc_valor', key: 'valor', label: 'Valor', dataType: 'currency', sortOrder: 1 },
+        { id: 'field_dividas_spc_data_vencimento', key: 'data_vencimento', label: 'Data de Vencimento', dataType: 'date', sortOrder: 2 },
+      ]
+    },
+    DIVIDAS_SERASA: {
+      version: 1, title: 'Dívidas Serasa',
+      fields: [
+        { id: 'field_dividas_serasa_credor', key: 'credor', label: 'Credor', dataType: 'text', sortOrder: 0 },
+        { id: 'field_dividas_serasa_valor', key: 'valor', label: 'Valor', dataType: 'currency', sortOrder: 1 },
+        { id: 'field_dividas_serasa_data_vencimento', key: 'data_vencimento', label: 'Data de Vencimento', dataType: 'date', sortOrder: 2 },
+      ]
+    },
+    DIVIDAS_BOA_VISTA: {
+      version: 1, title: 'Dívidas Boa Vista',
+      fields: [
+        { id: 'field_dividas_boa_vista_credor', key: 'credor', label: 'Credor', dataType: 'text', sortOrder: 0 },
+        { id: 'field_dividas_boa_vista_valor', key: 'valor', label: 'Valor', dataType: 'currency', sortOrder: 1 },
+        { id: 'field_dividas_boa_vista_data_vencimento', key: 'data_vencimento', label: 'Data de Vencimento', dataType: 'date', sortOrder: 2 },
+      ]
+    },
+    APONTAMENTOS_BACEN: {
+      version: 1, title: 'Apontamentos BACEN',
+      fields: [
+        { id: 'field_apontamentos_bacen_contrato', key: 'contrato', label: 'Contrato', dataType: 'text', sortOrder: 0 },
+        { id: 'field_apontamentos_bacen_valor_vencido', key: 'valor_vencido', label: 'Valor Vencido', dataType: 'currency', sortOrder: 1 },
+        { id: 'field_apontamentos_bacen_valor_a_vencer', key: 'valor_a_vencer', label: 'Valor a Vencer', dataType: 'currency', sortOrder: 2 },
+      ]
+    },
+    PROTESTO_CARTORIO: {
+      version: 1, title: 'Protestos em Cartório',
+      fields: [
+        { id: 'field_protesto_cartorio_cartorio', key: 'cartorio', label: 'Cartório', dataType: 'text', sortOrder: 0 },
+        { id: 'field_protesto_cartorio_valor', key: 'valor', label: 'Valor', dataType: 'currency', sortOrder: 1 },
+        { id: 'field_protesto_cartorio_data', key: 'data', label: 'Data', dataType: 'date', sortOrder: 2 },
+      ]
+    },
+  };
+
   for (const row of DEFAULT_CANONICAL_SECTION_FIELDS) {
+    const reportFieldConfig = defaultSectionReportFields[row.pathKey] ?? null;
     await prisma.canonicalFieldCatalog.upsert({
       where: { pathKey: row.pathKey },
-      update: { label: row.label, description: row.description, dataType: 'object' },
+      update: {
+        label: row.label,
+        description: row.description,
+        dataType: 'object',
+        ...(reportFieldConfig ? { reportFieldConfig: reportFieldConfig as any } : {}),
+      },
       create: {
         pathKey: row.pathKey,
         label: row.label,
         description: row.description,
         dataType: 'object',
+        ...(reportFieldConfig ? { reportFieldConfig: reportFieldConfig as any } : {}),
       },
     });
   }
@@ -355,11 +437,92 @@ async function main() {
     where: { productId: { in: [productSollos.id, productEhm.id] } },
   });
 
+  const sollosTypeItemFilters = {
+    DADOS_PESSOAIS: {
+      version: 2, groups: [],
+      fieldMappings: [
+        { id: 'map_sol_dp_nome', reportFieldId: 'field_dados_pessoais_nome_completo', reportFieldLabel: 'Nome Completo', jsonPath: 'nome', sourceTrechoPath: 'dados_pessoais' },
+        { id: 'map_sol_dp_doc', reportFieldId: 'field_dados_pessoais_documento', reportFieldLabel: 'Documento', jsonPath: 'cpf', sourceTrechoPath: 'dados_pessoais' },
+        { id: 'map_sol_dp_nasc', reportFieldId: 'field_dados_pessoais_data_nascimento', reportFieldLabel: 'Data de Nascimento', jsonPath: 'nascimento', sourceTrechoPath: 'dados_pessoais' },
+      ],
+      dedupFieldIds: [], computedFields: []
+    },
+    DIVIDAS_SPC: {
+      version: 2, groups: [],
+      fieldMappings: [
+        { id: 'map_sol_spc_cred', reportFieldId: 'field_dividas_spc_credor', reportFieldLabel: 'Credor', jsonPath: 'credor', sourceTrechoPath: 'spc.registros' },
+        { id: 'map_sol_spc_val', reportFieldId: 'field_dividas_spc_valor', reportFieldLabel: 'Valor', jsonPath: 'valor', sourceTrechoPath: 'spc.registros' },
+        { id: 'map_sol_spc_dt', reportFieldId: 'field_dividas_spc_data_vencimento', reportFieldLabel: 'Data de Vencimento', jsonPath: 'data', sourceTrechoPath: 'spc.registros' },
+      ],
+      dedupFieldIds: [], computedFields: []
+    },
+    DIVIDAS_SERASA: {
+      version: 2, groups: [],
+      fieldMappings: [
+        { id: 'map_sol_ser_val', reportFieldId: 'field_dividas_serasa_valor', reportFieldLabel: 'Valor', jsonPath: 'total_registros', sourceTrechoPath: 'serasa' },
+      ],
+      dedupFieldIds: [], computedFields: []
+    },
+    SCORE: {
+      version: 2, groups: [],
+      fieldMappings: [
+        { id: 'map_sol_sc_val', reportFieldId: 'field_score_valor', reportFieldLabel: 'Valor do Score', jsonPath: 'valor', sourceTrechoPath: 'score' },
+        { id: 'map_sol_sc_faixa', reportFieldId: 'field_score_faixa', reportFieldLabel: 'Faixa do Score', jsonPath: 'faixa', sourceTrechoPath: 'score' },
+        { id: 'map_sol_sc_prob', reportFieldId: 'field_score_prob_inadimplencia', reportFieldLabel: 'Probabilidade de Inadimplência', jsonPath: 'probabilidade', sourceTrechoPath: 'score' },
+      ],
+      dedupFieldIds: [], computedFields: []
+    },
+  };
+
+  // Atualizar typeItemFilters do produto Sollos
+  await prisma.providerProduct.update({
+    where: { id: productSollos.id },
+    data: { typeItemFilters: sollosTypeItemFilters as any }
+  });
+
+  const ehmTypeItemFilters = {
+    SCORE: {
+      version: 2, groups: [],
+      fieldMappings: [
+        { id: 'map_ehm_sc_val', reportFieldId: 'field_score_valor', reportFieldLabel: 'Valor do Score', jsonPath: 'score', sourceTrechoPath: 'resultado.pontuacao' },
+        { id: 'map_ehm_sc_faixa', reportFieldId: 'field_score_faixa', reportFieldLabel: 'Faixa do Score', jsonPath: 'classificacao', sourceTrechoPath: 'resultado.pontuacao' },
+      ],
+      dedupFieldIds: [], computedFields: []
+    },
+    DIVIDAS_SPC: {
+      version: 2, groups: [],
+      fieldMappings: [
+        { id: 'map_ehm_spc_val', reportFieldId: 'field_dividas_spc_valor', reportFieldLabel: 'Valor', jsonPath: 'total', sourceTrechoPath: 'resultado.restricoes_spc' },
+      ],
+      dedupFieldIds: [], computedFields: []
+    },
+    DIVIDAS_SERASA: {
+      version: 2, groups: [],
+      fieldMappings: [
+        { id: 'map_ehm_ser_val', reportFieldId: 'field_dividas_serasa_valor', reportFieldLabel: 'Valor', jsonPath: 'total', sourceTrechoPath: 'resultado.restricoes_serasa' },
+      ],
+      dedupFieldIds: [], computedFields: []
+    },
+    PROTESTO_CARTORIO: {
+      version: 2, groups: [],
+      fieldMappings: [
+        { id: 'map_ehm_prot_val', reportFieldId: 'field_protesto_cartorio_valor', reportFieldLabel: 'Valor', jsonPath: 'valor_total', sourceTrechoPath: 'resultado.protestos' },
+      ],
+      dedupFieldIds: [], computedFields: []
+    },
+  };
+
+  // Atualizar typeItemFilters do produto EHM
+  await prisma.providerProduct.update({
+    where: { id: productEhm.id },
+    data: { typeItemFilters: ehmTypeItemFilters as any }
+  });
+
   const sollosMappings: Array<{ sourcePath: string; pathKey: string; sortOrder: number }> = [
     { sourcePath: 'dados_pessoais', pathKey: 'DADOS_PESSOAIS', sortOrder: 0 },
     { sourcePath: 'spc', pathKey: 'DIVIDAS_SPC', sortOrder: 1 },
     { sourcePath: 'serasa', pathKey: 'DIVIDAS_SERASA', sortOrder: 2 },
-    { sourcePath: 'score', pathKey: 'SCORE_CREDITO', sortOrder: 3 },
+    { sourcePath: 'score', pathKey: 'SCORE', sortOrder: 3 },
   ];
 
   for (const m of sollosMappings) {
@@ -374,7 +537,7 @@ async function main() {
   }
 
   const ehmMappings: Array<{ sourcePath: string; pathKey: string; sortOrder: number }> = [
-    { sourcePath: 'resultado.pontuacao', pathKey: 'SCORE_CREDITO', sortOrder: 0 },
+    { sourcePath: 'resultado.pontuacao', pathKey: 'SCORE', sortOrder: 0 },
     { sourcePath: 'resultado.restricoes_spc', pathKey: 'DIVIDAS_SPC', sortOrder: 1 },
     { sourcePath: 'resultado.restricoes_serasa', pathKey: 'DIVIDAS_SERASA', sortOrder: 2 },
     { sourcePath: 'resultado.protestos', pathKey: 'PROTESTO_CARTORIO', sortOrder: 3 },
@@ -522,6 +685,402 @@ async function main() {
           isSystem: true,
         },
       });
+    }
+  }
+
+  // --- CONFIGURAÇÃO BRASIL CRED E RADAR PRONAMPE ---
+  console.log("Configuring Brasil Cred & Radar PRONAMPE from main seed...");
+  // O seed.ts fica em /backend/prisma/, portanto sobe dois níveis para chegar em /backend/ e então logs/
+  const logFilePath = path.join(__dirname, '../../logs/radar_pronampe_brasilconsultas.json');
+  if (fs.existsSync(logFilePath)) {
+    const logFileContent = fs.readFileSync(logFilePath, 'utf-8');
+    const logJson = JSON.parse(logFileContent);
+    const sampleResponse = logJson.raw_data;
+
+    const sectionsToCreate = [
+      {
+        pathKey: "PRONAMPE_RESULTADO",
+        label: "PRONAMPE - Resultado",
+        description: "Resultado consolidado da consulta Radar PRONAMPE",
+        fields: [
+          { key: "recomendacao_final", label: "Recomendação Final", dataType: "string" },
+          { key: "credito_estimado", label: "Crédito Estimado", dataType: "currency" },
+          { key: "prob_inadimplencia", label: "Probabilidade de Inadimplência", dataType: "string" },
+          { key: "rating_bancario", label: "Rating Bancário", dataType: "string" },
+          { key: "score", label: "Score de Crédito", dataType: "number" },
+          { key: "faturamento_estimado", label: "Faturamento Estimado", dataType: "currency" },
+          { key: "gasto_estimado", label: "Gasto Estimado", dataType: "currency" },
+          { key: "parecer_executivo", label: "Parecer Executivo", dataType: "string" }
+        ]
+      },
+      {
+        pathKey: "PRONAMPE_SOCIOS",
+        label: "PRONAMPE - Quadro Societário e Restrições",
+        description: "Informações cadastrais e restrições ativas dos sócios",
+        fields: [
+          { key: "nome", label: "Nome", dataType: "string" },
+          { key: "documento", label: "CPF/CNPJ", dataType: "string" },
+          { key: "vinculo", label: "Vínculo", dataType: "string" },
+          { key: "participacao", label: "Participação (%)", dataType: "number" },
+          { key: "score", label: "Score", dataType: "number" },
+          { key: "total_refin", label: "Total REFIN", dataType: "currency" },
+          { key: "qtd_refin", label: "Qtd REFIN", dataType: "number" },
+          { key: "total_protestos", label: "Total Protestos", dataType: "currency" },
+          { key: "qtd_protestos", label: "Qtd Protestos", dataType: "number" }
+        ]
+      },
+      {
+        pathKey: "PRONAMPE_PGFN",
+        label: "PRONAMPE - Dívida Ativa PGFN",
+        description: "Dívidas tributárias federais ativas na PGFN",
+        fields: [
+          { key: "tipo_divida", label: "Tipo de Dívida", dataType: "string" },
+          { key: "numero_inscricao", label: "Número de Inscrição", dataType: "string" },
+          { key: "valor", label: "Valor", dataType: "currency" }
+        ]
+      },
+      {
+        pathKey: "PRONAMPE_RECEITA",
+        label: "PRONAMPE - Cadastro Receita Federal",
+        description: "Dados do cartão CNPJ da Receita Federal",
+        fields: [
+          { key: "razao_social", label: "Razão Social", dataType: "string" },
+          { key: "situacao_cadastral", label: "Situação Cadastral", dataType: "string" },
+          { key: "data_abertura", label: "Abertura", dataType: "date" },
+          { key: "cnae_principal", label: "CNAE Principal", dataType: "string" },
+          { key: "telefones", label: "Telefones", dataType: "string" },
+          { key: "endereco", label: "Endereço", dataType: "string" }
+        ]
+      },
+      {
+        pathKey: "PRONAMPE_BUREAUS",
+        label: "PRONAMPE - Scores e Bureaus",
+        description: "Métricas consolidadas dos bureaus Quod e Boa Vista",
+        fields: [
+          { key: "quod_score", label: "Score Quod", dataType: "number" },
+          { key: "quod_faixa", label: "Faixa Quod", dataType: "string" },
+          { key: "boavista_score", label: "Score Boa Vista", dataType: "number" },
+          { key: "boavista_faixa", label: "Faixa Boa Vista", dataType: "string" }
+        ]
+      },
+      {
+        pathKey: "PRONAMPE_BACEN",
+        label: "PRONAMPE - SCR BACEN (Registrato)",
+        description: "Dados de endividamento bancário no SCR do Banco Central",
+        fields: [
+          { key: "limite", label: "Limite de Crédito", dataType: "currency" },
+          { key: "prejuizo", label: "Prejuízo", dataType: "currency" },
+          { key: "obrigacao_assumida", label: "Obrigação Assumida", dataType: "currency" },
+          { key: "vencer", label: "A Vencer", dataType: "currency" },
+          { key: "vencido", label: "Vencido", dataType: "currency" },
+          { key: "responsabilidade_total", label: "Responsabilidade Total", dataType: "currency" },
+          { key: "faixa_risco", label: "Faixa de Risco", dataType: "string" }
+        ]
+      }
+    ];
+
+    for (const s of sectionsToCreate) {
+      const reportFieldConfig = {
+        version: 1,
+        title: s.label,
+        fields: s.fields.map((f, idx) => ({
+          id: `field_${s.pathKey.toLowerCase()}_${f.key}`,
+          key: f.key,
+          label: f.label,
+          dataType: f.dataType,
+          sortOrder: idx
+        }))
+      };
+
+      await prisma.canonicalFieldCatalog.upsert({
+        where: { pathKey: s.pathKey },
+        update: {
+          label: s.label,
+          description: s.description,
+          dataType: "object",
+          reportFieldConfig: reportFieldConfig as any
+        },
+        create: {
+          pathKey: s.pathKey,
+          label: s.label,
+          description: s.description,
+          dataType: "object",
+          reportFieldConfig: reportFieldConfig as any
+        }
+      });
+
+      for (const f of s.fields) {
+        const fieldPathKey = s.pathKey === "PRONAMPE_SOCIOS" || s.pathKey === "PRONAMPE_PGFN"
+          ? `${s.pathKey}[].${f.key}`
+          : `${s.pathKey}.${f.key}`;
+        await prisma.canonicalFieldCatalog.upsert({
+          where: { pathKey: fieldPathKey },
+          update: {
+            label: f.label,
+            dataType: f.dataType,
+          },
+          create: {
+            pathKey: fieldPathKey,
+            label: f.label,
+            dataType: f.dataType,
+          }
+        });
+      }
+    }
+
+    const brasilCredProvider = await prisma.provider.findUniqueOrThrow({
+      where: { slug: 'brasil-cred' }
+    });
+
+    const typeItemFilters = {
+      PRONAMPE_RESULTADO: {
+        version: 2,
+        groups: [],
+        fieldMappings: [
+          { id: "map_res_rec", reportFieldId: "field_pronampe_resultado_recomendacao_final", reportFieldLabel: "Recomendação Final", jsonPath: "tipoRecomendacaoVenda", sourceTrechoPath: "recomenda.data" },
+          { id: "map_res_cred", reportFieldId: "field_pronampe_resultado_credito_estimado", reportFieldLabel: "Crédito Estimado", jsonPath: "valorLimiteRecomendado", sourceTrechoPath: "recomenda.data" },
+          { id: "map_res_prob", reportFieldId: "field_pronampe_resultado_prob_inadimplencia", reportFieldLabel: "Probabilidade de Inadimplência", jsonPath: "quod.pessoaJuridica.faixaScore", sourceTrechoPath: "" },
+          { id: "map_res_rat", reportFieldId: "field_pronampe_resultado_rating_bancario", reportFieldLabel: "Rating Bancário", jsonPath: "codNivelRisco", sourceTrechoPath: "recomenda.data" },
+          { id: "map_res_sc", reportFieldId: "field_pronampe_resultado_score", reportFieldLabel: "Score de Crédito", jsonPath: "quod.pessoaJuridica.score", sourceTrechoPath: "" },
+          { id: "map_res_fat", reportFieldId: "field_pronampe_resultado_faturamento_estimado", reportFieldLabel: "Faturamento Estimado", jsonPath: "faturamentoEstimado", sourceTrechoPath: "recomenda.data" },
+          { id: "map_res_gast", reportFieldId: "field_pronampe_resultado_gasto_estimado", reportFieldLabel: "Gasto Estimado", jsonPath: "scrBacen.retorno.responsabilidadeTotal", sourceTrechoPath: "" },
+          { id: "map_res_par", reportFieldId: "field_pronampe_resultado_parecer_executivo", reportFieldLabel: "Parecer Executivo", jsonPath: "mensagemScore", sourceTrechoPath: "recomenda.data" }
+        ],
+        dedupFieldIds: [],
+        computedFields: []
+      },
+      PRONAMPE_SOCIOS: {
+        version: 2,
+        groups: [],
+        fieldMappings: [
+          { id: "map_soc_nome", reportFieldId: "field_pronampe_socios_nome", reportFieldLabel: "Nome", jsonPath: "nome", sourceTrechoPath: "recomenda.data.quadroSocietarioCompleto" },
+          { id: "map_soc_doc", reportFieldId: "field_pronampe_socios_documento", reportFieldLabel: "CPF/CNPJ", jsonPath: "documento", sourceTrechoPath: "recomenda.data.quadroSocietarioCompleto" },
+          { id: "map_soc_vin", reportFieldId: "field_pronampe_socios_vinculo", reportFieldLabel: "Vínculo", jsonPath: "vinculo", sourceTrechoPath: "recomenda.data.quadroSocietarioCompleto" },
+          { id: "map_soc_part", reportFieldId: "field_pronampe_socios_participacao", reportFieldLabel: "Participação (%)", jsonPath: "capitalTotal", sourceTrechoPath: "recomenda.data.quadroSocietarioCompleto" },
+          { id: "map_soc_tref", reportFieldId: "field_pronampe_socios_total_refin", reportFieldLabel: "Total REFIN", jsonPath: "anotacoesNegativas[0].valorTotalRefin", sourceTrechoPath: "recomenda.data.quadroSocietarioCompleto" },
+          { id: "map_soc_qref", reportFieldId: "field_pronampe_socios_qtd_refin", reportFieldLabel: "Qtd REFIN", jsonPath: "anotacoesNegativas[0].quantidadeTotalRefin", sourceTrechoPath: "recomenda.data.quadroSocietarioCompleto" },
+          { id: "map_soc_tprot", reportFieldId: "field_pronampe_socios_total_protestos", reportFieldLabel: "Total Protestos", jsonPath: "anotacoesNegativas[0].valorTotalProtesto", sourceTrechoPath: "recomenda.data.quadroSocietarioCompleto" },
+          { id: "map_soc_qprot", reportFieldId: "field_pronampe_socios_qtd_protestos", reportFieldLabel: "Qtd Protestos", jsonPath: "anotacoesNegativas[0].quantidadeTotalProtesto", sourceTrechoPath: "recomenda.data.quadroSocietarioCompleto" }
+        ],
+        dedupFieldIds: [],
+        computedFields: []
+      },
+      PRONAMPE_PGFN: {
+        version: 2,
+        groups: [],
+        fieldMappings: [
+          { id: "map_pgfn_tipo", reportFieldId: "field_pronampe_pgfn_tipo_divida", reportFieldLabel: "Tipo de Dívida", jsonPath: "tipoDivida", sourceTrechoPath: "pgfn.retorno.naturezas" },
+          { id: "map_pgfn_num", reportFieldId: "field_pronampe_pgfn_numero_inscricao", reportFieldLabel: "Número de Inscrição", jsonPath: "numeroInscricao", sourceTrechoPath: "pgfn.retorno.naturezas" },
+          { id: "map_pgfn_val", reportFieldId: "field_pronampe_pgfn_valor", reportFieldLabel: "Valor", jsonPath: "total", sourceTrechoPath: "pgfn.retorno.naturezas" }
+        ],
+        dedupFieldIds: [],
+        computedFields: []
+      },
+      PRONAMPE_RECEITA: {
+        version: 2,
+        groups: [],
+        fieldMappings: [
+          { id: "map_rec_rs", reportFieldId: "field_pronampe_receita_razao_social", reportFieldLabel: "Razão Social", jsonPath: "razaoSocial", sourceTrechoPath: "recomenda.data" },
+          { id: "map_rec_sit", reportFieldId: "field_pronampe_receita_situacao_cadastral", reportFieldLabel: "Situação Cadastral", jsonPath: "identificacaoCadastral.situacaoCadastral", sourceTrechoPath: "recomenda.data" },
+          { id: "map_rec_dt", reportFieldId: "field_pronampe_receita_data_abertura", reportFieldLabel: "Abertura", jsonPath: "identificacaoCadastral.dataFundacao", sourceTrechoPath: "recomenda.data" },
+          { id: "map_rec_cnae", reportFieldId: "field_pronampe_receita_cnae_principal", reportFieldLabel: "CNAE Principal", jsonPath: "pgfn.retorno.cnaeDescricao", sourceTrechoPath: "" },
+          { id: "map_rec_tel", reportFieldId: "field_pronampe_receita_telefones", reportFieldLabel: "Telefones", jsonPath: "enderecos[0].telefone", sourceTrechoPath: "recomenda.data" },
+          { id: "map_rec_end", reportFieldId: "field_pronampe_receita_endereco", reportFieldLabel: "Endereço", jsonPath: "enderecos[0].endereco", sourceTrechoPath: "recomenda.data" }
+        ],
+        dedupFieldIds: [],
+        computedFields: []
+      },
+      PRONAMPE_BUREAUS: {
+        version: 2,
+        groups: [],
+        fieldMappings: [
+          { id: "map_bur_qs", reportFieldId: "field_pronampe_bureaus_quod_score", reportFieldLabel: "Score Quod", jsonPath: "quod.pessoaJuridica.score", sourceTrechoPath: "" },
+          { id: "map_bur_qf", reportFieldId: "field_pronampe_bureaus_quod_faixa", reportFieldLabel: "Faixa Quod", jsonPath: "quod.pessoaJuridica.faixaScore", sourceTrechoPath: "" },
+          { id: "map_bur_bs", reportFieldId: "field_pronampe_bureaus_boavista_score", reportFieldLabel: "Score Boa Vista", jsonPath: "boaVista.score", sourceTrechoPath: "" },
+          { id: "map_bur_bf", reportFieldId: "field_pronampe_bureaus_boavista_faixa", reportFieldLabel: "Faixa Boa Vista", jsonPath: "boaVista.risk", sourceTrechoPath: "" }
+        ],
+        dedupFieldIds: [],
+        computedFields: []
+      },
+      PRONAMPE_BACEN: {
+        version: 2,
+        groups: [],
+        fieldMappings: [
+          { id: "map_bac_lim", reportFieldId: "field_pronampe_bacen_limite", reportFieldLabel: "Limite de Crédito", jsonPath: "carteiraCredito.limite", sourceTrechoPath: "scrBacen.retorno" },
+          { id: "map_bac_prej", reportFieldId: "field_pronampe_bacen_prejuizo", reportFieldLabel: "Prejuízo", jsonPath: "carteiraCredito.prejuizo", sourceTrechoPath: "scrBacen.retorno" },
+          { id: "map_bac_ass", reportFieldId: "field_pronampe_bacen_obrigacao_assumida", reportFieldLabel: "Obrigação Assumida", jsonPath: "obrigacaoAssumida", sourceTrechoPath: "scrBacen.retorno" },
+          { id: "map_bac_ven", reportFieldId: "field_pronampe_bacen_vencer", reportFieldLabel: "A Vencer", jsonPath: "carteiraCredito.vencer", sourceTrechoPath: "scrBacen.retorno" },
+          { id: "map_bac_venc", reportFieldId: "field_pronampe_bacen_vencido", reportFieldLabel: "Vencido", jsonPath: "carteiraCredito.vencido", sourceTrechoPath: "scrBacen.retorno" },
+          { id: "map_bac_resp", reportFieldId: "field_pronampe_bacen_responsabilidade_total", reportFieldLabel: "Responsabilidade Total", jsonPath: "responsabilidadeTotal", sourceTrechoPath: "scrBacen.retorno" },
+          { id: "map_bac_risk", reportFieldId: "field_pronampe_bacen_faixa_risco", reportFieldLabel: "Faixa de Risco", jsonPath: "faixaRisco", sourceTrechoPath: "scrBacen.retorno" }
+        ],
+        dedupFieldIds: [],
+        computedFields: []
+      }
+    };
+
+    const productCode = "RADAR_PRONAMPE_PJ";
+    const product = await prisma.providerProduct.upsert({
+      where: { providerId_code: { providerId: brasilCredProvider.id, code: productCode } },
+      update: {
+        name: "Radar PRONAMPE (CNPJ)",
+        externalId: "radar-pronampe-pj",
+        endpointPath: "/consult/radar-pronampe",
+        method: HttpMethod.POST,
+        cost: 3.57,
+        consultationPrice: 6.90,
+        isActive: true,
+        sampleResponse: sampleResponse as any,
+        bodyTemplate: { document: "$document" } as any,
+        typeItemFilters: typeItemFilters as any,
+        consultationTypeId: composta.id
+      },
+      create: {
+        providerId: brasilCredProvider.id,
+        name: "Radar PRONAMPE (CNPJ)",
+        code: productCode,
+        externalId: "radar-pronampe-pj",
+        endpointPath: "/consult/radar-pronampe",
+        method: HttpMethod.POST,
+        cost: 3.57,
+        consultationPrice: 6.90,
+        isActive: true,
+        sampleResponse: sampleResponse as any,
+        bodyTemplate: { document: "$document" } as any,
+        typeItemFilters: typeItemFilters as any,
+        consultationTypeId: composta.id
+      }
+    });
+
+    await prisma.providerFieldMapping.deleteMany({
+      where: { productId: product.id }
+    });
+
+    const mappingsToCreate = [
+      { sourcePath: "recomenda.data.tipoRecomendacaoVenda", pathKey: "PRONAMPE_RESULTADO.recomendacao_final" },
+      { sourcePath: "recomenda.data.valorLimiteRecomendado", pathKey: "PRONAMPE_RESULTADO.credito_estimado" },
+      { sourcePath: "quod.pessoaJuridica.faixaScore", pathKey: "PRONAMPE_RESULTADO.prob_inadimplencia" },
+      { sourcePath: "recomenda.data.codNivelRisco", pathKey: "PRONAMPE_RESULTADO.rating_bancario" },
+      { sourcePath: "quod.pessoaJuridica.score", pathKey: "PRONAMPE_RESULTADO.score" },
+      { sourcePath: "recomenda.data.faturamentoEstimado", pathKey: "PRONAMPE_RESULTADO.faturamento_estimado" },
+      { sourcePath: "scrBacen.retorno.responsabilidadeTotal", pathKey: "PRONAMPE_RESULTADO.gasto_estimado" },
+      { sourcePath: "recomenda.data.mensagemScore", pathKey: "PRONAMPE_RESULTADO.parecer_executivo" },
+
+      { sourcePath: "recomenda.data.quadroSocietarioCompleto[*].nome", pathKey: "PRONAMPE_SOCIOS[].nome" },
+      { sourcePath: "recomenda.data.quadroSocietarioCompleto[*].documento", pathKey: "PRONAMPE_SOCIOS[].documento" },
+      { sourcePath: "recomenda.data.quadroSocietarioCompleto[*].vinculo", pathKey: "PRONAMPE_SOCIOS[].vinculo" },
+      { sourcePath: "recomenda.data.quadroSocietarioCompleto[*].capitalTotal", pathKey: "PRONAMPE_SOCIOS[].participacao" },
+      { sourcePath: "recomenda.data.quadroSocietarioCompleto[*].anotacoesNegativas[0].valorTotalRefin", pathKey: "PRONAMPE_SOCIOS[].total_refin" },
+      { sourcePath: "recomenda.data.quadroSocietarioCompleto[*].anotacoesNegativas[0].quantidadeTotalRefin", pathKey: "PRONAMPE_SOCIOS[].qtd_refin" },
+      { sourcePath: "recomenda.data.quadroSocietarioCompleto[*].anotacoesNegativas[0].valorTotalProtesto", pathKey: "PRONAMPE_SOCIOS[].total_protestos" },
+      { sourcePath: "recomenda.data.quadroSocietarioCompleto[*].anotacoesNegativas[0].quantidadeTotalProtesto", pathKey: "PRONAMPE_SOCIOS[].qtd_protestos" },
+
+      { sourcePath: "pgfn.retorno.naturezas[*].tipoDivida", pathKey: "PRONAMPE_PGFN[].tipo_divida" },
+      { sourcePath: "pgfn.retorno.naturezas[*].numeroInscricao", pathKey: "PRONAMPE_PGFN[].numero_inscricao" },
+      { sourcePath: "pgfn.retorno.naturezas[*].total", pathKey: "PRONAMPE_PGFN[].valor" },
+
+      { sourcePath: "recomenda.data.razaoSocial", pathKey: "PRONAMPE_RECEITA.razao_social" },
+      { sourcePath: "recomenda.data.identificacaoCadastral.situacaoCadastral", pathKey: "PRONAMPE_RECEITA.situacao_cadastral" },
+      { sourcePath: "recomenda.data.identificacaoCadastral.dataFundacao", pathKey: "PRONAMPE_RECEITA.data_abertura" },
+      { sourcePath: "pgfn.retorno.cnaeDescricao", pathKey: "PRONAMPE_RECEITA.cnae_principal" },
+      { sourcePath: "recomenda.data.enderecos[0].telefone", pathKey: "PRONAMPE_RECEITA.telefones" },
+      { sourcePath: "recomenda.data.enderecos[0].endereco", pathKey: "PRONAMPE_RECEITA.endereco" },
+
+      { sourcePath: "quod.pessoaJuridica.score", pathKey: "PRONAMPE_BUREAUS.quod_score" },
+      { sourcePath: "quod.pessoaJuridica.faixaScore", pathKey: "PRONAMPE_BUREAUS.quod_faixa" },
+      { sourcePath: "boaVista.score", pathKey: "PRONAMPE_BUREAUS.boavista_score" },
+      { sourcePath: "boaVista.risk", pathKey: "PRONAMPE_BUREAUS.boavista_faixa" },
+
+      { sourcePath: "scrBacen.retorno.carteiraCredito.limite", pathKey: "PRONAMPE_BACEN.limite" },
+      { sourcePath: "scrBacen.retorno.carteiraCredito.prejuizo", pathKey: "PRONAMPE_BACEN.prejuizo" },
+      { sourcePath: "scrBacen.retorno.obrigacaoAssumida", pathKey: "PRONAMPE_BACEN.obrigacao_assumida" },
+      { sourcePath: "scrBacen.retorno.carteiraCredito.vencer", pathKey: "PRONAMPE_BACEN.vencer" },
+      { sourcePath: "scrBacen.retorno.carteiraCredito.vencido", pathKey: "PRONAMPE_BACEN.vencido" },
+      { sourcePath: "scrBacen.retorno.responsabilidadeTotal", pathKey: "PRONAMPE_BACEN.responsabilidade_total" },
+      { sourcePath: "scrBacen.retorno.faixaRisco", pathKey: "PRONAMPE_BACEN.faixa_risco" }
+    ];
+
+    for (let idx = 0; idx < mappingsToCreate.length; idx += 1) {
+      const m = mappingsToCreate[idx];
+      const canonical = await prisma.canonicalFieldCatalog.findUnique({
+        where: { pathKey: m.pathKey }
+      });
+      if (canonical) {
+        await prisma.providerFieldMapping.create({
+          data: {
+            productId: product.id,
+            canonicalFieldId: canonical.id,
+            sourcePath: m.sourcePath,
+            sortOrder: idx,
+            isActive: true,
+          }
+        });
+      }
+    }
+
+    // Criar log de teste para o Radar PRONAMPE (Brasil Cred)
+    const brasilCredProv = await prisma.provider.findUnique({ where: { slug: 'brasil-cred' } });
+    if (brasilCredProv && sampleResponse) {
+      const existingBcLog = await prisma.providerTestLog.findFirst({
+        where: { productId: product.id }
+      });
+      if (!existingBcLog) {
+        await prisma.providerTestLog.create({
+          data: {
+            providerId: brasilCredProv.id,
+            productId: product.id,
+            responsePayload: sampleResponse as any,
+            success: true,
+          }
+        });
+      }
+    }
+  }
+
+  // Criar logs de teste de exemplo para os outros produtos (Sollos e EHM)
+  console.log("Creating sample test logs for Sollos and EHM...");
+  const sollosProvider = await prisma.provider.findUnique({ where: { slug: 'sollos' } });
+  const ehmProvider = await prisma.provider.findUnique({ where: { slug: 'ehm' } });
+
+  if (sollosProvider) {
+    const sollosProd = await prisma.providerProduct.findFirst({
+      where: { providerId: sollosProvider.id, code: 'SOLLOS_FULL_PF' }
+    });
+    if (sollosProd) {
+      const existingLog = await prisma.providerTestLog.findFirst({
+        where: { productId: sollosProd.id }
+      });
+      if (!existingLog) {
+        await prisma.providerTestLog.create({
+          data: {
+            providerId: sollosProvider.id,
+            productId: sollosProd.id,
+            responsePayload: sollosSampleResponse as any,
+            success: true,
+          }
+        });
+      }
+    }
+  }
+
+  if (ehmProvider) {
+    const ehmProd = await prisma.providerProduct.findFirst({
+      where: { providerId: ehmProvider.id, code: 'EHM_SCORE_REST' }
+    });
+    if (ehmProd) {
+      const existingLog = await prisma.providerTestLog.findFirst({
+        where: { productId: ehmProd.id }
+      });
+      if (!existingLog) {
+        await prisma.providerTestLog.create({
+          data: {
+            providerId: ehmProvider.id,
+            productId: ehmProd.id,
+            responsePayload: ehmSampleResponse as any,
+            success: true,
+          }
+        });
+      }
     }
   }
 }

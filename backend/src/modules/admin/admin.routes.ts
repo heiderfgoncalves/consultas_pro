@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { Prisma, Role } from '@prisma/client';
 import { authenticate, requireRoles } from '../../core/auth';
-import { ConflictError, NotFoundError, ForbiddenError } from '../../core/errors';
+import { ConflictError, NotFoundError, ForbiddenError, BadRequestError } from '../../core/errors';
 import { ok } from '../../core/http';
 import {
   createInvite,
@@ -879,6 +879,116 @@ export async function registerAdminRoutes(app: FastifyInstance) {
 
     await app.prisma.canonicalFieldCatalog.delete({ where: { id: params.fieldId } });
     return ok(reply, { deleted: true });
+  });
+
+  // Canonical Folders CRUD
+  app.get('/admin/catalog/folders', masterOrPartnerOnly, async (_request, reply) => {
+    const folders = await app.prisma.canonicalFolder.findMany({
+      orderBy: { name: 'asc' },
+    });
+    return ok(reply, folders);
+  });
+
+  app.post('/admin/catalog/folders', platformAdminOnly, async (request, reply) => {
+    const body = request.body as { name: string; parentId?: string | null };
+    if (!body.name || !body.name.trim()) {
+      throw new BadRequestError('Nome da pasta é obrigatório');
+    }
+    const folder = await app.prisma.canonicalFolder.create({
+      data: {
+        name: body.name.trim(),
+        parentId: body.parentId || null,
+      },
+    });
+    return ok(reply, folder, 201);
+  });
+
+  app.patch('/admin/catalog/folders/:folderId', platformAdminOnly, async (request, reply) => {
+    const params = request.params as { folderId: string };
+    const body = request.body as { name?: string; parentId?: string | null };
+
+    const folder = await app.prisma.canonicalFolder.findUnique({ where: { id: params.folderId } });
+    if (!folder) throw new NotFoundError('Pasta não encontrada');
+
+    const updated = await app.prisma.canonicalFolder.update({
+      where: { id: params.folderId },
+      data: {
+        ...(body.name !== undefined ? { name: body.name.trim() } : {}),
+        ...(body.parentId !== undefined ? { parentId: body.parentId } : {}),
+      },
+    });
+    return ok(reply, updated);
+  });
+
+  app.delete('/admin/catalog/folders/:folderId', platformAdminOnly, async (request, reply) => {
+    const params = request.params as { folderId: string };
+
+    const folder = await app.prisma.canonicalFolder.findUnique({ where: { id: params.folderId } });
+    if (!folder) throw new NotFoundError('Pasta não encontrada');
+
+    const parentId = folder.parentId;
+
+    await app.prisma.$transaction(async (tx) => {
+      // 1. Mover subpastas desta pasta para a pasta pai (parentId)
+      await tx.canonicalFolder.updateMany({
+        where: { parentId: params.folderId },
+        data: { parentId },
+      });
+
+      // 2. Mover as associações de tipos desta pasta para a pasta pai (parentId)
+      if (parentId === null) {
+        await tx.canonicalFieldFolderAssociation.deleteMany({
+          where: { folderId: params.folderId },
+        });
+      } else {
+        await tx.canonicalFieldFolderAssociation.updateMany({
+          where: { folderId: params.folderId },
+          data: { folderId: parentId },
+        });
+      }
+
+      // 3. Deletar a pasta em si
+      await tx.canonicalFolder.delete({ where: { id: params.folderId } });
+    });
+
+    return ok(reply, { deleted: true });
+  });
+
+  // Canonical Fields and Folders Associations
+  app.get('/admin/catalog/folders/associations', masterOrPartnerOnly, async (_request, reply) => {
+    const associations = await app.prisma.canonicalFieldFolderAssociation.findMany();
+    return ok(reply, associations);
+  });
+
+  app.post('/admin/catalog/folders/associations', platformAdminOnly, async (request, reply) => {
+    const body = request.body as { fieldTypeKey: string; folderId: string | null };
+    if (!body.fieldTypeKey) {
+      throw new BadRequestError('Chave do tipo canônico (fieldTypeKey) é obrigatória');
+    }
+
+    if (body.folderId === null || body.folderId === '') {
+      try {
+        await app.prisma.canonicalFieldFolderAssociation.delete({
+          where: { fieldTypeKey: body.fieldTypeKey },
+        });
+      } catch (e) {
+        // Ignora se não existir
+      }
+      return ok(reply, { deleted: true });
+    }
+
+    const assoc = await app.prisma.canonicalFieldFolderAssociation.upsert({
+      where: { fieldTypeKey: body.fieldTypeKey },
+      create: {
+        fieldTypeKey: body.fieldTypeKey,
+        folderId: body.folderId,
+      },
+      update: {
+        folderId: body.folderId,
+      },
+    });
+
+    return ok(reply, assoc);
   });
 
   app.get('/admin/providers', masterOrPartnerOnly, async (request, reply) => {

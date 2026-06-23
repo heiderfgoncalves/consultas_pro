@@ -1,0 +1,1404 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Relatório PRONAMPE · Brasil Cred</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+
+        :root {
+            --primary: #0f172a;
+            --secondary: #334155;
+            --accent: #2563eb;
+            --danger: #dc2626;
+            --success: #16a34a;
+            --border: #e2e8f0;
+            --bg-subtle: #f8fafc;
+            --text-main: #1e293b;
+            --text-muted: #64748b;
+            /* Tailwind-like tokens para A4 */
+            --radius-sm: 6px;
+            --radius-md: 8px;
+            --radius-lg: 10px;
+            --radius-xl: 12px;
+            --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+            --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.07), 0 2px 4px -2px rgba(0, 0, 0, 0.05);
+            --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.06);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            font-size: 11px;
+            /* Base font size reduced for professional look */
+            line-height: 1.5;
+            color: var(--text-main);
+            background: #ffffff;
+            padding: 0;
+            /* Margins handled by Puppeteer */
+        }
+
+        /* Utility Classes */
+        .text-right {
+            text-align: right;
+        }
+
+        .text-center {
+            text-align: center;
+        }
+
+        .text-uppercase {
+            text-transform: uppercase;
+        }
+
+        .font-bold {
+            font-weight: 700;
+        }
+
+        .font-semibold {
+            font-weight: 600;
+        }
+
+        .font-medium {
+            font-weight: 500;
+        }
+
+        .text-xs {
+            font-size: 9px;
+        }
+
+        .text-sm {
+            font-size: 10px;
+        }
+
+        .text-lg {
+            font-size: 14px;
+        }
+
+        .text-xl {
+            font-size: 18px;
+        }
+
+        .text-primary {
+            color: var(--primary);
+        }
+
+        .text-secondary {
+            color: var(--secondary);
+        }
+
+        .text-accent {
+            color: var(--accent);
+        }
+
+        .text-danger {
+            color: var(--danger);
+        }
+
+        .text-success {
+            color: var(--success);
+        }
+
+        .text-muted {
+            color: var(--text-muted);
+        }
+
+        .mt-2 {
+            margin-top: 0.5rem;
+        }
+
+        .mt-4 {
+            margin-top: 1rem;
+        }
+
+        .mt-6 {
+            margin-top: 1.5rem;
+        }
+
+        .mb-2 {
+            margin-bottom: 0.5rem;
+        }
+
+        .mb-4 {
+            margin-bottom: 1rem;
+        }
+
+        .flex {
+            display: flex;
+        }
+
+        .items-center {
+            align-items: center;
+        }
+
+        .justify-between {
+            justify-content: space-between;
+        }
+
+        .gap-2 {
+            gap: 0.5rem;
+        }
+
+        .gap-4 {
+            gap: 1rem;
+        }
+
+        .grid {
+            display: grid;
+        }
+
+        .grid-2 {
+            grid-template-columns: 1fr 1fr;
+        }
+
+        .grid-3 {
+            grid-template-columns: repeat(3, 1fr);
+        }
+
+        .grid-4 {
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+        }
+
+        /* Container that fits within the page margins */
+        .report-container {
+            width: 100%;
+            max-width: 100%;
+        }
+
+        /* Header — estilo Tailwind */
+        .header {
+            border-bottom: 2px solid var(--accent);
+            padding: 0.75rem 0;
+            margin-bottom: 1rem;
+            border-radius: 0;
+        }
+
+        .header-logo {
+            height: 50px;
+            object-fit: contain;
+        }
+
+        .header-title {
+            font-size: 16px;
+            font-weight: 700;
+            color: var(--primary);
+            letter-spacing: -0.02em;
+        }
+
+        /* Client Info Card — estilo Tailwind */
+        .info-card {
+            background: #fff;
+            border: 1px solid var(--border);
+            border-radius: var(--radius-xl);
+            padding: 1rem 1.25rem;
+            margin-bottom: 0.5rem;
+            box-shadow: var(--shadow-sm);
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 1rem;
+        }
+
+        .info-cell {
+            display: flex;
+            align-items: flex-start;
+            gap: 0.65rem;
+        }
+
+        .info-cell-icon {
+            width: 36px;
+            height: 36px;
+            min-width: 36px;
+            border-radius: var(--radius-md);
+            background: var(--bg-subtle);
+            border: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .info-cell-icon {
+            color: var(--secondary);
+        }
+
+        .info-cell-icon svg {
+            width: 18px;
+            height: 18px;
+        }
+
+        .info-label {
+            font-size: 9px;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--text-muted);
+            margin-bottom: 2px;
+            font-weight: 600;
+        }
+
+        .info-value {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--primary);
+        }
+
+        /* Empty state (Nenhum registro) — card único, estilo Tailwind */
+        .empty-state-card {
+            background: #fff;
+            border: 1px solid var(--border);
+            border-radius: var(--radius-xl);
+            padding: 1.25rem;
+            margin-bottom: 0;
+            text-align: center;
+            color: var(--text-muted);
+            font-size: 11px;
+            box-shadow: var(--shadow-sm);
+        }
+
+        /* Section Styling */
+        .section {
+            margin-bottom: 1rem;
+            /* Removed break-inside: avoid to prevent excessive whitespace */
+            /* Tables will handle their own page breaks */
+        }
+
+        /* Only avoid page breaks inside small elements */
+        .section-header {
+            break-after: avoid;
+            page-break-after: avoid;
+        }
+
+        .table-wrapper {
+            break-inside: auto;
+            page-break-inside: auto;
+        }
+
+        /* Avoid orphan rows */
+        tr {
+            break-inside: avoid;
+            page-break-inside: avoid;
+        }
+
+        .section-header {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            margin-bottom: 0.35rem;
+            padding: 0.3rem 0;
+        }
+        /* Linha tracejada à direita da label, indo até o final da linha */
+        .section-divider {
+            flex: 1;
+            min-width: 24px;
+            height: 0;
+            border-bottom: 2px dashed var(--border);
+            margin-left: 0.5rem;
+            align-self: center;
+        }
+
+        .section-icon-wrap {
+            width: 32px;
+            height: 32px;
+            min-width: 32px;
+            border-radius: var(--radius-md);
+            background: var(--bg-subtle);
+            border: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .section-icon-wrap {
+            color: var(--secondary);
+        }
+
+        .section-icon-wrap svg {
+            width: 16px;
+            height: 16px;
+        }
+
+        .section-title {
+            font-size: 13px;
+            font-weight: 700;
+            text-transform: uppercase;
+            color: var(--secondary);
+            letter-spacing: 0.02em;
+            flex: 0 0 auto;
+            white-space: nowrap;
+        }
+
+        .section-badge {
+            background: var(--bg-subtle);
+            color: var(--text-muted);
+            font-size: 10px;
+            padding: 4px 10px;
+            border-radius: 9999px;
+            margin-left: auto;
+            border: 1px solid var(--border);
+            font-weight: 500;
+        }
+
+        /* Tables — card style */
+        .table-wrapper {
+            border: 1px solid var(--border);
+            border-radius: var(--radius-xl);
+            overflow: hidden;
+            box-shadow: var(--shadow-sm);
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 10px;
+        }
+
+        th {
+            background-color: var(--bg-subtle);
+            color: var(--secondary);
+            font-weight: 600;
+            text-align: left;
+            padding: 6px 10px;
+            border-bottom: 1px solid #d1d5db;
+            text-transform: uppercase;
+            font-size: 9px;
+            letter-spacing: 0.03em;
+        }
+
+        td {
+            padding: 6px 10px;
+            border-bottom: 1px solid var(--border);
+            color: var(--text-main);
+            vertical-align: middle;
+        }
+
+        tr:last-child td {
+            border-bottom: none;
+        }
+
+        tr:nth-child(even) {
+            background-color: #fcfcfc;
+        }
+
+        .col-amount {
+            text-align: right;
+            font-feature-settings: "tnum";
+            font-variant-numeric: tabular-nums;
+            font-weight: 600;
+            width: 15%;
+        }
+
+        .col-date {
+            width: 12%;
+            white-space: nowrap;
+        }
+
+        /* Score Section — layout A4, primeira vista do relatório */
+        .score-section-a4 {
+            max-width: 100%;
+            margin-bottom: 0;
+        }
+
+        /* Card único: conteúdo + legenda + disclaimer */
+        .score-card-wrapper {
+            background: #fff;
+            border: 1px solid var(--border);
+            border-radius: var(--radius-xl);
+            box-shadow: var(--shadow-card);
+            padding: 1.25rem 1.5rem;
+            overflow: hidden;
+        }
+
+        .score-content-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 1.5rem 2rem;
+            align-items: center;
+        }
+
+        .score-visual {
+            position: relative;
+            width: 175px;
+            flex-shrink: 0;
+            text-align: center;
+        }
+
+        .score-svg {
+            width: 100%;
+            height: 105px;
+            display: block;
+        }
+
+        .score-number {
+            font-size: 28px;
+            font-weight: 600;
+            color: #1e293b;
+            margin-top: 5px;
+            letter-spacing: -0.02em;
+        }
+
+        .score-label {
+            font-size: 10px;
+            font-weight: 600;
+            margin-top: 4px;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .score-slug {
+            color: var(--secondary);
+            font-weight: 600;
+        }
+
+        .legend-slug {
+            font-weight: 500;
+            color: var(--text-main);
+        }
+
+        .disclaimer-slug {
+            color: var(--text-main);
+        }
+
+        .score-legend {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 0.6rem;
+            align-items: stretch;
+        }
+
+        .score-main-line {
+            font-size: 14px;
+            font-weight: 600;
+            color: #1e293b;
+            line-height: 1.45;
+        }
+
+        .score-main-line span {
+            color: #64748b;
+            font-weight: 500;
+        }
+
+        .score-probability {
+            font-size: 12px;
+            color: #64748b;
+            line-height: 1.45;
+        }
+
+        /* Hero — headline e subtítulo (Layout Premium) */
+        .score-hero {
+            margin-bottom: 0.5rem;
+        }
+
+        .score-headline {
+            font-size: 14px;
+            font-weight: 700;
+            color: var(--primary);
+            line-height: 1.35;
+            margin-bottom: 0.35rem;
+        }
+
+        .score-subtitulo {
+            font-size: 10px;
+            color: var(--text-muted);
+            line-height: 1.5;
+        }
+
+        .score-frase-interpretacao {
+            font-size: 10px;
+            color: var(--text-main);
+            line-height: 1.5;
+            padding: 0.65rem 0.9rem;
+            background: var(--bg-subtle);
+            border-left: 3px solid var(--accent);
+            border-radius: 0 var(--radius-md) var(--radius-md) 0;
+            margin-top: 0.5rem;
+        }
+
+        /* Cards de métricas — ícone + label + valor + desc (padrão Tailwind) */
+        .score-content-row .score-metrics-row {
+            flex: 1;
+            min-width: 0;
+            display: block;
+            align-items: space-between;
+        }
+
+        .score-metrics-row {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            gap: 0.75rem;
+            margin-top: 1rem;
+        }
+
+        .score-metric-box {
+            display: flex;
+            flex-direction: row;
+            align-items: flex-start;
+            gap: 0.5rem;
+            background: #fff;
+            border: 1px solid var(--border);
+            border-radius: var(--radius-lg);
+            padding: 0.5rem 0.65rem;
+            box-shadow: var(--shadow-sm);
+            min-width: 0;
+            margin-bottom: 0.5rem;
+        }
+
+        .score-metric-box .metric-icon-wrap {
+            width: 35px;
+            height: 35px;
+            min-width: 35px;
+            border-radius: var(--radius-md);
+            background: var(--bg-subtle);
+            border: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--secondary);
+        }
+
+        .score-metric-box .metric-icon-wrap svg {
+            width: 20px;
+            height: 20px;
+        }
+
+        .score-metric-box .metric-content {
+            flex: 1;
+            min-width: 0;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .score-metric-box .metric-label {
+            font-size: 13px;
+            letter-spacing: 0.04em;
+            color: var(--text-muted);
+            font-weight: 700;
+            margin-bottom: 1px;
+        }
+
+        .score-metric-box .metric-value {
+            font-size: 14px;
+            font-weight: 700;
+            color: var(--primary);
+            line-height: 1.2;
+        }
+
+        .score-metric-box .metric-value.score-band-color--pessimo,
+        .score-metric-box .metric-value.score-band-color--ruim,
+        .score-metric-box .metric-value.score-band-color--regular,
+        .score-metric-box .metric-value.score-band-color--bom,
+        .score-metric-box .metric-value.score-band-color--otimo {
+            font-size: 13px;
+        }
+
+        .score-metric-box .metric-desc {
+            font-size: 10px;
+            color: var(--text-muted);
+            margin-top: 2px;
+            line-height: 1.25;
+        }
+
+        /* O que mais influencia (Layout Premium) */
+        .score-influencia-block {
+            margin-top: 0.7rem;
+            padding-top: 0.5rem;
+            border-top: 1px solid var(--border);
+        }
+
+        .score-block-title {
+            font-size: 11px;
+            font-weight: 700;
+            color: var(--secondary);
+            margin-bottom: 0.4rem;
+        }
+
+        .score-influencia-texto {
+            font-size: 10px;
+            color: var(--text-main);
+            line-height: 1.5;
+            margin-bottom: 0.5rem;
+        }
+
+        .score-influencia-list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+
+        .score-influencia-list li {
+            font-size: 10px;
+            color: var(--text-main);
+            line-height: 1.45;
+            padding-left: 1rem;
+            position: relative;
+            margin-bottom: 0.3rem;
+        }
+
+        .score-influencia-list li::before {
+            content: '•';
+            position: absolute;
+            left: 0;
+            color: var(--accent);
+            font-weight: 700;
+        }
+
+        /* Diagnóstico rápido (Layout Premium) */
+        .score-diagnostico-block {
+            margin-top: 0.9rem;
+            padding: 0.75rem 1rem;
+            background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%);
+            border: 1px solid #bbf7d0;
+            border-radius: var(--radius-md);
+        }
+
+        .score-diagnostico-block .score-block-title {
+            color: #15803d;
+        }
+
+        .score-diagnostico-texto {
+            font-size: 10px;
+            color: var(--text-main);
+            line-height: 1.5;
+        }
+
+        /* Plano de ação (Layout Premium — converte) */
+        .score-plano-block {
+            margin-top: 0.9rem;
+            padding: 0.85rem 1rem;
+            background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
+            border: 1px solid #93c5fd;
+            border-radius: var(--radius-md);
+        }
+
+        .score-plano-block .score-block-title {
+            color: var(--accent);
+            margin-bottom: 0.6rem;
+        }
+
+        .score-plano-etapa {
+            display: flex;
+            gap: 0.6rem;
+            margin-bottom: 0.6rem;
+        }
+
+        .score-plano-etapa:last-child {
+            margin-bottom: 0;
+        }
+
+        .score-plano-numero {
+            width: 22px;
+            height: 22px;
+            min-width: 22px;
+            border-radius: 50%;
+            background: var(--accent);
+            color: #fff;
+            font-size: 11px;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .score-plano-etapa-content .etapa-titulo {
+            font-size: 10px;
+            font-weight: 700;
+            color: var(--primary);
+            margin-bottom: 2px;
+        }
+
+        .score-plano-etapa-content .etapa-texto {
+            font-size: 9px;
+            color: var(--text-muted);
+            line-height: 1.4;
+        }
+
+        .score-bands-row {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 0.5rem 1rem;
+            margin-top: 0.35rem;
+        }
+
+        .score-bands-legend {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 0.5rem 1rem;
+            margin-top: 0.5rem;
+            padding-top: 1rem;
+            border-top: 1px solid var(--border);
+            background: var(--bg-subtle);
+            border-radius: 8px;
+            padding: 0.85rem 1rem;
+            margin-left: 0;
+            margin-right: 0;
+        }
+
+        .score-bands-legend .legend-dot {
+            width: 8px;
+            height: 8px;
+        }
+
+        .score-disclaimer-box {
+            background: #fffbeb;
+            border-left: 4px solid #eab308;
+            padding: 0.75rem 1rem;
+            border-radius: 0 var(--radius-md) var(--radius-md) 0;
+            margin-top: 1rem;
+            margin-left: 0;
+            margin-right: 0;
+            display: flex;
+            align-items: flex-start;
+            gap: 0.5rem;
+        }
+
+        .score-disclaimer-box .disclaimer-icon {
+            flex-shrink: 0;
+            width: 20px;
+            height: 20px;
+            margin-top: 1px;
+            color: #b45309;
+        }
+
+        .score-disclaimer-box .score-disclaimer {
+            margin: 0;
+            font-size: 10px;
+            color: var(--text-muted);
+            line-height: 1.5;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+            font-size: 11px;
+            color: #64748b;
+            line-height: 1.35;
+            
+        }
+
+        .legend-dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            flex-shrink: 0;
+        }
+
+        .score-disclaimer {
+            font-size: 10px;
+            color: #94a3b8;
+            margin-top: 0.85rem;
+            line-height: 1.45;
+        }
+
+        /* Score band colors — número e classificação seguem a faixa */
+        .score-number--pessimo,
+        .score-label--pessimo { color: #dc2626 !important; }
+        .score-number--ruim,
+        .score-label--ruim { color: #ea580c !important; }
+        .score-number--regular,
+        .score-label--regular { color: #ca8a04 !important; }
+        .score-number--bom,
+        .score-label--bom { color: #65a30d !important; }
+        .score-number--otimo,
+        .score-label--otimo { color: #16a34a !important; }
+
+        .score-band-color--pessimo { color: #dc2626 !important; }
+        .score-band-color--ruim { color: #ea580c !important; }
+        .score-band-color--regular { color: #ca8a04 !important; }
+        .score-band-color--bom { color: #65a30d !important; }
+        .score-band-color--otimo { color: #16a34a !important; }
+
+        /* Bacen — primeira impressão, confiança */
+        .bacen-intro {
+            font-size: 10px;
+            color: var(--text-muted);
+            line-height: 1.5;
+            margin-bottom: 1rem;
+            max-width: 100%;
+        }
+
+        .th-slug {
+            font-weight: 600;
+            color: var(--secondary);
+        }
+
+        .bacen-cat-slug {
+            display: inline-block;
+        }
+
+        .bacen-row-success {
+            background-color: #f0fdf4 !important;
+        }
+
+        .bacen-row-success td {
+            background-color: #f0fdf4 !important;
+        }
+
+        .bacen-row-danger {
+            background-color: #fef2f2 !important;
+        }
+
+        .bacen-row-danger td {
+            background-color: #fef2f2 !important;
+        }
+
+        .bacen-row-warning {
+            background-color: #fffbeb !important;
+        }
+
+        .bacen-row-warning td {
+            background-color: #fffbeb !important;
+        }
+
+        .bacen-cell-desc {
+            display: block;
+            font-size: 9px;
+            color: var(--text-muted);
+            margin-top: 2px;
+        }
+
+        /* Bacen info card — 3 colunas centralizadas */
+        .bacen-info-card {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 0;
+            padding: 1.25rem 1.5rem;
+            background: var(--bg-subtle);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            text-align: center;
+        }
+
+        .bacen-info-card .bacen-info-cell {
+            padding: 0 1rem;
+        }
+
+        .bacen-info-card .bacen-info-cell:not(:first-child) {
+            border-left: 1px solid var(--border);
+        }
+
+        .bacen-info-card .info-label {
+            display: block;
+            font-size: 9px;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            color: var(--text-muted);
+            margin-bottom: 0.35rem;
+        }
+
+        .bacen-info-card .info-value {
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--primary);
+        }
+
+        /* Summary Cards — estilo Tailwind */
+        .summary-card {
+            background: #fff;
+            border: 1px solid var(--border);
+            border-radius: var(--radius-xl);
+            padding: 1rem 1.25rem;
+            position: relative;
+            overflow: hidden;
+            box-shadow: var(--shadow-sm);
+        }
+
+        .summary-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            bottom: 0;
+            width: 4px;
+            border-radius: var(--radius-lg) 0 0 var(--radius-lg);
+            background: var(--border);
+        }
+
+        .summary-card.danger::before {
+            background: var(--danger);
+        }
+
+        .summary-card.success::before {
+            background: var(--success);
+        }
+
+        .summary-card.warning::before {
+            background: #eab308;
+        }
+
+        .summary-title {
+            font-size: 9px;
+            text-transform: uppercase;
+            color: var(--text-muted);
+            margin-bottom: 4px;
+            font-weight: 600;
+        }
+
+        .summary-val {
+            font-size: 18px;
+            font-weight: 700;
+            color: var(--primary);
+        }
+
+        /* Bacen Specifics */
+        .bacen-summary-row td {
+            background-color: #f8fafc;
+            font-weight: 600;
+            border-bottom: 1px solid #cbd5e1;
+        }
+
+        .bacen-group-header {
+            background-color: #f1f5f9;
+            color: var(--secondary);
+            font-weight: 600;
+            font-size: 10px;
+        }
+
+        /* Footer */
+        .footer {
+            margin-top: 3rem;
+            padding-top: 1.5rem;
+            border-top: 1px solid var(--border);
+            font-size: 8px;
+            color: #94a3b8;
+            text-align: justify;
+            line-height: 1.5;
+        }
+    
+
+@page { size: A4; margin: 12mm; }
+html { background:#f1f5f9; }
+body { background:#f1f5f9; padding:24px 0; }
+.report-container { width: 794px; max-width: 794px; margin: 0 auto; background:#fff; padding: 24px 28px 28px; box-shadow: 0 24px 60px rgba(15,23,42,.12); border-radius: 16px; }
+.report-top { padding: .65rem 0 .75rem !important; border-bottom: 3px solid #4f46e5 !important; margin-bottom: 1rem; }
+.brand-minimal { display:flex; align-items:center; gap:.75rem; }
+.brand-symbol { width:48px; height:48px; border-radius:14px; display:flex; align-items:center; justify-content:center; background: linear-gradient(135deg,#1d4ed8,#06b6d4); color:#fff; font-weight:800; letter-spacing:-.03em; font-size:17px; box-shadow:0 8px 18px rgba(37,99,235,.18); }
+.brand-copy { display:flex; flex-direction:column; line-height:1.05; }
+.brand-copy strong { font-size:18px; letter-spacing:-.03em; color:#0f172a; }
+.brand-copy span { font-size:9px; margin-top:5px; text-transform:uppercase; letter-spacing:.12em; font-weight:700; color:#64748b; }
+.pronampe-title { color:#4f46e5 !important; font-size:15px !important; }
+.principal-info { margin-bottom:1.1rem; }
+.grid-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.grid-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.grid-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.summary-val { font-size:16px; line-height:1.15; }
+.summary-card { min-height:86px; }
+.summary-card.warning::before { background:#f59e0b; }
+.summary-card.success::before { background:#16a34a; }
+.summary-card.danger::before { background:#dc2626; }
+.score-card-wrapper { margin-top:.25rem; }
+.pronampe-hero-card { padding:1.05rem 1.15rem; }
+.pronampe-score { width:154px; }
+.pronampe-score .score-number { font-size:26px; margin-top:-2px; }
+.pronampe-score .score-svg { height:95px; }
+.metrics-compact { grid-template-columns:repeat(2, minmax(0,1fr)); margin-top:.3rem; gap:.45rem; }
+.metrics-compact .score-metric-box { padding:.48rem .55rem; margin-bottom:0; }
+.metrics-compact .metric-icon-wrap { width:30px; height:30px; min-width:30px; }
+.metrics-compact .metric-icon-wrap svg { width:16px; height:16px; }
+.metrics-compact .metric-label { font-size:8px !important; text-transform:uppercase; }
+.metrics-compact .metric-value { font-size:12px !important; }
+.compact-band { grid-template-columns:repeat(4,1fr); padding:.6rem .7rem; margin-top:.75rem; }
+.alert-box { display:flex; gap:.65rem; align-items:flex-start; border:1px solid var(--border); border-radius:var(--radius-xl); padding:.75rem .85rem; min-height:118px; box-shadow:var(--shadow-sm); background:#fff; }
+.alert-box .alert-icon { width:32px; height:32px; min-width:32px; border-radius:9px; display:flex; align-items:center; justify-content:center; background:var(--bg-subtle); border:1px solid var(--border); }
+.alert-box svg { width:17px; height:17px; }
+.alert-box strong { display:block; font-size:11px; color:var(--primary); margin-bottom:.25rem; }
+.alert-box p { font-size:9.5px; color:var(--text-muted); line-height:1.45; margin:0; }
+.alert-box.danger { background:#fff7f7; border-color:#fecaca; }
+.alert-box.danger .alert-icon { color:#dc2626; background:#fef2f2; border-color:#fecaca; }
+.alert-box.warning { background:#fffbeb; border-color:#fde68a; }
+.alert-box.warning .alert-icon { color:#b45309; background:#fff7ed; border-color:#fed7aa; }
+.action-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:.75rem; }
+.action-card { display:flex; gap:.65rem; background:#fff; border:1px solid var(--border); border-radius:var(--radius-xl); padding:.75rem; box-shadow:var(--shadow-sm); }
+.action-card span { width:24px; height:24px; min-width:24px; border-radius:50%; background:#2563eb; color:#fff; display:flex; align-items:center; justify-content:center; font-weight:700; }
+.action-card strong { font-size:10.5px; color:var(--primary); }
+.action-card p { margin:.18rem 0 0; font-size:9.5px; color:var(--text-muted); line-height:1.45; }
+.subsection-title { font-size:10.5px; color:var(--secondary); text-transform:uppercase; letter-spacing:.05em; margin:.95rem 0 .45rem; font-weight:800; }
+.clean-list { list-style:none; padding:0; margin:.3rem 0 0; display:grid; grid-template-columns:repeat(2,1fr); gap:.28rem .85rem; }
+.clean-list li { position:relative; padding-left:.85rem; font-size:9.8px; color:var(--text-main); }
+.clean-list li::before { content:'•'; position:absolute; left:0; top:0; color:#2563eb; font-weight:900; }
+.narrative-card, .text-card { border:1px solid var(--border); border-radius:var(--radius-xl); padding:.85rem 1rem; background:#fff; box-shadow:var(--shadow-sm); }
+.narrative-card p, .text-card p { font-size:10px; color:var(--text-main); margin:0 0 .45rem; line-height:1.52; }
+.narrative-card p:last-child, .text-card p:last-child { margin-bottom:0; }
+.text-card h4, .narrative-card h4 { font-size:11px; margin:0 0 .4rem; color:var(--primary); }
+.kv-grid { display:grid; gap:.6rem; margin-top:.55rem; }
+.kv-grid-2 { grid-template-columns:repeat(2,1fr); }
+.kv-grid-3 { grid-template-columns:repeat(3,1fr); }
+.kv-grid-4 { grid-template-columns:repeat(4,1fr); }
+.kv-item { border:1px solid var(--border); border-radius:10px; padding:.55rem .65rem; background:#fff; box-shadow:var(--shadow-sm); min-height:56px; }
+.kv-item span { display:block; font-size:8px; text-transform:uppercase; letter-spacing:.05em; color:var(--text-muted); font-weight:700; margin-bottom:.15rem; }
+.kv-item strong { display:block; font-size:10px; line-height:1.35; color:var(--primary); font-weight:700; }
+.status-stack { display:grid; gap:.5rem; }
+.status-row { padding:.65rem .8rem; border-radius:10px; font-weight:700; font-size:10px; border:1px solid var(--border); background:#fff; }
+.status-row.neutral { background:#f8fafc; color:#475569; }
+.status-row.danger { background:#fef2f2; color:#b91c1c; border-color:#fecaca; }
+.table-wrapper { margin-top:.45rem; }
+table { font-size:9.2px; }
+th { font-size:7.8px; padding:5px 7px; }
+td { padding:5px 7px; }
+.dense-table table { font-size:8.4px; }
+.score-mini-card { display:flex; justify-content:space-between; align-items:center; border:1px solid #c7d2fe; background:#eef2ff; border-radius:12px; padding:.7rem .9rem; margin-top:.85rem; }
+.score-mini-card strong { font-size:10.5px; color:#1e293b; }
+.score-mini-card p { margin:.18rem 0 0; font-size:9px; color:#64748b; }
+.score-mini-card div:last-child { text-align:right; }
+.score-mini-card div:last-child span { display:block; font-size:8px; font-weight:800; color:#64748b; letter-spacing:.05em; }
+.score-mini-card div:last-child strong { display:block; font-size:22px; color:#dc2626; line-height:1; margin-top:2px; }
+.score-mini-card div:last-child em { display:block; font-style:normal; font-size:9px; color:#64748b; }
+.socio-info { margin-bottom:.95rem; }
+.page-break { break-before: page; page-break-before: always; height:1px; }
+.final-footer { margin-top:1rem; }
+@media print {
+  html, body { background:#fff; padding:0; }
+  .report-container { width:auto; max-width:none; margin:0; padding:0; box-shadow:none; border-radius:0; }
+  .page-break { height:0; }
+  .section { break-inside:auto; }
+}
+@media screen and (max-width: 860px) {
+  body { padding:0; }
+  .report-container { width:100%; max-width:none; border-radius:0; padding:18px; }
+  .grid-4, .grid-3, .grid-2, .info-card, .clean-list, .action-grid, .kv-grid { grid-template-columns:1fr; }
+  .score-content-row { flex-direction:column; align-items:flex-start; }
+}
+
+</style>
+</head>
+<body>
+<div class="report-container">
+        <header class="header flex justify-between items-center report-top">
+            <div class="brand-minimal" aria-label="Brasil Cred Pronampe">
+                <div class="brand-symbol">BC</div>
+                <div class="brand-copy"><strong>Brasil Cred</strong><span>Radar PRONAMPE PJ</span></div>
+            </div>
+            <div class="text-right">
+                <div class="header-title pronampe-title">Relatório Analítico PRONAMPE</div>
+                <div class="text-xs text-muted mt-2">11/06/2026, 22:23</div>
+                <div class="text-xs text-muted font-mono" style="color:#9ca3af;">PROT: 4E569AD6-CB66-4625-91A2-D4A3E267A28C</div>
+            </div>
+        </header>
+        <div class="info-card principal-info">
+            <div class="info-cell"><div class="info-cell-icon"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M3 21h18M5 21V7l7-4 7 4v14M9 21v-6h6v6M8 9h.01M12 9h.01M16 9h.01M8 13h.01M16 13h.01"/></svg></div><div><div class="info-label">Empresa analisada</div><div class="info-value">JMFC SERVICOS EMPRESARIAIS LTDA ME</div></div></div>
+            <div class="info-cell"><div class="info-cell-icon"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-7.5a2.25 2.25 0 0 0-2.25-2.25h-6.879a2.25 2.25 0 0 0-1.591.659L4.91 9.03a2.25 2.25 0 0 0-.659 1.591v6.879A2.25 2.25 0 0 0 6.5 19.75h5.25"/><path stroke-linecap="round" stroke-linejoin="round" d="M8 13h8M8 16h4M12 4.5v4.75a1.25 1.25 0 0 1-1.25 1.25H6"/></svg></div><div><div class="info-label">Documento</div><div class="info-value font-mono">16.542.744/0001-78</div></div></div>
+            <div class="info-cell"><div class="info-cell-icon"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M9.568 3H5.25A2.25 2.25 0 0 0 3 5.25v4.318c0 .597.237 1.17.659 1.591l9.581 9.581c.699.699 1.78.872 2.607.33a18.095 18.095 0 0 0 5.223-5.223c.542-.827.369-1.908-.33-2.607L11.16 3.66A2.25 2.25 0 0 0 9.568 3Z"/><path stroke-linecap="round" stroke-linejoin="round" d="M6 6h.008v.008H6V6Z"/></svg></div><div><div class="info-label">Tipo de relatório</div><div class="info-value">Radar PRONAMPE PJ</div></div></div>
+        </div>
+        <section class="section ">
+            <div class="section-header">
+                <div class="section-icon-wrap"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M3 3v18h18M7.5 16.5v-6M12 16.5v-9M16.5 16.5v-3"/></svg></div>
+                <h3 class="section-title">Resultado da Consulta</h3>
+                <span class="section-divider"></span>
+            </div><div class="grid grid-4 gap-4 mb-2">
+<div class="summary-card danger">
+            <div class="summary-title">Recomendação Final</div>
+            <div class="summary-val text-danger">Inapto (corrigível)</div>
+            <div class="text-xs text-muted mt-1">Crédito PRONAMPE travado por risco corrigível</div>
+        </div>
+<div class="summary-card warning">
+            <div class="summary-title">Crédito Estimado</div>
+            <div class="summary-val ">R$ 60.000,00</div>
+            <div class="text-xs text-muted mt-1">Referência da operação analisada</div>
+        </div>
+<div class="summary-card danger">
+            <div class="summary-title">Prob. Inadimplência</div>
+            <div class="summary-val text-danger">Alta</div>
+            <div class="text-xs text-muted mt-1">Leitura consolidada dos sinais de risco</div>
+        </div>
+<div class="summary-card success">
+            <div class="summary-title">Rating Bancário</div>
+            <div class="summary-val text-success">A</div>
+            <div class="text-xs text-muted mt-1">Ótimo · risco baixo · 165/200</div>
+        </div>
+</div>
+<div class="score-card-wrapper pronampe-hero-card">
+  <div class="score-hero">
+    <h2 class="score-headline">Como o banco enxerga este CNPJ para crédito PRONAMPE hoje</h2>
+    <p class="score-subtitulo">O enquadramento estrutural no PRONAMPE existe, porém a aprovação bancária está bloqueada por sinais de risco no eixo sócios, SCR inferido e capacidade de pagamento não comprovada.</p>
+  </div>
+  <div class="score-content-row">
+    
+        <div class="score-visual pronampe-score">
+            <svg viewBox="0 0 200 112" class="score-svg">
+                <path d="M25 92 A75 75 0 0 1 55 32" stroke="#ef4444" stroke-width="18" fill="none" stroke-linecap="round"/>
+                <path d="M55 32 A75 75 0 0 1 100 17" stroke="#f97316" stroke-width="18" fill="none" stroke-linecap="round"/>
+                <path d="M100 17 A75 75 0 0 1 145 32" stroke="#eab308" stroke-width="18" fill="none" stroke-linecap="round"/>
+                <path d="M145 32 A75 75 0 0 1 175 92" stroke="#22c55e" stroke-width="18" fill="none" stroke-linecap="round"/>
+                <line x1="100" y1="92" x2="100" y2="36" stroke="#334155" stroke-width="4" stroke-linecap="round" transform="rotate(-61.2 100 92)"/>
+                <circle cx="100" cy="92" r="7" fill="#fff" stroke="#cbd5e1" stroke-width="3"/>
+                <text x="26" y="110" font-size="10" fill="#94a3b8">0</text>
+                <text x="158" y="110" font-size="10" fill="#94a3b8">1000</text>
+            </svg>
+            <div class="score-number score-number--pessimo">160</div>
+            <div class="score-label score-label--pessimo">Risco Alto</div>
+        </div>
+    <div class="score-legend">
+      <div class="score-main-line">Score de Crédito: <strong class="text-danger">160 / 1000</strong> <span>· leitura de risco alto para decisão bancária.</span></div>
+      <div class="score-probability">Mesmo com rating bancário A em uma das métricas, os hard stops identificados prevalecem sobre o potencial de limite. A operação deve ser reprocessada após correção das pendências críticas.</div>
+      <div class="score-metrics-row metrics-compact">
+        <div class="score-metric-box"><div class="metric-icon-wrap"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M2.25 18.75a60.07 60.07 0 0 1 19.5 0m-19.5-7.5a60.07 60.07 0 0 1 19.5 0M2.25 5.25a60.07 60.07 0 0 1 19.5 0M12 6.75v10.5m3-7.5c0-1.243-1.343-2.25-3-2.25s-3 1.007-3 2.25 1.343 2.25 3 2.25 3 1.007 3 2.25-1.343 2.25-3 2.25-3-1.007-3-2.25"/></svg></div><div class="metric-content"><div class="metric-label">Limite recomendado</div><div class="metric-value text-danger">R$ 0,00</div><div class="metric-desc">limite sugerido atual</div></div></div>
+        <div class="score-metric-box"><div class="metric-icon-wrap"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M3 3v18h18M7.5 16.5v-6M12 16.5v-9M16.5 16.5v-3"/></svg></div><div class="metric-content"><div class="metric-label">Faturamento estimado</div><div class="metric-value">R$ 120.000,00</div><div class="metric-desc">base bureau</div></div></div>
+        <div class="score-metric-box"><div class="metric-icon-wrap"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"/></svg></div><div class="metric-content"><div class="metric-label">Capacidade mensal</div><div class="metric-value">R$ 4.166,00</div><div class="metric-desc">capacidade estimada</div></div></div>
+        <div class="score-metric-box"><div class="metric-icon-wrap"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v4m0 4h.01M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/></svg></div><div class="metric-content"><div class="metric-label">Gasto estimado</div><div class="metric-value">R$ 360.000,00</div><div class="metric-desc">proxy operacional</div></div></div>
+      </div>
+    </div>
+  </div>
+  <div class="score-bands-legend compact-band">
+    <div class="legend-item"><span class="legend-dot" style="background:#ef4444"></span>Alto risco 0–250</div>
+    <div class="legend-item"><span class="legend-dot" style="background:#f97316"></span>Atenção 251–500</div>
+    <div class="legend-item"><span class="legend-dot" style="background:#eab308"></span>Moderado 501–750</div>
+    <div class="legend-item"><span class="legend-dot" style="background:#22c55e"></span>Favorável 751–1000</div>
+  </div>
+</div>
+</section>
+        <section class="section ">
+            <div class="section-header">
+                <div class="section-icon-wrap"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v4m0 4h.01M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/></svg></div>
+                <h3 class="section-title">Hard Stops Identificados</h3>
+                <span class="section-divider"></span>
+            </div><div class="grid grid-3 gap-4"><div class="alert-box danger"><div class="alert-icon"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v4m0 4h.01M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/></svg></div><div><strong>CPF de sócios com negativação ativa</strong><p>Bloqueio no eixo sócios por apontamentos ativos em PEFIN/REFIN e protestos nos CPFs dos sócios/administradores.</p></div></div><div class="alert-box danger"><div class="alert-icon"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v4m0 4h.01M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/></svg></div><div><strong>Rating SCR/CNPJ inferido como risco altíssimo</strong><p>Sinal equivalente a faixa de corte duro para apetite bancário, exigindo redução de exposição e reprecificação do risco.</p></div></div><div class="alert-box warning"><div class="alert-icon"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v4m0 4h.01M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/></svg></div><div><strong>Capacidade de pagamento insuficiente</strong><p>DSCR não verificável e proxy indica estresse frente à operação estimada em Selic + 6%.</p></div></div></div></section>
+        <section class="section ">
+            <div class="section-header">
+                <div class="section-icon-wrap"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"/></svg></div>
+                <h3 class="section-title">Plano de Correção e Pendências de Verificação</h3>
+                <span class="section-divider"></span>
+            </div><div class="action-grid">
+  <div class="action-card"><span>1</span><div><strong>Regularizar CPFs dos sócios</strong><p>Regularizar integralmente PEFIN/REFIN e obter baixa formal das restrições antes da nova análise. Prazo estimado: 30 a 90 dias.</p></div></div>
+  <div class="action-card"><span>2</span><div><strong>Reduzir risco SCR</strong><p>Reduzir exposição, limpar vencidos/prejuízos e aguardar ciclo de comportamento adimplente. Prazo estimado: 60 a 180 dias.</p></div></div>
+  <div class="action-card"><span>3</span><div><strong>Comprovar caixa e DSCR</strong><p>Integrar Open Finance/contabilidade, comprovar geração de caixa e reestruturar prazo/valor pretendido. Prazo estimado: 15 a 45 dias.</p></div></div>
+</div><h4 class="subsection-title">Pendências de verificação — dado real a confirmar</h4><ul class="clean-list "><li>Faturamento declarado via DEFIS/ECF ou Integra Contador</li><li>Situação fiscal e declarações em dia</li><li>e-CAC com compartilhamento Gov.br habilitado</li><li>Saldo de operações governamentais vigentes no SCR</li><li>DSCR e consistência faturamento x caixa via Open Finance</li><li>Rating SCR dos sócios/administradores</li><li>Saldo de vencidos, prejuízo e carteira total no SCR</li><li>Confirmação da base percentual aplicável na Portaria 1.243/2026</li><li>Confirmação de liderança feminina para eventual base diferenciada</li></ul></section>
+        <section class="section ">
+            <div class="section-header">
+                <div class="section-icon-wrap"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-7.5a2.25 2.25 0 0 0-2.25-2.25h-6.879a2.25 2.25 0 0 0-1.591.659L4.91 9.03a2.25 2.25 0 0 0-.659 1.591v6.879A2.25 2.25 0 0 0 6.5 19.75h5.25"/><path stroke-linecap="round" stroke-linejoin="round" d="M8 13h8M8 16h4M12 4.5v4.75a1.25 1.25 0 0 1-1.25 1.25H6"/></svg></div>
+                <h3 class="section-title">Parecer Executivo</h3>
+                <span class="section-divider"></span>
+            </div><div class="narrative-card">
+<p>O CNPJ atende ao enquadramento estrutural do PRONAMPE e não há impedimento cadastral fatal no Motor A. Contudo, no Motor B, a negativação ativa dos sócios é um hard stop prático para crédito MPE, e o risco SCR inferido do CNPJ é alto demais para aprovação segura.</p>
+<p>O rating bancário A informado diverge do conjunto de sinais negativos dos bureaus e não supera os bloqueios de política e risco. A alternativa ProCred 360 pode ser mencionada apenas como complemento para análise de microcrédito, não como substituição da trilha principal.</p>
+</div><div class="grid grid-3 gap-4 mt-4"><div class="text-card"><h4>Camada 1 — Gates de elegibilidade</h4><p>CNPJ ativo, tempo de abertura suficiente, porte compatível com MPE e sem falha cadastral fatal no lado da empresa.</p></div><div class="text-card"><h4>Camada 2 — Crédito estimado</h4><p>Crédito estimado tratado como referência da operação. Necessário validar base percentual aplicável e saldo de operações governamentais.</p></div><div class="text-card"><h4>Camada 3 — Score bancário</h4><p>Prevalece probabilidade de default, apetite interno do banco, score PJ fraco, limite zerado e ausência de reconciliação caixa/faturamento.</p></div></div></section>
+        <section class="section ">
+            <div class="section-header">
+                <div class="section-icon-wrap"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M3 3v18h18M7.5 16.5v-6M12 16.5v-9M16.5 16.5v-3"/></svg></div>
+                <h3 class="section-title">Análise de Crédito Avançada</h3>
+                <span class="section-badge">Score, anotações, consultas, quadro societário e histórico</span>
+            </div><div class="grid grid-4 gap-4 mb-2">
+<div class="summary-card danger">
+            <div class="summary-title">Score</div>
+            <div class="summary-val text-danger">160</div>
+            <div class="text-xs text-muted mt-1">Risco Muito Alto</div>
+        </div>
+<div class="summary-card warning">
+            <div class="summary-title">Limite sugerido</div>
+            <div class="summary-val ">—</div>
+            <div class="text-xs text-muted mt-1">Crédito recomendado</div>
+        </div>
+<div class="summary-card danger">
+            <div class="summary-title">Nível de risco</div>
+            <div class="summary-val text-danger">Nível 4</div>
+            <div class="text-xs text-muted mt-1">Risco Muito Alto</div>
+        </div>
+<div class="summary-card success">
+            <div class="summary-title">Restrições</div>
+            <div class="summary-val text-success">0</div>
+            <div class="text-xs text-muted mt-1">Nada consta no CNPJ</div>
+        </div>
+</div><div class="kv-grid kv-grid-3"><div class="kv-item"><span>Critério analisado</span><strong>Sem restritivo ativo</strong></div><div class="kv-item"><span>Razão Social</span><strong>JMFC SERVICOS EMPRESARIAIS LTDA ME</strong></div><div class="kv-item"><span>CNPJ</span><strong>16.542.744/0001-78</strong></div><div class="kv-item"><span>Valor da Operação</span><strong>R$ 1.000,00</strong></div><div class="kv-item"><span>Tipo de Venda</span><strong>Cliente Novo</strong></div><div class="kv-item"><span>Política</span><strong>Padrão</strong></div><div class="kv-item"><span>Data da Consulta</span><strong>12/06/2026</strong></div><div class="kv-item"><span>Nº Proposta</span><strong>EOA1000034788180</strong></div><div class="kv-item"><span>Consultas de crédito</span><strong>0</strong></div><div class="kv-item"><span>Cheques sem fundo</span><strong>0</strong></div><div class="kv-item"><span>Cheques sustados</span><strong>0</strong></div><div class="kv-item"><span>Consulta</span><strong>N/D</strong></div><div class="kv-item"><span>Endereço</span><strong>AL RIO NEGRO 503 SALA 2020 — BARUERI · 06454000</strong></div></div><div class="narrative-card mt-4"><h4>Premium Pro PJ · Serasa Recomenda</h4><p><strong>Recomendação de venda:</strong> Venda 50% à vista. O restante do limite sugerido pode ser parcelado.</p><p><strong>Score de crédito:</strong> 160 · Risco Muito Alto. A pontuação enquadra-se na faixa de 151 a 200 e representa reais possibilidades de inadimplência, principalmente em condições adversas da economia.</p></div></section>
+        <section class="section ">
+            <div class="section-header">
+                <div class="section-icon-wrap"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M3 21h18M5 21V7l7-4 7 4v14M9 21v-6h6v6M8 9h.01M12 9h.01M16 9h.01M8 13h.01M16 13h.01"/></svg></div>
+                <h3 class="section-title">SCR BACEN — Endividamento Bancário</h3>
+                <span class="section-divider"></span>
+            </div><div class="grid grid-4 gap-4 mb-2">
+<div class="summary-card success">
+            <div class="summary-title">Instituições</div>
+            <div class="summary-val ">0</div>
+            <div class="text-xs text-muted mt-1">Inst. financeiras</div>
+        </div>
+<div class="summary-card success">
+            <div class="summary-title">Operações</div>
+            <div class="summary-val ">0</div>
+            <div class="text-xs text-muted mt-1">0 modalidades</div>
+        </div>
+<div class="summary-card success">
+            <div class="summary-title">A vencer</div>
+            <div class="summary-val text-success">R$ 0,00</div>
+            <div class="text-xs text-muted mt-1">Créditos a vencer</div>
+        </div>
+<div class="summary-card success">
+            <div class="summary-title">Vencido</div>
+            <div class="summary-val text-success">R$ 0,00</div>
+            <div class="text-xs text-muted mt-1">Créditos vencidos</div>
+        </div>
+</div><div class="table-wrapper "><table><thead><tr><th>Carteira de Crédito</th><th>Valor</th></tr></thead><tbody><tr class=""><td class="">Limite de Crédito</td><td class="">R$ 0,00</td></tr><tr class=""><td class="">Prejuízo</td><td class="">R$ 0,00</td></tr><tr class=""><td class="">Obrigação Assumida</td><td class="">R$ 0,00</td></tr><tr class=""><td class="">A Vencer</td><td class="">R$ 0,00</td></tr><tr class=""><td class="">Vencido</td><td class="">R$ 0,00</td></tr></tbody></table></div><div class="grid grid-2 gap-4 mt-4"><div class="table-wrapper "><table><thead><tr><th>Responsabilidades</th><th>Valor</th></tr></thead><tbody><tr class=""><td class="">Obrigação Assumida</td><td class="">R$ 0,00</td></tr><tr class=""><td class="">Responsabilidade Total</td><td class="">R$ 0,00</td></tr><tr class=""><td class="">Sub Judice</td><td class="">R$ 0,00 · 0 operações</td></tr><tr class=""><td class="">Discordância</td><td class="">R$ 0,00 · 0 operações</td></tr></tbody></table></div><div class="table-wrapper "><table><thead><tr><th>Análise de Risco</th><th>Valor</th></tr></thead><tbody><tr class=""><td class="">Risco Total</td><td class="">R$ 0,00</td></tr><tr class=""><td class="">Carteira Total</td><td class="">R$ 0,00</td></tr><tr class=""><td class="">Risco Indireto Vendor</td><td class="">R$ 0,00</td></tr><tr class=""><td class="">Obrigação Resumida</td><td class="">R$ 0,00</td></tr></tbody></table></div></div><div class="narrative-card mt-4"><h4>SCR BACEN Detalhada</h4><p>Sistema de Informações de Crédito do Banco Central · CNPJ 16.542.744/0001-78 · <strong class="text-danger">Risco Altíssimo</strong> · Desde: N/A.</p><p><strong>Doc. Processados:</strong> 93,03% · <strong>Vol. Processado:</strong> 0,00%</p></div></section>
+        <section class="section ">
+            <div class="section-header">
+                <div class="section-icon-wrap"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m21 21-4.35-4.35M18 10.5a7.5 7.5 0 1 1-15 0 7.5 7.5 0 0 1 15 0Z"/></svg></div>
+                <h3 class="section-title">Bureaus Complementares e Regularidade</h3>
+                <span class="section-divider"></span>
+            </div><div class="grid grid-2 gap-4"><div class="text-card"><h4>QUOD — Bureau Complementar</h4><p><strong>Score Quod:</strong> 880</p><p><strong>Faixa:</strong> Baixo índice de inadimplência</p><p><strong>Motivo:</strong> Empresa apresenta Score de baixo risco de inadimplência.</p></div><div class="text-card"><h4>Boa Vista SCPC</h4><p><strong>Score Boa Vista:</strong> 602</p><p><strong>Faixa de risco:</strong> Baixo</p><p>Mesma fonte do Diagnóstico Avançado.</p></div></div><div class="status-stack mt-4"><div class="status-row neutral">PGFN — Dívida Ativa da União</div><div class="status-row danger">Certidão (CND) — Receita Federal</div></div></section>
+        <section class="section ">
+            <div class="section-header">
+                <div class="section-icon-wrap"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-7.5a2.25 2.25 0 0 0-2.25-2.25h-6.879a2.25 2.25 0 0 0-1.591.659L4.91 9.03a2.25 2.25 0 0 0-.659 1.591v6.879A2.25 2.25 0 0 0 6.5 19.75h5.25"/><path stroke-linecap="round" stroke-linejoin="round" d="M8 13h8M8 16h4M12 4.5v4.75a1.25 1.25 0 0 1-1.25 1.25H6"/></svg></div>
+                <h3 class="section-title">Cartão CNPJ · Receita Federal</h3>
+                <span class="section-divider"></span>
+            </div><div class="kv-grid kv-grid-3"><div class="kv-item"><span>Razão Social</span><strong>JMFC SERVICOS EMPRESARIAIS LTDA</strong></div><div class="kv-item"><span>Nome Fantasia</span><strong>LEMAX CARTONAGENS</strong></div><div class="kv-item"><span>Situação Cadastral</span><strong>ATIVA · 12/07/2012</strong></div><div class="kv-item"><span>Capital Social</span><strong>R$ 30.000,00</strong></div><div class="kv-item"><span>Abertura</span><strong>12/07/2012</strong></div><div class="kv-item"><span>Porte</span><strong>ME</strong></div><div class="kv-item"><span>Natureza Jurídica</span><strong>Sociedade Empresária Limitada</strong></div><div class="kv-item"><span>Optante Simples</span><strong>NÃO</strong></div><div class="kv-item"><span>Optante MEI</span><strong>NÃO</strong></div><div class="kv-item"><span>CNAE Principal</span><strong>8299799 · Outras atividades de serviços prestados principalmente às empresas não especificadas anteriormente</strong></div><div class="kv-item"><span>E-mail</span><strong>CONTATO@CONTATO.COM.BR</strong></div><div class="kv-item"><span>Telefones</span><strong>(11) 08000800</strong></div><div class="kv-item"><span>Endereço</span><strong>ALAMEDA RIO NEGRO 503, SALA 2020 — ALPHAVILLE CENTRO INDUSTRIAL E EMPRESARIAL/ALPHAV, BARUERI/SP · CEP 06454000</strong></div></div><h4 class="subsection-title">CNAEs secundárias (14)</h4><ul class="clean-list "><li>4761001 · Comércio varejista de livros</li><li>5811500 · Edição de livros</li><li>5819100 · Edição de cadastros, listas e de outros produtos gráficos</li><li>6201501 · Desenvolvimento de programas de computador sob encomenda</li><li>6202300 · Desenvolvimento e licenciamento de programas de computador customizáveis</li><li>6204000 · Consultoria em tecnologia da informação</li><li>6311900 · Tratamento de dados, provedores de serviços de aplicação e serviços de hospedagem na internet</li><li>6399200 · Outras atividades de prestação de serviços de informação não especificadas anteriormente</li><li>6499999 · Outras atividades de serviços financeiros não especificadas anteriormente</li><li>6619302 · Correspondentes de instituições financeiras</li><li>6920602 · Atividades de consultoria e auditoria contábil e tributária</li><li>7490104 · Atividades de intermediação e agenciamento de serviços e negócios em geral, exceto imobiliários</li><li>8219999 · Preparação de documentos e serviços especializados de apoio administrativo não especificados anteriormente</li><li>8599604 · Treinamento em desenvolvimento profissional e gerencial</li></ul><h4 class="subsection-title">Quadro Societário (Receita)</h4><div class="table-wrapper "><table><thead><tr><th>Indicador</th><th>Status</th><th>Risco</th><th>Observação</th></tr></thead><tbody><tr class=""><td class="">—</td><td class="">—</td><td class="">—</td><td class="">—</td></tr><tr class=""><td class="">Não consultado</td><td class="">Processamento OK</td><td class="">—</td><td class="">Alguma base de apoio à verificação do contribuinte está indisponível.</td></tr></tbody></table></div></section>
+        <section class="section ">
+            <div class="section-header">
+                <div class="section-icon-wrap"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M3 21h18M5 21V7l7-4 7 4v14M9 21v-6h6v6M8 9h.01M12 9h.01M16 9h.01M8 13h.01M16 13h.01"/></svg></div>
+                <h3 class="section-title">Cadastro PJ Plus (DirectD)</h3>
+                <span class="section-badge">Bureau enriquecido</span>
+            </div><div class="grid grid-3 gap-4 mb-2">
+<div class="summary-card success">
+            <div class="summary-title">Faixa de faturamento</div>
+            <div class="summary-val ">R$ 270.000 até R$ 360.000</div>
+            <div class="text-xs text-muted mt-1">estimativa do bureau</div>
+        </div>
+<div class="summary-card success">
+            <div class="summary-title">Faturamento presumido</div>
+            <div class="summary-val ">R$ 344.483,33</div>
+            <div class="text-xs text-muted mt-1">modelo do bureau</div>
+        </div>
+<div class="summary-card warning">
+            <div class="summary-title">Faturamento médio do CNAE</div>
+            <div class="summary-val ">R$ 916.376,42</div>
+            <div class="text-xs text-muted mt-1">comparativo setorial</div>
+        </div>
+</div><div class="alert-box warning"><div class="alert-icon"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v4m0 4h.01M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/></svg></div><div><strong>Faturamento presumido</strong><p>Estimativa de modelo do bureau, não declaração oficial da Receita.</p></div></div><div class="kv-grid kv-grid-3"><div class="kv-item"><span>Razão Social</span><strong>JMFC SERVICOS EMPRESARIAIS LTDA</strong></div><div class="kv-item"><span>Nome Fantasia</span><strong>LEMAX CARTONAGENS</strong></div><div class="kv-item"><span>Tipo</span><strong>Matriz</strong></div><div class="kv-item"><span>Situação Cadastral</span><strong>ATIVA</strong></div><div class="kv-item"><span>Data de Fundação</span><strong>12/07/2012 00:00:00</strong></div><div class="kv-item"><span>Porte</span><strong>MICRO EMPRESA</strong></div><div class="kv-item"><span>Natureza Jurídica</span><strong>Sociedade Empresária Limitada</strong></div><div class="kv-item"><span>CNAE</span><strong>Outras atividades de serviços prestados principalmente às empresas não especificadas anteriormente</strong></div><div class="kv-item"><span>Tributação</span><strong>—</strong></div><div class="kv-item"><span>Optante Simples</span><strong>NÃO</strong></div><div class="kv-item"><span>Optante MEI</span><strong>NÃO</strong></div><div class="kv-item"><span>Faixa de Funcionários</span><strong>Até 9 Funcionários</strong></div><div class="kv-item"><span>Qtd. Funcionários</span><strong>1</strong></div><div class="kv-item"><span>Filiais</span><strong>0 até 1 filial</strong></div><div class="kv-item"><span>Telefones</span><strong>(17) 991534115, (17) 34824554, (17) 34824557</strong></div><div class="kv-item"><span>E-mails</span><strong>contato@contato.com.br, contato@directcount.com.br</strong></div><div class="kv-item"><span>Endereço</span><strong>RIO NEGRO, 503, ALPHAVILLE CENTRO INDUSTRIAL E EMPRESARIAL ALPHAV, BARUERI, SP, 06454-000</strong></div></div><h4 class="subsection-title">Quadro Societário (DirectD)</h4><div class="table-wrapper "><table><thead><tr><th>Nome</th><th>Documento</th><th>Qualificação</th><th>Representante Legal</th></tr></thead><tbody><tr class=""><td class="">MARCUS VINICIUS AMARO GARCIA</td><td class="">30776487841</td><td class="">49</td><td class="">—</td></tr><tr class=""><td class="">CLAUDIO HENRIQUE CHAVES TOMICH JUNIOR</td><td class="">06253057600</td><td class="">49</td><td class="">—</td></tr><tr class=""><td class="">FABIANO DALLOCA DE PAULA</td><td class="">06116210961</td><td class="">49</td><td class="">—</td></tr><tr class=""><td class="">JONATHAN HENRIQUE FERREIRA</td><td class="">42720566896</td><td class="">49</td><td class="">—</td></tr></tbody></table></div><div class="table-wrapper "><table><thead><tr><th>Nome</th><th>Documento</th><th>Cargo</th><th>Participação</th></tr></thead><tbody><tr class=""><td class="">MARCUS VINICIUS AMARO GARCIA</td><td class="">307.764.878-41</td><td class="">Sócio Administrador</td><td class="">—</td></tr><tr class=""><td class="">JONATHAN HENRIQUE FERREIRA</td><td class="">427.205.668-96</td><td class="">Sócio Administrador</td><td class="">—</td></tr><tr class=""><td class="">FABIANO DALLOCA DE PAULA</td><td class="">061.162.109-61</td><td class="">Sócio Administrador</td><td class="">—</td></tr><tr class=""><td class="">CLAUDIO HENRIQUE CHAVES TOMICH JUNIOR</td><td class="">062.530.576-00</td><td class="">Sócio Administrador</td><td class="">—</td></tr></tbody></table></div></section><div class="page-break"></div>
+        <section class="section ">
+            <div class="section-header">
+                <div class="section-icon-wrap"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19.128a9.38 9.38 0 0 0 2.625.372 9.337 9.337 0 0 0 4.121-.952 4.125 4.125 0 0 0-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 0 1 8.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0 1 11.964-3.07M12 6.375a3.375 3.375 0 1 1-6.75 0 3.375 3.375 0 0 1 6.75 0Zm8.25 2.25a2.625 2.625 0 1 1-5.25 0 2.625 2.625 0 0 1 5.25 0Z"/></svg></div>
+                <h3 class="section-title">Sócio · MARCUS VINICIUS AMARO GARCIA</h3>
+                <span class="section-divider"></span>
+            </div><div class="info-card socio-info">
+        <div class="info-cell"><div class="info-cell-icon"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19.128a9.38 9.38 0 0 0 2.625.372 9.337 9.337 0 0 0 4.121-.952 4.125 4.125 0 0 0-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 0 1 8.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0 1 11.964-3.07M12 6.375a3.375 3.375 0 1 1-6.75 0 3.375 3.375 0 0 1 6.75 0Zm8.25 2.25a2.625 2.625 0 1 1-5.25 0 2.625 2.625 0 0 1 5.25 0Z"/></svg></div><div><div class="info-label">Dados cadastrais</div><div class="info-value">MARCUS VINICIUS AMARO GARCIA</div><div class="text-xs text-muted">CPF ***.764.878-** · Nascimento: 07/04/1984</div></div></div>
+        <div class="info-cell"><div class="info-cell-icon text-danger"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v4m0 4h.01M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/></svg></div><div><div class="info-label">Negativações</div><div class="info-value text-danger">7</div><div class="text-xs text-muted">Valor: R$ 11.512,42</div></div></div>
+        <div class="info-cell"><div class="info-cell-icon"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M3 21h18M5 21V7l7-4 7 4v14M9 21v-6h6v6M8 9h.01M12 9h.01M16 9h.01M8 13h.01M16 13h.01"/></svg></div><div><div class="info-label">Empresas / Consultas</div><div class="info-value">4 empresas · 5 consultas</div><div class="text-xs text-muted">participações e últimas consultas</div></div></div>
+    </div><h4 class="subsection-title">Dados cadastrais completos</h4><div class="kv-grid kv-grid-4"><div class="kv-item"><span>Nome completo</span><strong>MARCUS VINICIUS AMARO GARCIA</strong></div><div class="kv-item"><span>CPF</span><strong>***.764.878-**</strong></div><div class="kv-item"><span>Data de nascimento</span><strong>07/04/1984</strong></div><div class="kv-item"><span>Situação cadastral</span><strong>REGULAR</strong></div></div><h4 class="subsection-title">Restrições e Pendências Financeiras</h4><div class="grid grid-4 gap-4 mb-2">
+<div class="summary-card success">
+            <div class="summary-title">PEFIN</div>
+            <div class="summary-val text-success">0</div>
+            <div class="text-xs text-muted mt-1">R$ 0,00</div>
+        </div>
+<div class="summary-card danger">
+            <div class="summary-title">REFIN</div>
+            <div class="summary-val text-danger">2</div>
+            <div class="text-xs text-muted mt-1">R$ 3.847,91</div>
+        </div>
+<div class="summary-card danger">
+            <div class="summary-title">Protestos</div>
+            <div class="summary-val text-danger">5</div>
+            <div class="text-xs text-muted mt-1">R$ 7.664,51</div>
+        </div>
+<div class="summary-card success">
+            <div class="summary-title">Cheques</div>
+            <div class="summary-val text-success">0</div>
+            <div class="text-xs text-muted mt-1">R$ 0,00</div>
+        </div>
+</div><h4 class="subsection-title">Histórico de negativações</h4><div class="table-wrapper "><table><thead><tr><th>Base</th><th>Quantidade</th><th>Valor Total</th><th>Primeira Ocorrência</th><th>Última Ocorrência</th></tr></thead><tbody><tr class=""><td class="">REFIN - Refinanciamentos (Base 1)</td><td class="">2</td><td class="">R$ 3.847,91</td><td class="">04/01/2026</td><td class="">04/02/2026</td></tr><tr class=""><td class="">Protestos</td><td class="">5</td><td class="">R$ 7.664,51</td><td class="">30/01/2022</td><td class="">12/09/2025</td></tr></tbody></table></div><h4 class="subsection-title">Detalhamento</h4><div class="table-wrapper dense-table"><table><thead><tr><th>Ocorrência</th><th>Inclusão</th><th>Credor/Cartório</th><th>Contrato/Título</th><th>Valor</th></tr></thead><tbody><tr class=""><td class="">05/02/2026</td><td class="">29/05/2026</td><td class="">BANCO INTER S/A</td><td class="">17670466</td><td class="">R$ 412,11</td></tr><tr class=""><td class="">05/01/2026</td><td class="">29/05/2026</td><td class="">BANCO INTER S/A</td><td class="">18721269</td><td class="">R$ 3.435,80</td></tr><tr class=""><td class="">13/09/2025</td><td class="">26/11/2025</td><td class="">N/A</td><td class="">N/A</td><td class="">R$ 2.490,00</td></tr><tr class=""><td class="">24/01/2025</td><td class="">20/10/2025</td><td class="">N/A</td><td class="">N/A</td><td class="">R$ 1.113,90</td></tr><tr class=""><td class="">31/01/2024</td><td class="">26/06/2025</td><td class="">N/A</td><td class="">N/A</td><td class="">R$ 1.135,45</td></tr><tr class=""><td class="">16/01/2023</td><td class="">15/05/2025</td><td class="">N/A</td><td class="">N/A</td><td class="">R$ 1.272,59</td></tr><tr class=""><td class="">31/01/2022</td><td class="">13/05/2025</td><td class="">N/A</td><td class="">N/A</td><td class="">R$ 1.652,57</td></tr></tbody></table></div><div class="score-mini-card"><div><strong>Relatório de Crédito · Base I + Base II + Score</strong><p>Data: 11/06/2026 · Status: Consulta Concluída</p></div><div><span>SCORE BASE I</span><strong>350</strong><em>Risco Direcionado</em></div></div><h4 class="subsection-title">Participações Societárias</h4><div class="table-wrapper "><table><thead><tr><th>Empresa</th><th>Status</th><th>Participação</th><th>CNPJ</th><th>UF</th><th>Data do Status</th><th>Última Atualização</th></tr></thead><tbody><tr class=""><td class="">MMVI CONSULTORIA E SERVICOS LTDA ME</td><td class="">ATIVA</td><td class="">100%</td><td class="">54.904.865/0001-01</td><td class="">SP</td><td class="">10/05/2025</td><td class="">01/05/2025</td></tr><tr class=""><td class="">SOLVER CONSULTORIA E ASSESSORIA EMPRESARIAL LTDA ME</td><td class="">ATIVA</td><td class="">50%</td><td class="">21.519.808/0001-50</td><td class="">PR</td><td class="">10/05/2025</td><td class="">07/12/2017</td></tr><tr class=""><td class="">JMFC SERVICOS EMPRESARIAIS LTDA ME</td><td class="">ATIVA</td><td class="">25%</td><td class="">16.542.744/0001-78</td><td class="">SP</td><td class="">16/03/2026</td><td class="">14/03/2026</td></tr><tr class=""><td class="">VIVAX COMERCIO DE ARTIGOS DE PAPELARIA LTDA ME</td><td class="">INAPTA</td><td class="">10%</td><td class="">12.839.525/0001-02</td><td class="">SP</td><td class="">08/02/2025</td><td class="">18/09/2021</td></tr></tbody></table></div><h4 class="subsection-title">Consultas Recentes</h4><div class="table-wrapper "><table><thead><tr><th>Data</th><th>Segmento</th><th>Quantidade de Dias</th></tr></thead><tbody><tr class=""><td class="">18/05/2026</td><td class="">MEDIOS BANCOS PRIVADOS</td><td class="">1 dia(s)</td></tr></tbody></table></div></section>
+        <section class="section ">
+            <div class="section-header">
+                <div class="section-icon-wrap"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19.128a9.38 9.38 0 0 0 2.625.372 9.337 9.337 0 0 0 4.121-.952 4.125 4.125 0 0 0-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 0 1 8.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0 1 11.964-3.07M12 6.375a3.375 3.375 0 1 1-6.75 0 3.375 3.375 0 0 1 6.75 0Zm8.25 2.25a2.625 2.625 0 1 1-5.25 0 2.625 2.625 0 0 1 5.25 0Z"/></svg></div>
+                <h3 class="section-title">Sócio · FABIANO DALLOCA DE PAULA</h3>
+                <span class="section-divider"></span>
+            </div><div class="info-card socio-info">
+        <div class="info-cell"><div class="info-cell-icon"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19.128a9.38 9.38 0 0 0 2.625.372 9.337 9.337 0 0 0 4.121-.952 4.125 4.125 0 0 0-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 0 1 8.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0 1 11.964-3.07M12 6.375a3.375 3.375 0 1 1-6.75 0 3.375 3.375 0 0 1 6.75 0Zm8.25 2.25a2.625 2.625 0 1 1-5.25 0 2.625 2.625 0 0 1 5.25 0Z"/></svg></div><div><div class="info-label">Dados cadastrais</div><div class="info-value">FABIANO DALLOCA DE PAULA</div><div class="text-xs text-muted">CPF ***.162.109-** · Nascimento: 03/04/1988</div></div></div>
+        <div class="info-cell"><div class="info-cell-icon text-danger"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v4m0 4h.01M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/></svg></div><div><div class="info-label">Negativações</div><div class="info-value text-danger">64</div><div class="text-xs text-muted">Valor: R$ 347.185,33</div></div></div>
+        <div class="info-cell"><div class="info-cell-icon"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M3 21h18M5 21V7l7-4 7 4v14M9 21v-6h6v6M8 9h.01M12 9h.01M16 9h.01M8 13h.01M16 13h.01"/></svg></div><div><div class="info-label">Empresas / Consultas</div><div class="info-value">3 empresas · 5 consultas</div><div class="text-xs text-muted">participações e últimas consultas</div></div></div>
+    </div><h4 class="subsection-title">Dados cadastrais completos</h4><div class="kv-grid kv-grid-4"><div class="kv-item"><span>Nome completo</span><strong>FABIANO DALLOCA DE PAULA</strong></div><div class="kv-item"><span>CPF</span><strong>***.162.109-**</strong></div><div class="kv-item"><span>Data de nascimento</span><strong>03/04/1988</strong></div><div class="kv-item"><span>Situação cadastral</span><strong>REGULAR</strong></div></div><h4 class="subsection-title">Restrições e Pendências Financeiras</h4><div class="grid grid-4 gap-4 mb-2">
+<div class="summary-card danger">
+            <div class="summary-title">PEFIN</div>
+            <div class="summary-val text-danger">23</div>
+            <div class="text-xs text-muted mt-1">R$ 57.146,66</div>
+        </div>
+<div class="summary-card success">
+            <div class="summary-title">REFIN</div>
+            <div class="summary-val text-success">0</div>
+            <div class="text-xs text-muted mt-1">R$ 0,00</div>
+        </div>
+<div class="summary-card danger">
+            <div class="summary-title">Protestos</div>
+            <div class="summary-val text-danger">41</div>
+            <div class="text-xs text-muted mt-1">R$ 290.038,67</div>
+        </div>
+<div class="summary-card success">
+            <div class="summary-title">Cheques</div>
+            <div class="summary-val text-success">0</div>
+            <div class="text-xs text-muted mt-1">R$ 0,00</div>
+        </div>
+</div><h4 class="subsection-title">Histórico de negativações</h4><div class="table-wrapper "><table><thead><tr><th>Base</th><th>Quantidade</th><th>Valor Total</th><th>Primeira Ocorrência</th><th>Última Ocorrência</th></tr></thead><tbody><tr class=""><td class="">PEFIN - Pendências Financeiras (Base 1)</td><td class="">23</td><td class="">R$ 57.146,66</td><td class="">30/01/2025</td><td class="">19/03/2025</td></tr><tr class=""><td class="">Protestos</td><td class="">41</td><td class="">R$ 290.038,67</td><td class="">19/10/2024</td><td class="">05/11/2025</td></tr></tbody></table></div><h4 class="subsection-title">Detalhamento</h4><div class="table-wrapper dense-table"><table><thead><tr><th>Credor</th><th>Natureza</th><th>Valor</th><th>Ocorrência</th><th>Inclusão</th><th>Contrato</th><th>CADUS</th><th>Tipo</th></tr></thead><tbody><tr class=""><td class="">ENERGISA MATO GROSSO</td><td class="">TIT DESCONTA</td><td class="">R$ 19,91</td><td class="">20/03/2025</td><td class="">31/03/2026</td><td class="">0007343256202503</td><td class="">C826953972</td><td class="">TD</td></tr><tr class=""><td class="">ENERGISA MATO GROSSO</td><td class="">TIT DESCONTA</td><td class="">R$ 47,44</td><td class="">06/03/2025</td><td class="">31/03/2026</td><td class="">0004165242202502</td><td class="">C826953968</td><td class="">TD</td></tr><tr class=""><td class="">LOCALIZA FLEET S/A</td><td class="">DUPLICATA</td><td class="">R$ 760,00</td><td class="">21/02/2025</td><td class="">31/03/2026</td><td class="">009017087125001</td><td class="">C826953976</td><td class="">DP</td></tr><tr class=""><td class="">TOKIO MARINE SEGURADORA S.A.</td><td class="">ALUGUEL</td><td class="">R$ 4.328,54</td><td class="">21/02/2025</td><td class="">31/03/2026</td><td class="">4463406</td><td class="">C826953965</td><td class="">AL</td></tr><tr class=""><td class="">ENERGISA MATO GROSSO</td><td class="">TIT DESCONTA</td><td class="">R$ 46,37</td><td class="">31/01/2025</td><td class="">31/03/2026</td><td class="">0004165242202501</td><td class="">C826953977</td><td class="">TD</td></tr></tbody></table></div><div class="score-mini-card"><div><strong>Relatório de Crédito · Base I + Base II + Score</strong><p>Data: 11/06/2026 · Status: Consulta Concluída</p></div><div><span>SCORE BASE I</span><strong>350</strong><em>Risco Direcionado</em></div></div><h4 class="subsection-title">Participações Societárias</h4><div class="table-wrapper "><table><thead><tr><th>Empresa</th><th>Status</th><th>Participação</th><th>CNPJ</th><th>UF</th><th>Data do Status</th><th>Última Atualização</th></tr></thead><tbody><tr class=""><td class="">FABIANO DALLOCA SOCIEDADE INDIVIDUAL DE ADVOCACIA</td><td class="">ATIVA · Com Restrições</td><td class="">100%</td><td class="">47.518.563/0001-30</td><td class="">MT</td><td class="">10/05/2025</td><td class="">21/05/2025</td></tr><tr class=""><td class="">REMOVIDO SOLUCAO RECUPERACAO CREDITO REPUTACAO DIGITAL LTDA ME</td><td class="">ATIVA</td><td class="">80%</td><td class="">60.928.993/0001-98</td><td class="">PR</td><td class="">14/06/2025</td><td class="">31/08/2025</td></tr><tr class=""><td class="">JMFC SERVICOS EMPRESARIAIS LTDA ME</td><td class="">ATIVA</td><td class="">25%</td><td class="">16.542.744/0001-78</td><td class="">SP</td><td class="">16/03/2026</td><td class="">14/03/2026</td></tr></tbody></table></div><h4 class="subsection-title">Consultas Recentes</h4><div class="table-wrapper "><table><thead><tr><th>Data</th><th>Segmento</th><th>Quantidade de Dias</th></tr></thead><tbody><tr class=""><td class="">27/05/2026</td><td class="">SERVICOS DIVERSOS</td><td class="">1 dia(s)</td></tr><tr class=""><td class="">16/03/2026</td><td class="">FINANCEIRAS</td><td class="">1 dia(s)</td></tr><tr class=""><td class="">02/03/2026</td><td class="">GRANDES BANCOS PRIVADOS</td><td class="">1 dia(s)</td></tr><tr class=""><td class="">28/02/2026</td><td class="">SERVICOS DIVERSOS</td><td class="">1 dia(s)</td></tr><tr class=""><td class="">20/02/2026</td><td class="">CARTOES E MEIOS DE PAGAMENTO</td><td class="">1 dia(s)</td></tr></tbody></table></div></section>
+        <section class="section ">
+            <div class="section-header">
+                <div class="section-icon-wrap"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19.128a9.38 9.38 0 0 0 2.625.372 9.337 9.337 0 0 0 4.121-.952 4.125 4.125 0 0 0-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 0 1 8.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0 1 11.964-3.07M12 6.375a3.375 3.375 0 1 1-6.75 0 3.375 3.375 0 0 1 6.75 0Zm8.25 2.25a2.625 2.625 0 1 1-5.25 0 2.625 2.625 0 0 1 5.25 0Z"/></svg></div>
+                <h3 class="section-title">Sócio · CLAUDIO HENRIQUE CHAVES TOMICH JUNIOR</h3>
+                <span class="section-divider"></span>
+            </div><div class="info-card socio-info">
+        <div class="info-cell"><div class="info-cell-icon"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19.128a9.38 9.38 0 0 0 2.625.372 9.337 9.337 0 0 0 4.121-.952 4.125 4.125 0 0 0-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 0 1 8.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0 1 11.964-3.07M12 6.375a3.375 3.375 0 1 1-6.75 0 3.375 3.375 0 0 1 6.75 0Zm8.25 2.25a2.625 2.625 0 1 1-5.25 0 2.625 2.625 0 0 1 5.25 0Z"/></svg></div><div><div class="info-label">Dados cadastrais</div><div class="info-value">CLAUDIO HENRIQUE CHAVES TOMICH JUNIOR</div><div class="text-xs text-muted">CPF ***.530.576-** · Nascimento: 26/03/1985</div></div></div>
+        <div class="info-cell"><div class="info-cell-icon text-danger"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v4m0 4h.01M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/></svg></div><div><div class="info-label">Negativações</div><div class="info-value text-danger">14</div><div class="text-xs text-muted">Valor: R$ 1.674,45</div></div></div>
+        <div class="info-cell"><div class="info-cell-icon"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M3 21h18M5 21V7l7-4 7 4v14M9 21v-6h6v6M8 9h.01M12 9h.01M16 9h.01M8 13h.01M16 13h.01"/></svg></div><div><div class="info-label">Empresas / Consultas</div><div class="info-value">4 empresas · 5 consultas</div><div class="text-xs text-muted">participações e últimas consultas</div></div></div>
+    </div><h4 class="subsection-title">Dados cadastrais completos</h4><div class="kv-grid kv-grid-4"><div class="kv-item"><span>Nome completo</span><strong>CLAUDIO HENRIQUE CHAVES TOMICH JUNIOR</strong></div><div class="kv-item"><span>CPF</span><strong>***.530.576-**</strong></div><div class="kv-item"><span>Data de nascimento</span><strong>26/03/1985</strong></div><div class="kv-item"><span>Situação cadastral</span><strong>REGULAR</strong></div></div><h4 class="subsection-title">Restrições e Pendências Financeiras</h4><div class="grid grid-4 gap-4 mb-2">
+<div class="summary-card danger">
+            <div class="summary-title">PEFIN</div>
+            <div class="summary-val text-danger">4</div>
+            <div class="text-xs text-muted mt-1">R$ 161,29</div>
+        </div>
+<div class="summary-card success">
+            <div class="summary-title">REFIN</div>
+            <div class="summary-val text-success">0</div>
+            <div class="text-xs text-muted mt-1">R$ 0,00</div>
+        </div>
+<div class="summary-card danger">
+            <div class="summary-title">Protestos</div>
+            <div class="summary-val text-danger">10</div>
+            <div class="text-xs text-muted mt-1">R$ 1.513,16</div>
+        </div>
+<div class="summary-card success">
+            <div class="summary-title">Cheques</div>
+            <div class="summary-val text-success">0</div>
+            <div class="text-xs text-muted mt-1">R$ 0,00</div>
+        </div>
+</div><h4 class="subsection-title">Histórico de negativações</h4><div class="table-wrapper "><table><thead><tr><th>Base</th><th>Quantidade</th><th>Valor Total</th><th>Primeira Ocorrência</th><th>Última Ocorrência</th></tr></thead><tbody><tr class=""><td class="">PEFIN - Pendências Financeiras (Base 1)</td><td class="">4</td><td class="">R$ 161,29</td><td class="">10/07/2021</td><td class="">25/07/2025</td></tr><tr class=""><td class="">Protestos</td><td class="">10</td><td class="">R$ 1.513,16</td><td class="">12/07/2022</td><td class="">29/12/2023</td></tr></tbody></table></div><h4 class="subsection-title">Detalhamento</h4><div class="table-wrapper dense-table"><table><thead><tr><th>Credor</th><th>Natureza</th><th>Valor</th><th>Ocorrência</th><th>Inclusão</th><th>Contrato</th><th>CADUS</th><th>Tipo</th></tr></thead><tbody><tr class=""><td class="">COPASA MG</td><td class="">FAT AGUA</td><td class="">R$ 27,73</td><td class="">26/07/2025</td><td class="">10/04/2026</td><td class="">0016154803272521</td><td class="">C839468392</td><td class="">SB</td></tr><tr class=""><td class="">PROVI SOLUCOES E SERVICOS LTDA</td><td class="">FINANCIAMENTO</td><td class="">R$ 91,78</td><td class="">10/01/2024</td><td class="">10/04/2026</td><td class="">0000000020754945</td><td class="">C839468390</td><td class="">FI</td></tr><tr class=""><td class="">CEMIG D</td><td class="">ENERGIA ELET</td><td class="">R$ 20,00</td><td class="">11/07/2021</td><td class="">10/04/2026</td><td class="">000615313508088N</td><td class="">C839468393</td><td class="">EE</td></tr><tr class=""><td class="">CEMIG D</td><td class="">ENERGIA ELET</td><td class="">R$ 21,78</td><td class="">11/07/2021</td><td class="">10/04/2026</td><td class="">000619213663328N</td><td class="">C839468389</td><td class="">EE</td></tr></tbody></table></div><div class="score-mini-card"><div><strong>Relatório de Crédito · Base I + Base II + Score</strong><p>Data: 11/06/2026 · Status: Consulta Concluída</p></div><div><span>SCORE BASE I</span><strong>350</strong><em>Risco Direcionado</em></div></div><h4 class="subsection-title">Participações Societárias</h4><div class="table-wrapper "><table><thead><tr><th>Empresa</th><th>Status</th><th>Participação</th><th>CNPJ</th><th>UF</th><th>Data do Status</th><th>Última Atualização</th></tr></thead><tbody><tr class=""><td class="">CLAUDIO HENRIQUE CHAVES TOMICH JUNIOR 06253057600</td><td class="">CANCELADA (NÃO EXISTE MAIS P/A RF)</td><td class="">100%</td><td class="">17.701.390/0001-20</td><td class="">MG</td><td class="">10/05/2025</td><td class="">29/05/2025</td></tr><tr class=""><td class="">DRLN GROUP LTDA ME</td><td class="">ATIVA · Com Restrições</td><td class="">100%</td><td class="">33.664.585/0001-01</td><td class="">MG</td><td class="">03/06/2026</td><td class="">03/06/2026</td></tr><tr class=""><td class="">JMFC SERVICOS EMPRESARIAIS LTDA ME</td><td class="">ATIVA</td><td class="">25%</td><td class="">16.542.744/0001-78</td><td class="">SP</td><td class="">16/03/2026</td><td class="">14/03/2026</td></tr><tr class=""><td class="">POSITIVO NACIONAL FECHADA LTDA ME</td><td class="">ATIVA</td><td class="">0%</td><td class="">54.790.492/0001-95</td><td class="">PR</td><td class="">10/05/2025</td><td class="">09/10/2024</td></tr></tbody></table></div><h4 class="subsection-title">Consultas Recentes</h4><div class="table-wrapper "><table><thead><tr><th>Data</th><th>Segmento</th><th>Quantidade de Dias</th></tr></thead><tbody><tr class=""><td class="">25/05/2026</td><td class="">SERVICOS DIVERSOS</td><td class="">3 dia(s)</td></tr><tr class=""><td class="">20/05/2026</td><td class="">FINANCEIRAS</td><td class="">1 dia(s)</td></tr><tr class=""><td class="">03/03/2026</td><td class="">FINANCEIRAS</td><td class="">1 dia(s)</td></tr><tr class=""><td class="">11/02/2026</td><td class="">GRANDES BANCOS PRIVADOS</td><td class="">3 dia(s)</td></tr><tr class=""><td class="">11/02/2026</td><td class="">BANCOS GIGANTES</td><td class="">2 dia(s)</td></tr></tbody></table></div></section>
+        <section class="section ">
+            <div class="section-header">
+                <div class="section-icon-wrap"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19.128a9.38 9.38 0 0 0 2.625.372 9.337 9.337 0 0 0 4.121-.952 4.125 4.125 0 0 0-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 0 1 8.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0 1 11.964-3.07M12 6.375a3.375 3.375 0 1 1-6.75 0 3.375 3.375 0 0 1 6.75 0Zm8.25 2.25a2.625 2.625 0 1 1-5.25 0 2.625 2.625 0 0 1 5.25 0Z"/></svg></div>
+                <h3 class="section-title">Sócio · JONATHAN HENRIQUE FERREIRA</h3>
+                <span class="section-divider"></span>
+            </div><div class="info-card socio-info">
+        <div class="info-cell"><div class="info-cell-icon"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19.128a9.38 9.38 0 0 0 2.625.372 9.337 9.337 0 0 0 4.121-.952 4.125 4.125 0 0 0-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 0 1 8.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0 1 11.964-3.07M12 6.375a3.375 3.375 0 1 1-6.75 0 3.375 3.375 0 0 1 6.75 0Zm8.25 2.25a2.625 2.625 0 1 1-5.25 0 2.625 2.625 0 0 1 5.25 0Z"/></svg></div><div><div class="info-label">Dados cadastrais</div><div class="info-value">JONATHAN HENRIQUE FERREIRA</div><div class="text-xs text-muted">CPF ***.205.668-** · Nascimento: 03/02/1993</div></div></div>
+        <div class="info-cell"><div class="info-cell-icon text-danger"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v4m0 4h.01M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/></svg></div><div><div class="info-label">Negativações</div><div class="info-value text-danger">14</div><div class="text-xs text-muted">Valor: R$ 25.602,22</div></div></div>
+        <div class="info-cell"><div class="info-cell-icon"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M3 21h18M5 21V7l7-4 7 4v14M9 21v-6h6v6M8 9h.01M12 9h.01M16 9h.01M8 13h.01M16 13h.01"/></svg></div><div><div class="info-label">Empresas / Consultas</div><div class="info-value">2 empresas · 4 consultas</div><div class="text-xs text-muted">participações e últimas consultas</div></div></div>
+    </div><h4 class="subsection-title">Dados cadastrais completos</h4><div class="kv-grid kv-grid-4"><div class="kv-item"><span>Nome completo</span><strong>JONATHAN HENRIQUE FERREIRA</strong></div><div class="kv-item"><span>CPF</span><strong>***.205.668-**</strong></div><div class="kv-item"><span>Data de nascimento</span><strong>03/02/1993</strong></div><div class="kv-item"><span>Situação cadastral</span><strong>REGULAR</strong></div></div><h4 class="subsection-title">Restrições e Pendências Financeiras</h4><div class="grid grid-4 gap-4 mb-2">
+<div class="summary-card danger">
+            <div class="summary-title">PEFIN</div>
+            <div class="summary-val text-danger">1</div>
+            <div class="text-xs text-muted mt-1">R$ 2.576,84</div>
+        </div>
+<div class="summary-card success">
+            <div class="summary-title">REFIN</div>
+            <div class="summary-val text-success">0</div>
+            <div class="text-xs text-muted mt-1">R$ 0,00</div>
+        </div>
+<div class="summary-card danger">
+            <div class="summary-title">Protestos</div>
+            <div class="summary-val text-danger">13</div>
+            <div class="text-xs text-muted mt-1">R$ 23.025,38</div>
+        </div>
+<div class="summary-card success">
+            <div class="summary-title">Cheques</div>
+            <div class="summary-val text-success">0</div>
+            <div class="text-xs text-muted mt-1">R$ 0,00</div>
+        </div>
+</div><h4 class="subsection-title">Histórico de negativações</h4><div class="table-wrapper "><table><thead><tr><th>Base</th><th>Quantidade</th><th>Valor Total</th><th>Primeira Ocorrência</th><th>Última Ocorrência</th></tr></thead><tbody><tr class=""><td class="">PEFIN - Pendências Financeiras (Base 1)</td><td class="">1</td><td class="">R$ 2.576,84</td><td class="">01/05/2025</td><td class="">01/05/2025</td></tr><tr class=""><td class="">Protestos</td><td class="">13</td><td class="">R$ 23.025,38</td><td class="">01/10/2024</td><td class="">03/11/2025</td></tr></tbody></table></div><h4 class="subsection-title">Detalhamento</h4><div class="table-wrapper dense-table"><table><thead><tr><th>Ocorrência</th><th>Inclusão</th><th>Credor/Cartório</th><th>Contrato/Título</th><th>Valor</th></tr></thead><tbody><tr class=""><td class="">02/05/2025</td><td class="">30/03/2026</td><td class="">ATIVOS FUNDO DE INVESTIMENTO E</td><td class="">0002743339330000</td><td class="">R$ 2.576,84</td></tr><tr class=""><td class="">04/11/2025</td><td class="">18/03/2026</td><td class="">N/A</td><td class="">N/A</td><td class="">R$ 4.457,46</td></tr><tr class=""><td class="">06/08/2025</td><td class="">15/08/2025</td><td class="">N/A</td><td class="">N/A</td><td class="">R$ 7.980,09</td></tr><tr class=""><td class="">01/11/2024</td><td class="">18/09/2025</td><td class="">N/A</td><td class="">N/A</td><td class="">R$ 161,56</td></tr><tr class=""><td class="">17/10/2024</td><td class="">26/02/2025</td><td class="">N/A</td><td class="">N/A</td><td class="">R$ 5.557,12</td></tr><tr class=""><td class="">02/10/2024</td><td class="">18/09/2025</td><td class="">N/A</td><td class="">N/A</td><td class="">R$ 161,56</td></tr></tbody></table></div><div class="score-mini-card"><div><strong>Relatório de Crédito · Base I + Base II + Score</strong><p>Data: 11/06/2026 · Status: Consulta Concluída</p></div><div><span>SCORE BASE I</span><strong>350</strong><em>Risco Direcionado</em></div></div><h4 class="subsection-title">Participações Societárias</h4><div class="table-wrapper "><table><thead><tr><th>Empresa</th><th>Status</th><th>Participação</th><th>CNPJ</th><th>UF</th><th>Data do Status</th><th>Última Atualização</th></tr></thead><tbody><tr class=""><td class="">JONATHAN HENRIQUE FERREIRA 42720566896</td><td class="">CANCELADA (NÃO EXISTE MAIS P/A RF) · Com Restrições</td><td class="">100%</td><td class="">18.985.783/0001-75</td><td class="">SP</td><td class="">10/05/2025</td><td class="">25/05/2025</td></tr><tr class=""><td class="">JMFC SERVICOS EMPRESARIAIS LTDA ME</td><td class="">ATIVA</td><td class="">25%</td><td class="">16.542.744/0001-78</td><td class="">SP</td><td class="">16/03/2026</td><td class="">14/03/2026</td></tr></tbody></table></div><h4 class="subsection-title">Consultas Recentes</h4><div class="table-wrapper "><table><thead><tr><th>Data</th><th>Segmento</th><th>Quantidade de Dias</th></tr></thead><tbody><tr class=""><td class="">13/12/2025</td><td class="">BANCOS GIGANTES</td><td class="">2 dia(s)</td></tr><tr class=""><td class="">29/10/2025</td><td class="">BANCOS GIGANTES</td><td class="">1 dia(s)</td></tr><tr class=""><td class="">08/08/2025</td><td class="">SEGURADORAS</td><td class="">2 dia(s)</td></tr><tr class=""><td class="">06/08/2025</td><td class="">SEGURADORAS</td><td class="">1 dia(s)</td></tr></tbody></table></div></section>
+        <section class="section ">
+            <div class="section-header">
+                <div class="section-icon-wrap"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v4m0 4h.01M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/></svg></div>
+                <h3 class="section-title">Informações Importantes e Síntese Final</h3>
+                <span class="section-divider"></span>
+            </div><div class="narrative-card">
+<p><strong>Veredicto:</strong> INAPTO_CORRIGÍVEL. O caso não está estruturalmente fora do PRONAMPE, mas hoje está travado por risco bancário e restrição no CPF dos sócios.</p>
+<p><strong>Plano recomendado:</strong> regularizar restrições pessoais, comprovar caixa, integrar dados contábeis e reprocessar em nova rodada de análise. Se a limpeza dos CPFs e a melhora do risco ocorrerem, a operação pode voltar à mesa; até lá, a aprovação é improvável.</p>
+</div>
+<div class="footer final-footer"><p><strong>Aviso Importante:</strong> Este relatório contém informações confidenciais e protegidas por sigilo profissional. A autenticidade deste documento pode ser verificada através do código de protocolo. O uso indevido destas informações é passível de sanções legais conforme a legislação vigente.</p><div class="text-center mt-4 text-xs font-mono text-muted">© 2026 Brasil Cred Consultas · Protocolo: 4E569AD6-CB66-4625-91A2-D4A3E267A28C</div></div></section></div>
+</body>
+</html>

@@ -719,3 +719,27 @@ model PlanContactLead {
   createdAt   DateTime @default(now())
 }
 
+model CanonicalFolder {
+  id        String   @id @default(cuid())
+  name      String
+  parentId  String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  parent    CanonicalFolder?  @relation("FolderHierarchy", fields: [parentId], references: [id], onDelete: Cascade)
+  children  CanonicalFolder[] @relation("FolderHierarchy")
+
+  fieldAssociations CanonicalFieldFolderAssociation[]
+}
+
+model CanonicalFieldFolderAssociation {
+  id           String          @id @default(cuid())
+  fieldTypeKey String          @unique
+  folderId     String
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+  
+  folder       CanonicalFolder @relation(fields: [folderId], references: [id], onDelete: Cascade)
+}
+
+

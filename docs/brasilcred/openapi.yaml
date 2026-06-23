@@ -1,0 +1,1623 @@
+openapi: 3.1.0
+info:
+  title: Brasil Cred — Public REST API
+  version: "1.0.0"
+  summary: Consultas de crédito, veicular, jurídico, agro, cadastral e tributário em schema neutro.
+  description: |
+    API REST oficial Brasil Cred Consultas para parceiros B2B.
+
+    - **Autenticação:** token `bc_live_*` via `Authorization: Bearer …` ou `X-API-Key`.
+    - **Errors:** RFC 7807 Problem Details (`application/problem+json`).
+    - **Idempotency:** obrigatório em todo `POST /consult/*` (header `Idempotency-Key`, janela 24h).
+    - **Request correlation:** todo response carrega `X-Request-ID` (header) + `request_id` (body em erros).
+    - **Rate limit:** 60 requests / minute por token.
+
+    Documentação completa em https://brasilcred.com.br/api-public.md (download direto).
+  contact:
+    name: Brasil Cred Support
+    url: https://brasilcred.com.br
+  license:
+    name: Proprietary
+    identifier: LicenseRef-BrasilCred-Proprietary
+
+servers:
+  - url: https://sets.brasilcred.com.br/functions/v1/api-gateway/api/v1
+    description: Production
+
+security:
+  - bearerAuth: []
+  - apiKeyAuth: []
+
+tags:
+  - name: Credit
+    description: Relatórios de crédito (PF/PJ), score, scoring avançado
+  - name: Scores & Bureaus
+    description: Scores específicos e dados de bureaus
+  - name: Restrictions
+    description: Pendências, restrições, protestos, dívida ativa
+  - name: Diagnostics
+    description: Diagnósticos financeiros consolidados
+  - name: Cadastral
+    description: Dados cadastrais
+  - name: Judicial
+    description: Processos, ações judiciais, certidões
+  - name: Agro
+    description: Cadastros agrários (CAFIR, CAR)
+  - name: Vehicle
+    description: Consultas veiculares (CRLVe, gravame, leilão, etc)
+  - name: Tributary
+    description: Diagnóstico tributário PJ (SERPRO)
+  - name: SPC
+    description: Integração direta com SPC Brasil
+  - name: Account
+    description: Saldo, token info, histórico de consultas
+
+paths:
+  # ─── Account & History ────────────────────────────────────────────────────────
+  /account:
+    get:
+      summary: Get current account info
+      description: Saldo atual, info do token autenticado, uso mensal.
+      operationId: getAccount
+      tags: [Account]
+      responses:
+        '200':
+          description: OK
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccountResponse'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+  /consultations:
+    get:
+      summary: List past consultations
+      description: |
+        Lista consultas feitas via API token (consultas via web app são excluídas).
+        Ordenadas da mais recente para a mais antiga.
+      operationId: listConsultations
+      tags: [Account]
+      parameters:
+        - name: page
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, default: 1 }
+        - name: limit
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 50, default: 20 }
+      responses:
+        '200':
+          description: OK
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConsultationsListResponse'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+  /consultations/{id}:
+    get:
+      summary: Get consultation detail
+      description: |
+        Detalhes sanitizados de uma consulta. Retorna `404` se o id não pertence ao
+        owner do token.
+
+        **Polling de produtos assíncronos:** para o Radar PRONAMPE
+        (`POST /consult/radar-pronampe`), este endpoint é o canal de polling.
+        Enquanto `status` for `processing`, refaça a chamada (~10s) até virar
+        `success` / `partial` / `error`. O corpo completo segue
+        `RadarPronampeResult`.
+      operationId: getConsultation
+      tags: [Account]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: OK
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConsultationDetail'
+              examples:
+                radarPronampeCompleted:
+                  summary: Radar PRONAMPE concluído (status success)
+                  value:
+                    consultation_id: 8b1f6c2e-3a4d-4e5f-9a6b-1c2d3e4f5a6b
+                    product: financial_radar_pronampe
+                    product_name: "Radar PRONAMPE (CNPJ)"
+                    status: success
+                    document: "12345678000190"
+                    queried_at: "2026-06-15T13:42:07.512Z"
+                    data_source: credit_bureau
+                    score: { value: 305, range_min: 0, range_max: 1000, risk_level: medium }
+                    credit_recommendation: { recommended_limit_brl: 2292, sale_recommendation: "Negocie a prazo", risk_level: medium }
+                    credit_portfolio: { total_brl: 185673, active_contracts: 9, overdue_brl: 0, risk_level: medium }
+                    federal_debts: { has_debt: false, count: 0 }
+                    company:
+                      size: "01"
+                      main_activity_code: "6462000"
+                      registration_status: "2"
+                      opening_date: "2015-10-27"
+                      share_capital_brl: 500000
+                      simples_optant: false
+                      mei_optant: false
+                    clearance_certificate: { issued: true, status: issued }
+                    payment_capacity: { monthly_capacity_brl: 12000, estimated_spend_brl: 8000 }
+                    partners:
+                      - { document_masked: "***.624.419-**", score: 926, has_restrictions: false }
+                    result: { found: true, available: true }
+                radarPronampeProcessing:
+                  summary: Radar PRONAMPE em processamento (continue o polling)
+                  value:
+                    consultation_id: 8b1f6c2e-3a4d-4e5f-9a6b-1c2d3e4f5a6b
+                    product: financial_radar_pronampe
+                    product_name: "Radar PRONAMPE (CNPJ)"
+                    status: processing
+                    document: "12345678000190"
+                    queried_at: "2026-06-15T13:42:07.512Z"
+                    data_source: credit_bureau
+                    result: { found: false, available: false }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+  # ─── Credit ───────────────────────────────────────────────────────────────────
+  /consult/credit/pf:
+    post:
+      summary: Credit report (individual)
+      description: Relatório premium de crédito para CPF (score, restrições, histórico).
+      operationId: consultCreditPF
+      tags: [Credit]
+      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CPFRequest' }
+            example: { document: "12345678909" }
+      responses:
+        '201': { $ref: '#/components/responses/ConsultationCreated' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '402': { $ref: '#/components/responses/InsufficientBalance' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '502': { $ref: '#/components/responses/UpstreamFailed' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+        '504': { $ref: '#/components/responses/GatewayTimeout' }
+
+  /consult/credit/pj:
+    post:
+      summary: Credit report (company)
+      description: Idem `/consult/credit/pf` para CNPJ.
+      operationId: consultCreditPJ
+      tags: [Credit]
+      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CNPJRequest' }
+            example: { document: "12345678000190" }
+      responses:
+        '201': { $ref: '#/components/responses/ConsultationCreated' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '402': { $ref: '#/components/responses/InsufficientBalance' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+        '502': { $ref: '#/components/responses/UpstreamFailed' }
+        '504': { $ref: '#/components/responses/GatewayTimeout' }
+
+  /consult/premium-avancado/pf:
+    post:
+      summary: Premium Avançado (individual)
+      description: Versão avançada do relatório premium para CPF, com bureau adicional.
+      operationId: consultPremiumAvancadoPF
+      tags: [Credit]
+      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CPFRequest' }
+      responses:
+        '201': { $ref: '#/components/responses/ConsultationCreated' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '402': { $ref: '#/components/responses/InsufficientBalance' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+        '502': { $ref: '#/components/responses/UpstreamFailed' }
+        '504': { $ref: '#/components/responses/GatewayTimeout' }
+
+  /consult/premium-avancado/pj:
+    post:
+      summary: Premium Avançado (company)
+      operationId: consultPremiumAvancadoPJ
+      tags: [Credit]
+      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CNPJRequest' }
+      responses:
+        '201': { $ref: '#/components/responses/ConsultationCreated' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '402': { $ref: '#/components/responses/InsufficientBalance' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+        '502': { $ref: '#/components/responses/UpstreamFailed' }
+        '504': { $ref: '#/components/responses/GatewayTimeout' }
+
+  /consult/relatorio-especial/pf:
+    post:
+      summary: Relatório Especial (individual)
+      description: Relatório especializado com pendências, ações e restrições aprofundadas.
+      operationId: consultRelatorioEspecialPF
+      tags: [Credit]
+      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CPFRequest' }
+      responses:
+        '201': { $ref: '#/components/responses/ConsultationCreated' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '402': { $ref: '#/components/responses/InsufficientBalance' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+        '502': { $ref: '#/components/responses/UpstreamFailed' }
+        '504': { $ref: '#/components/responses/GatewayTimeout' }
+
+  /consult/relatorio-especial/pj:
+    post:
+      summary: Relatório Especial (company)
+      operationId: consultRelatorioEspecialPJ
+      tags: [Credit]
+      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CNPJRequest' }
+      responses:
+        '201': { $ref: '#/components/responses/ConsultationCreated' }
+        '402': { $ref: '#/components/responses/InsufficientBalance' }
+        '502': { $ref: '#/components/responses/UpstreamFailed' }
+
+  /consult/recomenda/pf:
+    post:
+      summary: Serasa Recomenda (individual)
+      description: |
+        Score Recomenda com análise contextual de risco.
+        **Pode estar desabilitado dependendo do seu plano** — confirme com suporte.
+      operationId: consultRecomendaPF
+      tags: [Credit]
+      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CPFRequest' }
+      responses:
+        '201': { $ref: '#/components/responses/ConsultationCreated' }
+        '402': { $ref: '#/components/responses/InsufficientBalance' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+
+  /consult/recomenda/pj:
+    post:
+      summary: Serasa Recomenda (company)
+      operationId: consultRecomendaPJ
+      tags: [Credit]
+      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CNPJRequest' }
+      responses:
+        '201': { $ref: '#/components/responses/ConsultationCreated' }
+        '402': { $ref: '#/components/responses/InsufficientBalance' }
+
+  /consult/complete/pf:
+    post:
+      summary: Consulta Completa (individual)
+      description: |
+        Bundle completo: credit + judicial + cadastral + score em uma única chamada.
+        **Latência maior (~10-30s).** Use timeout ≥ 45s no cliente.
+      operationId: consultCompletePF
+      tags: [Credit]
+      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CPFRequest' }
+      responses:
+        '201': { $ref: '#/components/responses/ConsultationCreated' }
+        '402': { $ref: '#/components/responses/InsufficientBalance' }
+        '504': { $ref: '#/components/responses/GatewayTimeout' }
+
+  /consult/complete/pj:
+    post:
+      summary: Consulta Completa (company)
+      operationId: consultCompletePJ
+      tags: [Credit]
+      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CNPJRequest' }
+      responses:
+        '201': { $ref: '#/components/responses/ConsultationCreated' }
+        '504': { $ref: '#/components/responses/GatewayTimeout' }
+
+  # ─── Scores & Bureaus ─────────────────────────────────────────────────────────
+  /consult/score:
+    post:
+      summary: Score V (Base V CPF e CNPJ)
+      description: Score consolidado de múltiplos bureaus. Aceita CPF ou CNPJ.
+      operationId: consultScore
+      tags: [Scores & Bureaus]
+      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DocumentRequest' }
+      responses:
+        '201': { $ref: '#/components/responses/ConsultationCreated' }
+        '402': { $ref: '#/components/responses/InsufficientBalance' }
+
+  /consult/boa-vista:
+    post:
+      summary: Bureau IV + Score
+      description: |
+        Bureau IV com score próprio. **Pode estar oculto da plataforma**;
+        consulte suporte se receber 404.
+      operationId: consultBoaVista
+      tags: [Scores & Bureaus]
+      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CPFRequest' }
+      responses:
+        '201': { $ref: '#/components/responses/ConsultationCreated' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /consult/avalie-credito:
+    post:
+      summary: Avalie Crédito
+      description: Análise de crédito com recomendação.
+      operationId: consultAvalieCredito
+      tags: [Scores & Bureaus]
+      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CPFRequest' }
+      responses:
+        '201': { $ref: '#/components/responses/ConsultationCreated' }
+        '402': { $ref: '#/components/responses/InsufficientBalance' }
+
+  /consult/credito-total:
+    post:
+      summary: Crédito Total + Score
+      operationId: consultCreditoTotal
+      tags: [Scores & Bureaus]
+      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CPFRequest' }
+      responses:
+        '201': { $ref: '#/components/responses/ConsultationCreated' }
+        '402': { $ref: '#/components/responses/InsufficientBalance' }
+
+  /consult/scr-bacen:
+    post:
+      summary: SCR Bacen Detalhado
+      description: |
+        Sistema de Informações de Crédito do Banco Central.
+        Aceita CPF ou CNPJ. Latência típica 5-15s.
+      operationId: consultScrBacen
+      tags: [Scores & Bureaus]
+      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DocumentRequest' }
+      responses:
+        '201': { $ref: '#/components/responses/ConsultationCreated' }
+        '402': { $ref: '#/components/responses/InsufficientBalance' }
+        '504': { $ref: '#/components/responses/GatewayTimeout' }
+
+  # ─── Restrictions ─────────────────────────────────────────────────────────────
+  /consult/popular:
+    post:
+      summary: Consulta Popular
+      description: |
+        **Status: oculto da plataforma desde 2026-05-22.**
+        Pode retornar 404 ou estar indisponível.
+      operationId: consultPopular
+      tags: [Restrictions]
+      deprecated: true
+      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CPFRequest' }
+      responses:
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /consult/ccf:
+    post:
+      summary: CCF — Cheque sem Fundo
+      description: Histórico de cheques sem fundo (CCF) registrados.
+      operationId: consultCcf
+      tags: [Restrictions]
+      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CPFRequest' }
+      responses:
+        '201': { $ref: '#/components/responses/ConsultationCreated' }
+        '402': { $ref: '#/components/responses/InsufficientBalance' }
+
+  /consult/cadin:
+    post:
+      summary: CADIN Secretaria da Fazenda
+      description: |
+        Cadastro de Inadimplentes da Secretaria da Fazenda.
+        **Requer `state` (UF de 2 letras) no body.**
+      operationId: consultCadin
+      tags: [Restrictions]
+      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '#/components/schemas/CPFRequest'
+                - type: object
+                  required: [state]
+                  properties:
+                    state:
+                      type: string
+                      pattern: '^[A-Z]{2}$'
+                      example: SP
+                      description: Sigla da UF (2 letras maiúsculas)
+            example: { document: "12345678909", state: "SP" }
+      responses:
+        '201': { $ref: '#/components/responses/ConsultationCreated' }
+        '400':
+          description: Bad request — sem `state` válido (UF de 2 letras)
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/ProblemDetails' }
+        '402': { $ref: '#/components/responses/InsufficientBalance' }
+
+  /consult/protestos:
+    post:
+      summary: Protestos Nacional (IEPTB)
+      description: Protestos registrados nacionalmente via IEPTB.
+      operationId: consultProtestos
+      tags: [Restrictions]
+      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CPFRequest' }
+      responses:
+        '201': { $ref: '#/components/responses/ConsultationCreated' }
+        '402': { $ref: '#/components/responses/InsufficientBalance' }
+
+  /consult/pgfn:
+    post:
+      summary: PGFN Lista de Devedores da União
+      description: Dívida ativa da União. Aceita CPF ou CNPJ.
+      operationId: consultPgfn
+      tags: [Restrictions]
+      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DocumentRequest' }
+      responses:
+        '201': { $ref: '#/components/responses/ConsultationCreated' }
+        '402': { $ref: '#/components/responses/InsufficientBalance' }
+
+  /consult/indicadores:
+    post:
+      summary: Indicadores Sociodemográficos + Score
+      description: Indicadores agregados de risco sociodemográfico.
+      operationId: consultIndicadores
+      tags: [Restrictions]
+      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CPFRequest' }
+      responses:
+        '201': { $ref: '#/components/responses/ConsultationCreated' }
+        '402': { $ref: '#/components/responses/InsufficientBalance' }
+
+  # ─── Diagnostics ──────────────────────────────────────────────────────────────
+  /consult/diagnostico/pf:
+    post:
+      summary: Diagnóstico Financeiro Avançado (individual)
+      description: |
+        Análise consolidada com SCR Bacen + score + restrições + recomendação.
+        **Latência típica 15-30s.** Use timeout ≥ 45s.
+      operationId: consultDiagnosticoPF
+      tags: [Diagnostics]
+      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CPFRequest' }
+      responses:
+        '201': { $ref: '#/components/responses/ConsultationCreated' }
+        '402': { $ref: '#/components/responses/InsufficientBalance' }
+        '504': { $ref: '#/components/responses/GatewayTimeout' }
+
+  /consult/diagnostico/pj:
+    post:
+      summary: Diagnóstico Financeiro Avançado (company)
+      operationId: consultDiagnosticoPJ
+      tags: [Diagnostics]
+      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CNPJRequest' }
+      responses:
+        '201': { $ref: '#/components/responses/ConsultationCreated' }
+        '504': { $ref: '#/components/responses/GatewayTimeout' }
+
+  /consult/diagnostico-premium:
+    post:
+      summary: Diagnóstico Financeiro Premium
+      description: Diagnóstico premium com motor de crédito proprietário + SCR Bacen + bureau adicional.
+      operationId: consultDiagnosticoPremium
+      tags: [Diagnostics]
+      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CPFRequest' }
+      responses:
+        '201': { $ref: '#/components/responses/ConsultationCreated' }
+        '402': { $ref: '#/components/responses/InsufficientBalance' }
+
+  /consult/diagnostico-locacao:
+    post:
+      summary: Diagnóstico para Locação Imobiliário
+      description: Análise específica para mercado de locação residencial/comercial.
+      operationId: consultDiagnosticoLocacao
+      tags: [Diagnostics]
+      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CPFRequest' }
+      responses:
+        '201': { $ref: '#/components/responses/ConsultationCreated' }
+        '402': { $ref: '#/components/responses/InsufficientBalance' }
+
+  /consult/radar-pronampe:
+    post:
+      summary: Radar PRONAMPE (company) — async
+      description: |
+        **Consulta assíncrona.** Análise composta de crédito PJ (score, recomendação,
+        carteira BACEN SCR, dívida federal, cadastro, certidão de regularidade,
+        capacidade de pagamento e perfil dos sócios) voltada à elegibilidade ao PRONAMPE.
+
+        Retorna **`202 Accepted`** com `consultation_id`; faça polling em
+        `GET /consultations/{id}` até o `status` sair de `processing` (vira
+        `success` / `partial` / `error`). Use `retry_after_seconds` (≈10s) como
+        intervalo de polling. **CNPJ-only.** **Cobrança no aceite (202)** — o débito
+        ocorre quando a consulta é aceita, não quando o resultado fica pronto.
+
+        Retry idempotente (mesma `Idempotency-Key`) enquanto processa retorna `202`
+        novamente e **nunca recobra**.
+      operationId: consultRadarPronampe
+      tags: [Diagnostics]
+      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CNPJRequest' }
+            example: { document: "12345678000190" }
+      responses:
+        '202': { $ref: '#/components/responses/ConsultationAccepted' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '402': { $ref: '#/components/responses/InsufficientBalance' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '502': { $ref: '#/components/responses/UpstreamFailed' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+        '504': { $ref: '#/components/responses/GatewayTimeout' }
+
+  # ─── Cadastral ────────────────────────────────────────────────────────────────
+  /consult/cadastro:
+    post:
+      summary: Cadastro Plus
+      description: Dados cadastrais consolidados (endereço, telefones, vínculos).
+      operationId: consultCadastro
+      tags: [Cadastral]
+      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CPFRequest' }
+      responses:
+        '201': { $ref: '#/components/responses/ConsultationCreated' }
+        '402': { $ref: '#/components/responses/InsufficientBalance' }
+
+  # ─── Judicial ─────────────────────────────────────────────────────────────────
+  /consult/acoes-judiciais:
+    post:
+      summary: Ações e Processos
+      description: Processos judiciais nacionais consolidados.
+      operationId: consultAcoesJudiciais
+      tags: [Judicial]
+      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CPFRequest' }
+      responses:
+        '201': { $ref: '#/components/responses/ConsultationCreated' }
+        '402': { $ref: '#/components/responses/InsufficientBalance' }
+
+  /consult/certidao-negativa:
+    post:
+      summary: Certidão Negativa
+      operationId: consultCertidaoNegativa
+      tags: [Judicial]
+      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CPFRequest' }
+      responses:
+        '201': { $ref: '#/components/responses/ConsultationCreated' }
+        '402': { $ref: '#/components/responses/InsufficientBalance' }
+
+  /consult/orago/judicial/pf:
+    post:
+      summary: Análise Judicial (individual)
+      description: Análise judicial detalhada via Orago para CPF.
+      operationId: consultOragoJudicialPF
+      tags: [Judicial]
+      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CPFRequest' }
+      responses:
+        '201': { $ref: '#/components/responses/ConsultationCreated' }
+        '402': { $ref: '#/components/responses/InsufficientBalance' }
+
+  /consult/orago/judicial/pj:
+    post:
+      summary: Análise Judicial Empresarial (company)
+      operationId: consultOragoJudicialPJ
+      tags: [Judicial]
+      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CNPJRequest' }
+      responses:
+        '201': { $ref: '#/components/responses/ConsultationCreated' }
+        '402': { $ref: '#/components/responses/InsufficientBalance' }
+
+  /consult/orago/process-details/pf:
+    post:
+      summary: Detalhamento de Processos Judiciais (individual)
+      description: Detalhamento profundo dos processos judiciais.
+      operationId: consultOragoProcessDetailsPF
+      tags: [Judicial]
+      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CPFRequest' }
+      responses:
+        '201': { $ref: '#/components/responses/ConsultationCreated' }
+        '402': { $ref: '#/components/responses/InsufficientBalance' }
+
+  /consult/orago/process-details/pj:
+    post:
+      summary: Detalhamento de Processos Judiciais (company)
+      operationId: consultOragoProcessDetailsPJ
+      tags: [Judicial]
+      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CNPJRequest' }
+      responses:
+        '201': { $ref: '#/components/responses/ConsultationCreated' }
+        '402': { $ref: '#/components/responses/InsufficientBalance' }
+
+  # ─── Agro ─────────────────────────────────────────────────────────────────────
+  /consult/cafir:
+    post:
+      summary: CAFIR — Cadastro Ambiental de Imóveis Rurais
+      operationId: consultCafir
+      tags: [Agro]
+      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CPFRequest' }
+      responses:
+        '201': { $ref: '#/components/responses/ConsultationCreated' }
+        '402': { $ref: '#/components/responses/InsufficientBalance' }
+        '502': { $ref: '#/components/responses/UpstreamFailed' }
+
+  /consult/car:
+    post:
+      summary: CAR — Cadastro Ambiental Rural
+      operationId: consultCar
+      tags: [Agro]
+      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CPFRequest' }
+      responses:
+        '201': { $ref: '#/components/responses/ConsultationCreated' }
+        '402': { $ref: '#/components/responses/InsufficientBalance' }
+        '502': { $ref: '#/components/responses/UpstreamFailed' }
+
+  # ─── Vehicle ──────────────────────────────────────────────────────────────────
+  /consult/vehicle:
+    post:
+      summary: CRLVe Digital
+      description: Certificado de Registro e Licenciamento Eletrônico. **Document é placa.**
+      operationId: consultVehicleCrlve
+      tags: [Vehicle]
+      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PlateRequest' }
+            example: { document: "ABC1234" }
+      responses:
+        '201': { $ref: '#/components/responses/ConsultationCreated' }
+        '402': { $ref: '#/components/responses/InsufficientBalance' }
+
+  /consult/vehicle/agregado:
+    post:
+      summary: Dados Agregados
+      description: Dados consolidados do veículo (histórico, multas, taxas).
+      operationId: consultVehicleAgregado
+      tags: [Vehicle]
+      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PlateRequest' }
+      responses:
+        '201': { $ref: '#/components/responses/ConsultationCreated' }
+        '402': { $ref: '#/components/responses/InsufficientBalance' }
+
+  /consult/vehicle/gravame:
+    post:
+      summary: Gravame Detalhamento
+      description: Detalhes de gravame (alienação fiduciária, leasing).
+      operationId: consultVehicleGravame
+      tags: [Vehicle]
+      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PlateRequest' }
+      responses:
+        '201': { $ref: '#/components/responses/ConsultationCreated' }
+        '402': { $ref: '#/components/responses/InsufficientBalance' }
+
+  /consult/vehicle/roubo-furto:
+    post:
+      summary: Histórico Roubo/Furto
+      operationId: consultVehicleRouboFurto
+      tags: [Vehicle]
+      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PlateRequest' }
+      responses:
+        '201': { $ref: '#/components/responses/ConsultationCreated' }
+        '402': { $ref: '#/components/responses/InsufficientBalance' }
+
+  /consult/vehicle/leilao:
+    post:
+      summary: Leilão + Parecer Técnico
+      operationId: consultVehicleLeilao
+      tags: [Vehicle]
+      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PlateRequest' }
+      responses:
+        '201': { $ref: '#/components/responses/ConsultationCreated' }
+        '402': { $ref: '#/components/responses/InsufficientBalance' }
+
+  /consult/vehicle/leilao-score:
+    post:
+      summary: Leilão Score Veicular
+      operationId: consultVehicleLeilaoScore
+      tags: [Vehicle]
+      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PlateRequest' }
+      responses:
+        '201': { $ref: '#/components/responses/ConsultationCreated' }
+        '402': { $ref: '#/components/responses/InsufficientBalance' }
+
+  /consult/vehicle/por-documento:
+    post:
+      summary: Dados Veículo por CPF/CNPJ
+      description: Lista veículos vinculados a um documento. Aceita CPF ou CNPJ (não placa).
+      operationId: consultVehicleByDocument
+      tags: [Vehicle]
+      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DocumentRequest' }
+      responses:
+        '201': { $ref: '#/components/responses/ConsultationCreated' }
+        '402': { $ref: '#/components/responses/InsufficientBalance' }
+
+  /consult/vehicle/desmonte:
+    post:
+      summary: Dados Nacionais de Desmonte
+      operationId: consultVehicleDesmonte
+      tags: [Vehicle]
+      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PlateRequest' }
+      responses:
+        '201': { $ref: '#/components/responses/ConsultationCreated' }
+        '402': { $ref: '#/components/responses/InsufficientBalance' }
+
+  # ─── Tributary ────────────────────────────────────────────────────────────────
+  /consult/tributario/diagnostico:
+    post:
+      summary: Diagnóstico Tributário PJ (SERPRO)
+      description: |
+        Diagnóstico tributário completo via SERPRO Integra Contador.
+        **Latência típica 20-40s.** Use timeout ≥ 60s. Document é CNPJ.
+      operationId: consultTributarioDiagnostico
+      tags: [Tributary]
+      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CNPJRequest' }
+      responses:
+        '201': { $ref: '#/components/responses/ConsultationCreated' }
+        '402': { $ref: '#/components/responses/InsufficientBalance' }
+        '504': { $ref: '#/components/responses/GatewayTimeout' }
+
+  # ─── SPC (direct) ─────────────────────────────────────────────────────────────
+  /consult/spc/cadastro-pf:
+    post:
+      summary: SPC Cadastral (individual)
+      description: Gated por feature flag — confirme com suporte.
+      operationId: consultSpcCadastroPF
+      tags: [SPC]
+      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CPFRequest' }
+      responses:
+        '201': { $ref: '#/components/responses/ConsultationCreated' }
+        '402': { $ref: '#/components/responses/InsufficientBalance' }
+
+  /consult/spc/cadastro-pj:
+    post:
+      summary: SPC Cadastral (company)
+      operationId: consultSpcCadastroPJ
+      tags: [SPC]
+      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CNPJRequest' }
+      responses:
+        '201': { $ref: '#/components/responses/ConsultationCreated' }
+        '402': { $ref: '#/components/responses/InsufficientBalance' }
+
+  /consult/spc/completo-pf:
+    post:
+      summary: SPC Completo (individual)
+      description: Relatório completo SPC (cadastral + restrições + score).
+      operationId: consultSpcCompletoPF
+      tags: [SPC]
+      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CPFRequest' }
+      responses:
+        '201': { $ref: '#/components/responses/ConsultationCreated' }
+        '402': { $ref: '#/components/responses/InsufficientBalance' }
+
+  /consult/spc/completo-pj:
+    post:
+      summary: SPC Completo (company)
+      operationId: consultSpcCompletoPJ
+      tags: [SPC]
+      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CNPJRequest' }
+      responses:
+        '201': { $ref: '#/components/responses/ConsultationCreated' }
+        '402': { $ref: '#/components/responses/InsufficientBalance' }
+
+  /consult/spc/confirme-pf:
+    post:
+      summary: SPC Confirme (individual)
+      description: Atualização cadastral via SPC Confirme.
+      operationId: consultSpcConfirmePF
+      tags: [SPC]
+      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CPFRequest' }
+      responses:
+        '201': { $ref: '#/components/responses/ConsultationCreated' }
+        '402': { $ref: '#/components/responses/InsufficientBalance' }
+
+  /consult/spc/confirme-pj:
+    post:
+      summary: SPC Confirme (company)
+      operationId: consultSpcConfirmePJ
+      tags: [SPC]
+      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CNPJRequest' }
+      responses:
+        '201': { $ref: '#/components/responses/ConsultationCreated' }
+        '402': { $ref: '#/components/responses/InsufficientBalance' }
+
+# ────────────────────────────────────────────────────────────────────────────────
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: bc_live_*
+      description: |
+        Token raw `bc_live_…` no header `Authorization: Bearer …`.
+        Veja seção "Authentication" da referência completa: https://brasilcred.com.br/api-public.md
+    apiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: Token raw `bc_live_…` no header `X-API-Key`. Equivalente ao Bearer.
+
+  headers:
+    XRequestID:
+      description: |
+        UUID v4 único do request. Echoed em toda response. Pode ser passado inbound
+        se for UUID-like (preservamos); caso contrário gerado server-side.
+      schema: { type: string, format: uuid }
+
+  parameters:
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      description: |
+        Chave única de idempotency, 16-64 chars `[A-Za-z0-9_-]`. UUIDv4 e ULID qualificam.
+        Mesma key dentro de 24h retorna resultado cached sem re-cobrar.
+      schema:
+        type: string
+        pattern: '^[A-Za-z0-9_-]{16,64}$'
+        example: 5e9a3f2c-1b8d-4f6e-9c7a-2d5b8e3f1a9c
+
+  schemas:
+    DocumentRequest:
+      type: object
+      required: [document]
+      properties:
+        document:
+          type: string
+          description: CPF (11 dígitos), CNPJ (14 dígitos), ou placa veicular
+          example: "12345678909"
+
+    CPFRequest:
+      type: object
+      required: [document]
+      properties:
+        document:
+          type: string
+          pattern: '^\d{11}$'
+          description: CPF — 11 dígitos sem máscara
+          example: "12345678909"
+
+    CNPJRequest:
+      type: object
+      required: [document]
+      properties:
+        document:
+          type: string
+          pattern: '^\d{14}$'
+          description: CNPJ — 14 dígitos sem máscara
+          example: "12345678000190"
+
+    PlateRequest:
+      type: object
+      required: [document]
+      properties:
+        document:
+          type: string
+          description: Placa veicular (formato Mercosul ou pré-Mercosul)
+          example: "ABC1234"
+
+    AccountResponse:
+      type: object
+      required: [balance, api_token, usage]
+      properties:
+        balance:
+          type: object
+          properties:
+            available_cents: { type: integer, example: 55945 }
+            available_brl:   { type: string,  example: "559.45" }
+        api_token:
+          type: object
+          properties:
+            name:         { type: string, example: "Prod" }
+            last_used_at: { type: string, format: date-time }
+            created_at:   { type: string, format: date-time }
+        usage:
+          type: object
+          properties:
+            this_month: { type: integer, example: 9 }
+
+    ConsultationsListResponse:
+      type: object
+      required: [data, pagination]
+      properties:
+        data:
+          type: array
+          items: { $ref: '#/components/schemas/ConsultationSummary' }
+        pagination:
+          type: object
+          properties:
+            page:        { type: integer, example: 1 }
+            limit:       { type: integer, example: 20 }
+            total:       { type: integer, example: 142 }
+            total_pages: { type: integer, example: 8 }
+
+    ConsultationSummary:
+      type: object
+      properties:
+        id:         { type: string, format: uuid }
+        product:
+          type: string
+          description: Vendor-neutral product identifier
+          enum:
+            - credit_report_individual
+            - credit_report_company
+            - credit_report_complete_individual
+            - credit_report_complete_company
+            - credit_score
+            - vehicle_report
+            - financial_radar_pronampe
+            - consultation
+        document:   { type: string }
+        status:
+          type: string
+          description: |
+            Estado público da consulta. `processing` aparece apenas em produtos
+            assíncronos (Radar PRONAMPE) enquanto o job roda. Estados internos
+            (`pending`, `error_refund_pending`, `error_refund_failed`) nunca são
+            serializados na API.
+          enum: [success, partial, error, processing]
+        queried_at: { type: string, format: date-time }
+
+    ConsultationDetail:
+      type: object
+      description: Detalhes sanitizados (sem nomes de vendor). Shape espelha o response de `POST /consult/<product>`.
+
+    ConsultationResult:
+      type: object
+      required: [consultation_id, product_name]
+      properties:
+        consultation_id:
+          type: string
+          format: uuid
+          description: ID para `GET /consultations/{id}` ou rastreio em suporte
+        product_name:
+          type: string
+          description: Nome comercial do produto
+          example: "CADIN — Secretaria da Fazenda"
+        data:
+          type: object
+          description: Conteúdo do resultado, sanitizado de nomes de vendor underlying
+
+    ConsultationAcceptedResult:
+      type: object
+      description: |
+        Corpo retornado com **`202 Accepted`** por um produto assíncrono
+        (Radar PRONAMPE) quando a consulta é aceita e o job de background começa
+        a rodar. Carrega apenas metadados de ciclo de vida + a URL de polling —
+        **nunca** dados do provedor. O mesmo shape é devolvido tanto na primeira
+        chamada quanto no replay idempotente enquanto o job ainda processa.
+      required: [product, status, document, queried_at, poll_url, retry_after_seconds, result, data_source]
+      properties:
+        consultation_id:
+          type: string
+          format: uuid
+          description: |
+            ID da consulta para o polling em `GET /consultations/{id}`. Pode estar
+            ausente apenas em replays raros em que o id não pôde ser recuperado —
+            nesse caso use `poll_url` (que aponta para a lista).
+        product:
+          type: string
+          const: financial_radar_pronampe
+          description: Identificador neutro do produto.
+        product_name:
+          type: string
+          example: "Radar PRONAMPE (CNPJ)"
+        status:
+          type: string
+          const: processing
+          description: Sempre `processing` no 202 — o resultado ainda não está pronto.
+        document:
+          type: string
+          description: CNPJ consultado (14 dígitos).
+          example: "12345678000190"
+        queried_at:
+          type: string
+          format: date-time
+        poll_url:
+          type: string
+          description: |
+            Caminho relativo para acompanhar o job. `GET /consultations/{id}`
+            quando o id é conhecido; caso contrário `/api/v1/consultations`.
+          example: "/api/v1/consultations/8b1f6c2e-3a4d-4e5f-9a6b-1c2d3e4f5a6b"
+        retry_after_seconds:
+          type: integer
+          description: Intervalo sugerido de polling, em segundos.
+          example: 10
+        result:
+          type: object
+          required: [available]
+          properties:
+            available:
+              type: boolean
+              const: false
+              description: Sempre `false` enquanto processa — sem dados ainda.
+            summary:
+              type: string
+              example: >-
+                Consulta assíncrona aceita e em processamento. Acompanhe pelo poll_url
+                até que o status mude de "processing" para "success"/"partial".
+        data_source:
+          type: string
+          example: credit_bureau
+
+    RadarPronampeResult:
+      type: object
+      description: |
+        Shape COMPLETO (vendor-neutral, whitelist-only) retornado por
+        `GET /consultations/{id}` quando o job do Radar PRONAMPE termina. Todo bloco
+        analítico é **opcional** — só aparece quando a perna correspondente trouxe
+        dado. Enquanto `status` for `processing`, apenas os campos de envelope
+        aparecem (sem blocos), com `result.available=false`. Nenhum dado bruto de
+        provedor, razão social, e-mail, telefone, endereço, CPF completo ou nome de
+        modelo é exposto — por construção.
+      required: [consultation_id, product, product_name, status, document, queried_at, data_source, result]
+      properties:
+        consultation_id:
+          type: string
+          format: uuid
+        product:
+          type: string
+          const: financial_radar_pronampe
+        product_name:
+          type: string
+          const: "Radar PRONAMPE (CNPJ)"
+        status:
+          type: string
+          enum: [success, partial, error, processing]
+          description: |
+            `processing` = job em andamento; `success` = completo; `partial` =
+            âncora entregue mas ≥1 bloco complementar faltou (faturável, sem
+            estorno); `error` = falha que disparou estorno automático.
+        document:
+          type: string
+          description: CNPJ consultado (14 dígitos).
+          example: "12345678000190"
+        queried_at:
+          type: string
+          format: date-time
+        data_source:
+          type: string
+          const: credit_bureau
+        score:
+          type: object
+          description: Score de crédito da empresa (0–1000).
+          properties:
+            value:      { type: integer, example: 305 }
+            range_min:  { type: integer, const: 0 }
+            range_max:  { type: integer, const: 1000 }
+            risk_level: { type: string, example: medium }
+        credit_recommendation:
+          type: object
+          description: Recomendação de crédito sintetizada.
+          properties:
+            recommended_limit_brl: { type: number, description: Limite recomendado em R$ (0 = não recomenda), example: 2292 }
+            sale_recommendation:   { type: string, example: "Negocie a prazo" }
+            risk_level:            { type: string, example: medium }
+        credit_portfolio:
+          type: object
+          description: Carteira de crédito bancária (BACEN SCR), em R$.
+          properties:
+            total_brl:        { type: number, example: 185673 }
+            active_contracts: { type: integer, example: 9 }
+            overdue_brl:      { type: number, example: 0 }
+            risk_level:       { type: string, example: medium }
+        federal_debts:
+          type: object
+          description: Dívida ativa da União (PGFN).
+          properties:
+            has_debt: { type: boolean, example: false }
+            count:    { type: integer, example: 0 }
+        company:
+          type: object
+          description: Cadastro consolidado (Receita Federal), sem PII.
+          properties:
+            size:                { type: string, description: 'Código de porte ("01"=ME, "03"=EPP, "05"=Demais)', example: "01" }
+            main_activity_code:  { type: string, description: Código CNAE principal, example: "6462000" }
+            registration_status: { type: string, description: 'Código da situação cadastral ("2"=ativa)', example: "2" }
+            opening_date:        { type: string, example: "2015-10-27" }
+            share_capital_brl:   { type: number, description: Capital social em R$, example: 500000 }
+            simples_optant:      { type: boolean, example: false }
+            mei_optant:          { type: boolean, example: false }
+        clearance_certificate:
+          type: object
+          description: Certidão de regularidade fiscal (CND).
+          properties:
+            issued: { type: boolean, example: true }
+            status: { type: string, enum: [issued, not_issued], example: issued }
+        payment_capacity:
+          type: object
+          description: Capacidade mensal de pagamento e gasto estimado, em R$.
+          properties:
+            monthly_capacity_brl: { type: number, example: 12000 }
+            estimated_spend_brl:  { type: number, example: 8000 }
+        partners:
+          type: array
+          description: |
+            Sócios — apenas documento **mascarado** e flag booleana de restrição
+            (LGPD; dado de terceiro). Nunca CPF completo nem relatório do sócio.
+          items:
+            type: object
+            properties:
+              document_masked:  { type: string, example: "***.624.419-**" }
+              score:            { type: integer, example: 926 }
+              has_restrictions: { type: boolean, example: false }
+        result:
+          type: object
+          required: [found, available]
+          properties:
+            found:     { type: boolean, example: true }
+            available: { type: boolean, example: true }
+      example:
+        consultation_id: 8b1f6c2e-3a4d-4e5f-9a6b-1c2d3e4f5a6b
+        product: financial_radar_pronampe
+        product_name: "Radar PRONAMPE (CNPJ)"
+        status: success
+        document: "12345678000190"
+        queried_at: "2026-06-15T13:42:07.512Z"
+        data_source: credit_bureau
+        score: { value: 305, range_min: 0, range_max: 1000, risk_level: medium }
+        credit_recommendation: { recommended_limit_brl: 2292, sale_recommendation: "Negocie a prazo", risk_level: medium }
+        credit_portfolio: { total_brl: 185673, active_contracts: 9, overdue_brl: 0, risk_level: medium }
+        federal_debts: { has_debt: false, count: 0 }
+        company:
+          size: "01"
+          main_activity_code: "6462000"
+          registration_status: "2"
+          opening_date: "2015-10-27"
+          share_capital_brl: 500000
+          simples_optant: false
+          mei_optant: false
+        clearance_certificate: { issued: true, status: issued }
+        payment_capacity: { monthly_capacity_brl: 12000, estimated_spend_brl: 8000 }
+        partners:
+          - { document_masked: "***.624.419-**", score: 926, has_restrictions: false }
+        result: { found: true, available: true }
+
+    ProblemDetails:
+      type: object
+      description: |
+        RFC 7807 Problem Details. Toda resposta non-2xx segue este formato com
+        `Content-Type: application/problem+json`.
+      required: [type, title, status]
+      properties:
+        type:
+          type: string
+          format: uri
+          description: URI estável do erro
+          example: https://brasilcred.com.br/errors/bad_request
+        title:
+          type: string
+          description: Resumo human-readable
+          example: Invalid request
+        status:
+          type: integer
+          description: HTTP status code
+          example: 400
+        detail:
+          type: string
+          description: Descrição acionável, sanitizada
+          example: "Field 'document' is required (CPF, CNPJ, or vehicle plate)."
+        request_id:
+          type: string
+          format: uuid
+          description: |
+            UUID do request — também presente no header `X-Request-ID`. Incluir em tickets de suporte.
+          example: 1000fb8b-ddf0-4640-91b8-57d15c872a66
+        current_balance_cents:
+          type: integer
+          description: Saldo atual (presente em 402 insufficient_balance)
+          example: 180
+        required_cents:
+          type: integer
+          description: Preço do produto (presente em 402 insufficient_balance)
+          example: 357
+        refund_consultation_id:
+          type: string
+          format: uuid
+          description: ID da consulta para tracking do refund (presente em 502 upstream_failed quando aplicável)
+
+  responses:
+    ConsultationCreated:
+      description: Consulta criada com sucesso, balance debitado
+      headers:
+        X-Request-ID:
+          $ref: '#/components/headers/XRequestID'
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ConsultationResult' }
+
+    ConsultationAccepted:
+      description: |
+        202 — consulta assíncrona aceita e **cobrada no aceite**. O job de background
+        está rodando. Faça polling em `poll_url` (= `GET /consultations/{id}`) até o
+        `status` sair de `processing`. Use o header `Retry-After` (ou o campo
+        `retry_after_seconds` do corpo) como intervalo de polling. Replay idempotente
+        enquanto processa retorna este mesmo 202, sem nova cobrança.
+      headers:
+        X-Request-ID:
+          $ref: '#/components/headers/XRequestID'
+        Retry-After:
+          schema: { type: integer, example: 10 }
+          description: Segundos sugeridos antes do próximo polling em `GET /consultations/{id}`.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ConsultationAcceptedResult' }
+          example:
+            consultation_id: 8b1f6c2e-3a4d-4e5f-9a6b-1c2d3e4f5a6b
+            product: financial_radar_pronampe
+            product_name: "Radar PRONAMPE (CNPJ)"
+            status: processing
+            document: "12345678000190"
+            queried_at: "2026-06-15T13:42:07.512Z"
+            poll_url: "/api/v1/consultations/8b1f6c2e-3a4d-4e5f-9a6b-1c2d3e4f5a6b"
+            retry_after_seconds: 10
+            result:
+              available: false
+              summary: >-
+                Consulta assíncrona aceita e em processamento. Acompanhe pelo poll_url
+                até que o status mude de "processing" para "success"/"partial".
+            data_source: credit_bureau
+
+    BadRequest:
+      description: 400 — body malformado, campo obrigatório ausente, ou JSON inválido
+      headers:
+        X-Request-ID:
+          $ref: '#/components/headers/XRequestID'
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/ProblemDetails' }
+          example:
+            type: https://brasilcred.com.br/errors/bad_request
+            title: Invalid request
+            status: 400
+            detail: "Field 'document' is required (CPF, CNPJ, or vehicle plate)."
+            request_id: a3f8b2e1-9c4d-4e5f-8a6b-1c2d3e4f5a6b
+
+    Unauthorized:
+      description: 401 — token ausente, malformado, inativo ou inexistente
+      headers:
+        X-Request-ID:
+          $ref: '#/components/headers/XRequestID'
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/ProblemDetails' }
+          example:
+            type: https://brasilcred.com.br/errors/unauthorized
+            title: Authentication required
+            status: 401
+            detail: "Provide a valid API token via Authorization: Bearer bc_live_… or X-API-Key header."
+            request_id: a3f8b2e1-9c4d-4e5f-8a6b-1c2d3e4f5a6b
+
+    InsufficientBalance:
+      description: 402 — saldo < preço. Top up e retry com mesma Idempotency-Key.
+      headers:
+        X-Request-ID:
+          $ref: '#/components/headers/XRequestID'
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/ProblemDetails' }
+          example:
+            type: https://brasilcred.com.br/errors/insufficient_balance
+            title: Insufficient balance
+            status: 402
+            detail: "Insufficient balance to perform this consultation. Top up your balance and retry with the same Idempotency-Key."
+            current_balance_cents: 180
+            required_cents: 357
+            request_id: b4c9d2e3-1f5a-4b6c-9d8e-7f6a5b4c3d2e
+
+    NotFound:
+      description: 404 — endpoint inexistente ou recurso não pertence ao token autenticado
+      headers:
+        X-Request-ID:
+          $ref: '#/components/headers/XRequestID'
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/ProblemDetails' }
+
+    Conflict:
+      description: 409 — mesma Idempotency-Key usada com payload diferente
+      headers:
+        X-Request-ID:
+          $ref: '#/components/headers/XRequestID'
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/ProblemDetails' }
+
+    Unprocessable:
+      description: 422 — documento bem-formado mas semanticamente inválido (DV errado, etc)
+      headers:
+        X-Request-ID:
+          $ref: '#/components/headers/XRequestID'
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/ProblemDetails' }
+
+    RateLimited:
+      description: 429 — mais de 60 req/min para este token
+      headers:
+        X-Request-ID:
+          $ref: '#/components/headers/XRequestID'
+        Retry-After:
+          schema: { type: integer, example: 60 }
+          description: Segundos a aguardar antes de retry
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/ProblemDetails' }
+
+    UpstreamFailed:
+      description: |
+        502 — provedor falhou após o débito. Refund automático em curso (server-side retry,
+        max 5 tentativas em 25min). Não retry com a mesma Idempotency-Key. Ou, sub-tipo
+        `upstream_misconfigured`: auth interno desconfigurado (nosso bug); reporte com request_id.
+      headers:
+        X-Request-ID:
+          $ref: '#/components/headers/XRequestID'
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/ProblemDetails' }
+          example:
+            type: https://brasilcred.com.br/errors/upstream_failed
+            title: Upstream provider failed
+            status: 502
+            detail: "The data provider returned an error. Your balance refund is being processed automatically."
+            refund_consultation_id: c5d8e3f4-2a6b-4c7d-9e8f-7a6b5c4d3e2f
+            request_id: d6e9f4a5-3b7c-4d8e-9f8a-7b6c5d4e3f2a
+
+    ServiceUnavailable:
+      description: 503 — subsistema interno indisponível
+      headers:
+        X-Request-ID:
+          $ref: '#/components/headers/XRequestID'
+        Retry-After:
+          schema: { type: integer, example: 30 }
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/ProblemDetails' }
+
+    GatewayTimeout:
+      description: 504 — provedor não respondeu em 45s. **Sem cobrança.** Retry com mesma key é seguro.
+      headers:
+        X-Request-ID:
+          $ref: '#/components/headers/XRequestID'
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/ProblemDetails' }
+          example:
+            type: https://brasilcred.com.br/errors/gateway_timeout
+            title: Upstream request timed out
+            status: 504
+            detail: "The data provider did not respond within 45 seconds. No charge was applied. Safe to retry."
+            request_id: e7f0a5b6-4c8d-4e9f-8a7b-6c5d4e3f2a1b

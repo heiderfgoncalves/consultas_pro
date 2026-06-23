@@ -18,7 +18,8 @@ import {
   Server, Plus, Pencil, Trash2, Database,
   Play, Tag, ChevronDown, ChevronRight, Search, RefreshCcw,
   Code2, Link2, Save, Hash, Filter, Undo2, Loader2, Layers3, Cog, Sliders, Braces, Eye,
-  WrapText, Copy,
+  WrapText, Copy, Folder, FolderPlus, FolderOpen, ArrowLeft, MoreVertical, FolderTree, Move,
+  Maximize2, Minimize2, X
 } from 'lucide-react';
 import { useIsolatedEditorStore } from '@/features/templates-drawer/store/isolated-editor.store';
 import { IsolatedEditorDialog } from '@/features/templates-drawer/components/IsolatedEditorDialog';
@@ -34,9 +35,17 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from '@/components/ui/resizable';
+import { ImperativePanelHandle } from 'react-resizable-panels';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
 } from '@/components/ui/dialog';
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+} from '@/components/ui/dropdown-menu';
 import { CustomDialog, useConfirmDialog } from '@/components/CustomDialog';
 import { useEditorStore } from '@/features/templates-drawer/store/editor.store';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -91,8 +100,16 @@ import {
   patchProviderApi,
   testProductApi,
   testProductDraftApi,
+  getCanonicalFolders,
+  createCanonicalFolder,
+  patchCanonicalFolder,
+  deleteCanonicalFolder,
+  getCanonicalFolderAssociations,
+  postCanonicalFolderAssociation,
   type ApiProviderTestResult,
   type ApiTestLog,
+  type ApiCanonicalFolder,
+  type ApiCanonicalFieldFolderAssociation,
 } from '@/api/admin-integrations';
 
 type ConsultationTestInput =
@@ -1591,6 +1608,70 @@ export default function IntegrationsPage() {
   const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
 
+  const [selectedTypes, setSelectedTypes] = useState<string[]>([]);
+  const currentFolderId = searchParams.get('pasta') || null;
+  const setCurrentFolderId = useCallback((folderId: string | null) => {
+    setSelectedTypes([]);
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        if (folderId) {
+          next.set('pasta', folderId);
+        } else {
+          next.delete('pasta');
+        }
+        return next;
+      },
+      { replace: true },
+    );
+  }, [setSearchParams]);
+
+  const [integrationsTab, setIntegrationsTab] = useState<IntegrationsTab>(() =>
+    parseIntegrationsTabFromSearch(
+      new URLSearchParams(typeof window !== 'undefined' ? window.location.search : ''),
+    ) ?? 'providers',
+  );
+
+  const enabled = !!accessToken && (user?.backendRole === 'PLATFORM_ADMIN' || user?.backendRole === 'CUSTOMER_ADMIN');
+
+  // React Query para pastas e associações
+  const foldersQuery = useQuery({
+    queryKey: ['admin-canonical-folders'],
+    queryFn: () => getCanonicalFolders(accessToken),
+    enabled: enabled && integrationsTab === 'types',
+  });
+
+  const associationsQuery = useQuery({
+    queryKey: ['admin-canonical-associations'],
+    queryFn: () => getCanonicalFolderAssociations(accessToken),
+    enabled: enabled && integrationsTab === 'types',
+  });
+
+  const folders = useMemo(() => foldersQuery.data ?? [], [foldersQuery.data]);
+  const associations = useMemo(() => associationsQuery.data ?? [], [associationsQuery.data]);
+
+  const getBreadcrumbs = useCallback((folderId: string | null): { id: string | null; name: string }[] => {
+    const crumbs: { id: string | null; name: string }[] = [{ id: null, name: 'Raiz' }];
+    if (!folderId) return crumbs;
+
+    const path: { id: string; name: string }[] = [];
+    let currId: string | null = folderId;
+    const visited = new Set<string>();
+
+    while (currId && !visited.has(currId)) {
+      visited.add(currId);
+      const folder = folders.find((f) => f.id === currId);
+      if (folder) {
+        path.unshift({ id: folder.id, name: folder.name });
+        currId = folder.parentId;
+      } else {
+        break;
+      }
+    }
+
+    return [...crumbs, ...path];
+  }, [folders]);
+
   const [providerModal, setProviderModal] = useState<{ open: boolean; provider?: Provider }>({ open: false });
   const [fieldTypeModal, setFieldTypeModal] = useState<{ open: boolean; ft?: ConsultationFieldType }>({ open: false });
   const [togglingProviderStatusId, setTogglingProviderStatusId] = useState<string | null>(null);
@@ -1598,15 +1679,372 @@ export default function IntegrationsPage() {
   const [newConsultationProviderId, setNewConsultationProviderId] = useState<string | undefined>(undefined);
   const [consultationEditorNonce, setConsultationEditorNonce] = useState(0);
   const [selectedFieldType, setSelectedFieldType] = useState<string | null>(null);
+  const [isDetailsExpanded, setIsDetailsExpanded] = useState(false);
+  const [isTransitioning, setIsTransitioning] = useState(false);
+  const navigationPanelRef = useRef<ImperativePanelHandle>(null);
+
+  const prevSelectedFieldType = useRef<string | null>(null);
+  const prevFolderId = useRef<string | null>(null);
+  const prevIsExpanded = useRef<boolean>(false);
+  const isChangingLayoutRef = useRef<boolean>(false);
+
+  const [isDragging, setIsDragging] = useState(false);
+  const lastNavigationSizeRef = useRef<number>(15);
+  const lastValidNavigationSizeRef = useRef<number>(15);
+  const lastCatalogSizeRef = useRef<number>(65);
+  const lastValidCatalogSizeRef = useRef<number>(65);
+  const prevDepthRef = useRef<number>(1);
+
+  const handleDragEnd = () => {
+    if (selectedFieldType === null || isChangingLayoutRef.current) return;
+    const navSize = lastNavigationSizeRef.current;
+    const catSize = lastCatalogSizeRef.current;
+
+    if (isDetailsExpanded) {
+      if (navSize > 25) {
+        isChangingLayoutRef.current = true;
+        setIsDetailsExpanded(false);
+        setTimeout(() => {
+          isChangingLayoutRef.current = false;
+        }, 400);
+      }
+    } else {
+      if (catSize <= 25) {
+        isChangingLayoutRef.current = true;
+        setIsDetailsExpanded(true);
+        setTimeout(() => {
+          isChangingLayoutRef.current = false;
+        }, 400);
+      }
+    }
+  };
+
+  useEffect(() => {
+    const wasDetailsOpen = prevSelectedFieldType.current !== null;
+    const isDetailsOpen = selectedFieldType !== null;
+    const detailsVisibilityChanged = wasDetailsOpen !== isDetailsOpen;
+    
+    const wasSidebarVisible = prevSelectedFieldType.current !== null && prevIsExpanded.current;
+    const isSidebarVisible = selectedFieldType !== null && isDetailsExpanded;
+    const sidebarVisibilityChanged = wasSidebarVisible !== isSidebarVisible;
+
+    const expansionChanged = isDetailsExpanded !== prevIsExpanded.current;
+
+    if (detailsVisibilityChanged || sidebarVisibilityChanged || expansionChanged) {
+      setIsTransitioning(true);
+      const timer = setTimeout(() => setIsTransitioning(false), 350);
+      
+      if (isSidebarVisible && navigationPanelRef.current) {
+        navigationPanelRef.current.resize(15);
+      }
+
+      prevSelectedFieldType.current = selectedFieldType;
+      prevFolderId.current = currentFolderId;
+      prevIsExpanded.current = isDetailsExpanded;
+      
+      return () => clearTimeout(timer);
+    } else {
+      prevSelectedFieldType.current = selectedFieldType;
+      prevFolderId.current = currentFolderId;
+      prevIsExpanded.current = isDetailsExpanded;
+    }
+  }, [selectedFieldType, currentFolderId, isDetailsExpanded]);
+
+  const showSidebar = selectedFieldType !== null && isDetailsExpanded;
+
+  useEffect(() => {
+    if (showSidebar && navigationPanelRef.current) {
+      navigationPanelRef.current.resize(15);
+    }
+  }, [showSidebar]);
+
+  // Reset expansion state when closing details
+  useEffect(() => {
+    if (selectedFieldType === null && isDetailsExpanded) {
+      setIsDetailsExpanded(false);
+    }
+  }, [selectedFieldType, isDetailsExpanded]);
+
+  // Close details, clear bulk selection, and reset expansion state when navigating between folders
+  useEffect(() => {
+    setSelectedFieldType(null);
+    setIsDetailsExpanded(false);
+    setSelectedTypes([]);
+    
+    // Resetar referências de tamanho válidas para os valores padrão de fábrica ao navegar
+    lastValidCatalogSizeRef.current = 65;
+    lastValidNavigationSizeRef.current = 15;
+    lastCatalogSizeRef.current = 65;
+    lastNavigationSizeRef.current = 15;
+    
+    // Sincronizar profundidade de navegação do catálogo após a montagem do estado
+    prevDepthRef.current = getBreadcrumbs(currentFolderId).length;
+  }, [currentFolderId, getBreadcrumbs]);
   const [searchTerm, setSearchTerm] = useState('');
   const [savingProvider, setSavingProvider] = useState(false);
   const [savingFieldType, setSavingFieldType] = useState(false);
   const [importingDefaultFieldTypes, setImportingDefaultFieldTypes] = useState(false);
-  const [integrationsTab, setIntegrationsTab] = useState<IntegrationsTab>(() =>
-    parseIntegrationsTabFromSearch(
-      new URLSearchParams(typeof window !== 'undefined' ? window.location.search : ''),
-    ) ?? 'providers',
-  );
+
+  const createFolderMutation = useMutation({
+    mutationFn: (body: { name: string; parentId: string | null }) =>
+      createCanonicalFolder(accessToken, body),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['admin-canonical-folders'] });
+      toast.success('Pasta criada com sucesso');
+    },
+    onError: () => {
+      toast.error('Erro ao criar pasta');
+    },
+  });
+
+  const patchFolderMutation = useMutation({
+    mutationFn: (payload: { folderId: string; body: { name?: string; parentId?: string | null } }) =>
+      patchCanonicalFolder(accessToken, payload.folderId, payload.body),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['admin-canonical-folders'] });
+      toast.success('Pasta atualizada');
+    },
+    onError: () => {
+      toast.error('Erro ao atualizar pasta');
+    },
+  });
+
+  const deleteFolderMutation = useMutation({
+    mutationFn: (folderId: string) => deleteCanonicalFolder(accessToken, folderId),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['admin-canonical-folders'] });
+      void queryClient.invalidateQueries({ queryKey: ['admin-canonical-associations'] });
+      toast.success('Pasta removida');
+    },
+    onError: () => {
+      toast.error('Erro ao remover pasta');
+    },
+  });
+
+  const postAssociationMutation = useMutation({
+    mutationFn: (body: { fieldTypeKey: string; folderId: string | null }) =>
+      postCanonicalFolderAssociation(accessToken, body),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['admin-canonical-associations'] });
+    },
+    onError: () => {
+      toast.error('Erro ao associar tipo à pasta');
+    },
+  });
+
+  // Controles de interface de pastas
+  const [folderDialogOpen, setFolderDialogOpen] = useState(false);
+  const [folderDialogMode, setFolderDialogMode] = useState<'create' | 'rename'>('create');
+  const [selectedFolderForAction, setSelectedFolderForAction] = useState<ApiCanonicalFolder | null>(null);
+  const [folderNameInput, setFolderNameInput] = useState('');
+
+  const [moveDialogOpen, setMoveDialogOpen] = useState(false);
+  const [movingItem, setMovingItem] = useState<{ type: 'folder' | 'type'; id: string; keyOrName: string } | null>(null);
+  const [targetFolderIdForMove, setTargetFolderIdForMove] = useState<string | null>(null);
+
+  const handleOpenCreateFolder = () => {
+    setFolderDialogMode('create');
+    setSelectedFolderForAction(null);
+    setFolderNameInput('');
+    setFolderDialogOpen(true);
+  };
+
+  const handleOpenRenameFolder = (folder: ApiCanonicalFolder) => {
+    setFolderDialogMode('rename');
+    setSelectedFolderForAction(folder);
+    setFolderNameInput(folder.name);
+    setFolderDialogOpen(true);
+  };
+
+  const handleSaveFolder = async () => {
+    if (!folderNameInput.trim()) {
+      toast.error('Nome da pasta é obrigatório');
+      return;
+    }
+    if (folderDialogMode === 'create') {
+      await createFolderMutation.mutateAsync({
+        name: folderNameInput.trim(),
+        parentId: currentFolderId,
+      });
+    } else if (folderDialogMode === 'rename' && selectedFolderForAction) {
+      await patchFolderMutation.mutateAsync({
+        folderId: selectedFolderForAction.id,
+        body: { name: folderNameInput.trim() },
+      });
+    }
+    setFolderDialogOpen(false);
+  };
+
+  const handleDeleteFolder = async (folderId: string) => {
+    await deleteFolderMutation.mutateAsync(folderId);
+  };
+
+  const handleOpenMoveItem = (type: 'folder' | 'type', id: string, keyOrName: string) => {
+    setMovingItem({ type, id, keyOrName });
+    setTargetFolderIdForMove(null);
+    setMoveDialogOpen(true);
+  };
+
+  const handleConfirmMoveItem = async () => {
+    if (!movingItem) return;
+    if (movingItem.id === 'bulk') {
+      try {
+        await Promise.all(
+          selectedTypes.map((key) =>
+            postAssociationMutation.mutateAsync({
+              fieldTypeKey: key,
+              folderId: targetFolderIdForMove,
+            }),
+          ),
+        );
+        toast.success(`${selectedTypes.length} tipos canônicos movidos`);
+        setSelectedTypes([]);
+      } catch {
+        toast.error('Erro ao mover alguns tipos');
+      }
+    } else if (movingItem.type === 'folder') {
+      const isSubfolder = (parent: string | null, child: string): boolean => {
+        if (!parent) return false;
+        if (parent === child) return true;
+        const p = folders.find((f) => f.id === parent);
+        return p ? isSubfolder(p.parentId, child) : false;
+      };
+
+      if (movingItem.id === targetFolderIdForMove || isSubfolder(targetFolderIdForMove, movingItem.id)) {
+        toast.error('Não é possível mover uma pasta para dentro de si mesma ou de suas subpastas');
+        return;
+      }
+
+      await patchFolderMutation.mutateAsync({
+        folderId: movingItem.id,
+        body: { parentId: targetFolderIdForMove },
+      });
+    } else {
+      await postAssociationMutation.mutateAsync({
+        fieldTypeKey: movingItem.id,
+        folderId: targetFolderIdForMove,
+      });
+      toast.success('Mapeamento de pasta atualizado');
+    }
+    setMoveDialogOpen(false);
+    setMovingItem(null);
+  };
+
+  const handleBulkDelete = async () => {
+    if (window.confirm(`Tem certeza que deseja excluir os ${selectedTypes.length} tipos canônicos selecionados?`)) {
+      try {
+        const idsToDelete = selectedTypes
+          .map((key) => fieldTypes.find((ft) => ft.key === key)?.id)
+          .filter(Boolean) as string[];
+        await Promise.all(idsToDelete.map((id) => deleteCanonicalFieldApi(accessToken, id)));
+        toast.success(`${selectedTypes.length} tipos canônicos excluídos`);
+        setSelectedTypes([]);
+        void queryClient.invalidateQueries({ queryKey: ['admin-canonical-fields'] });
+      } catch {
+        toast.error('Erro ao excluir alguns tipos canônicos (pode haver mapeamentos ativos)');
+      }
+    }
+  };
+
+  const handleBulkCopy = async () => {
+    try {
+      const typesToCopy = selectedTypes
+        .map((key) => fieldTypes.find((ft) => ft.key === key))
+        .filter(Boolean) as ConsultationFieldType[];
+      
+      await Promise.all(
+        typesToCopy.map(async (ft) => {
+          const newKey = `${ft.key}_COPIA_${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
+          const newLabel = `${ft.label} (Cópia)`;
+          
+          await createCanonicalFieldApi(accessToken, {
+            pathKey: newKey,
+            label: newLabel,
+            dataType: 'object',
+            description: ft.description,
+            uiItemFilters: ft.typeItemFilters ?? [],
+            reportFieldConfig: ft.reportFieldConfig,
+          });
+
+          if (currentFolderId) {
+            await postAssociationMutation.mutateAsync({
+              fieldTypeKey: newKey,
+              folderId: currentFolderId,
+            });
+          }
+        })
+      );
+
+      toast.success(`${selectedTypes.length} tipos copiados com sucesso`);
+      setSelectedTypes([]);
+      void queryClient.invalidateQueries({ queryKey: ['admin-canonical-fields'] });
+    } catch {
+      toast.error('Erro ao copiar tipos canônicos');
+    }
+  };
+
+  const handleDropOnFolder = useCallback(async (e: React.DragEvent, targetFolderId: string | null, targetFolderName: string) => {
+    e.preventDefault();
+    const jsonStr = e.dataTransfer.getData("application/json");
+    let dragData: { type: 'single' | 'bulk'; key?: string; keys?: string[] } | null = null;
+    
+    if (jsonStr) {
+      try {
+        dragData = JSON.parse(jsonStr);
+      } catch {
+        // ignore
+      }
+    }
+    
+    if (!dragData) {
+      const key = e.dataTransfer.getData("text/plain");
+      if (key) {
+        dragData = { type: 'single', key };
+      }
+    }
+    
+    if (!dragData) return;
+    
+    if (dragData.type === 'bulk' && dragData.keys && dragData.keys.length > 0) {
+      const keysToMove = dragData.keys;
+      try {
+        await Promise.all(
+          keysToMove.map((key) =>
+            postAssociationMutation.mutateAsync({
+              fieldTypeKey: key,
+              folderId: targetFolderId,
+            })
+          )
+        );
+        toast.success(`${keysToMove.length} tipos canônicos movidos para a pasta ${targetFolderName}`);
+        setSelectedTypes([]);
+      } catch {
+        toast.error('Erro ao mover alguns tipos');
+      }
+    } else if (dragData.type === 'single' && dragData.key) {
+      await postAssociationMutation.mutateAsync({
+        fieldTypeKey: dragData.key,
+        folderId: targetFolderId,
+      });
+      toast.success(`Tipo ${dragData.key} movido para a pasta ${targetFolderName}`);
+    }
+  }, [postAssociationMutation, setSelectedTypes]);
+
+  const currentDepth = getBreadcrumbs(currentFolderId).length;
+  const isNavigatingBack = currentDepth < prevDepthRef.current;
+  const catalogSlideClass = isNavigatingBack ? "slide-in-from-left-4" : "slide-in-from-right-4";
+
+  const getFolderDepth = useCallback((folderId: string, allFolders: ApiCanonicalFolder[]): number => {
+    let depth = 0;
+    let curr = allFolders.find((f) => f.id === folderId);
+    const visited = new Set<string>();
+    while (curr && curr.parentId && !visited.has(curr.id)) {
+      visited.add(curr.id);
+      depth += 1;
+      curr = allFolders.find((f) => f.id === curr!.parentId);
+    }
+    return depth;
+  }, []);
 
   const setIntegrationsTabWithUrl = useCallback(
     (tab: IntegrationsTab) => {
@@ -1615,6 +2053,7 @@ export default function IntegrationsPage() {
         (prev) => {
           const next = new URLSearchParams(prev);
           next.set(INTEGRATIONS_TAB_QUERY_KEY, tabToIntegrationsAbaParam(tab));
+          next.delete('pasta');
           return next;
         },
         { replace: true },
@@ -1645,8 +2084,6 @@ export default function IntegrationsPage() {
   const registerNewConsultationTestFn = useCallback((fn: (() => Promise<void>) | null) => {
     newConsultationTestRef.current = fn;
   }, []);
-
-  const enabled = !!accessToken && (user?.backendRole === 'PLATFORM_ADMIN' || user?.backendRole === 'CUSTOMER_ADMIN');
 
   const providersQuery = useQuery({
     queryKey: ['admin-providers'],
@@ -1989,7 +2426,7 @@ export default function IntegrationsPage() {
           label: form.label,
           description: form.description || null,
           uiItemFilters: form.typeItemFilters ?? [],
-          reportFieldConfig: form.reportFieldConfig ?? null,
+          ...(form.reportFieldConfig !== undefined ? { reportFieldConfig: form.reportFieldConfig } : {}),
         });
         toast.success('Tipo atualizado');
       } else {
@@ -1999,8 +2436,14 @@ export default function IntegrationsPage() {
           dataType: 'object',
           description: form.description,
           uiItemFilters: form.typeItemFilters ?? [],
-          reportFieldConfig: form.reportFieldConfig,
+          ...(form.reportFieldConfig !== undefined ? { reportFieldConfig: form.reportFieldConfig } : {}),
         });
+        if (currentFolderId) {
+          await postAssociationMutation.mutateAsync({
+            fieldTypeKey: form.key!,
+            folderId: currentFolderId,
+          });
+        }
         toast.success('Tipo cadastrado');
       }
       void queryClient.invalidateQueries({ queryKey: ['admin-canonical-fields'] });
@@ -2225,24 +2668,7 @@ export default function IntegrationsPage() {
               <Plus className="w-4 h-4 mr-1.5" /> Nova consulta
             </Button>
           )}
-          {integrationsTab === 'types' && (
-            <div className="flex flex-wrap gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                size="default"
-                className="text-sm h-9 px-4 shrink-0"
-                onClick={() => void handleImportDefaultFieldTypes()}
-                disabled={importingDefaultFieldTypes}
-              >
-                <RefreshCcw className="w-4 h-4 mr-1.5" />
-                {importingDefaultFieldTypes ? 'Importando…' : 'Importar tipos'}
-              </Button>
-              <Button size="default" className="gradient-primary text-primary-foreground text-sm h-9 px-4 shrink-0" onClick={() => setFieldTypeModal({ open: true })}>
-                <Plus className="w-4 h-4 mr-1.5" /> Tipo
-              </Button>
-            </div>
-          )}
+
         </div>
 
         <TabsContent value="providers" className="space-y-2">
@@ -2613,199 +3039,967 @@ export default function IntegrationsPage() {
               </div>
             </motion.div>
           )}
-
         </TabsContent>
 
         <TabsContent value="types" className="mt-2 outline-none focus-visible:ring-0">
-          <div className="flex overflow-hidden rounded-lg border border-border bg-card shadow-sm h-[clamp(22rem,calc(100vh-11.5rem),52rem)]">
-            <aside className="flex w-[17.5rem] shrink-0 flex-col border-r border-border/80 bg-muted/20 sm:w-72">
-              <div className="shrink-0 border-b border-border/70 px-3 py-2.5">
-                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Tipos canônicos</p>
-                <p className="mt-0.5 text-[11px] leading-snug text-muted-foreground">
-                  {fieldTypes.length} item{fieldTypes.length !== 1 ? 's' : ''} · lista rolável
-                </p>
-              </div>
-              <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-contain px-2 py-2.5 [scrollbar-width:thin]">
-                <div className="flex flex-col gap-2">
-                  {fieldTypes.map((ft, i) => {
-                    const linked = getLinkedConsultations(ft.key);
-                    const isSelected = selectedFieldType === ft.key;
+          {(() => {
+            const isLoadingData = canonicalQuery.isLoading || foldersQuery.isLoading || associationsQuery.isLoading;
 
-                    return (
-                      <motion.div key={ft.id} initial={{ opacity: 0, x: -4 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.02 }}>
-                        <div
-                          onClick={() => setSelectedFieldType(isSelected ? null : ft.key)}
-                          onKeyDown={(e) => e.key === 'Enter' && setSelectedFieldType(isSelected ? null : ft.key)}
-                          role="button"
-                          tabIndex={0}
-                          className={`group/card relative flex cursor-pointer flex-col rounded-lg border text-left transition-all duration-200 ${
-                            isSelected
-                              ? `${ftColorClass(ft.color, 'bg')} ${ftColorClass(ft.color, 'border')} border-2 shadow-sm ring-1 ring-primary/10 hover:ring-primary/20`
-                              : 'border-border/60 bg-card/90 hover:border-primary/25 hover:bg-background hover:shadow-sm'
-                          } p-2.5`}
-                        >
-                          <div className="pointer-events-none absolute right-1 top-1 z-10 flex items-center gap-px rounded-md border border-border/40 bg-background/90 p-px opacity-0 shadow-sm backdrop-blur-sm transition-all duration-200 group-hover/card:pointer-events-auto group-hover/card:opacity-100 group-focus-within/card:pointer-events-auto group-focus-within/card:opacity-100">
-                            <button
-                              type="button"
-                              className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setFieldTypeModal({ open: true, ft });
-                              }}
-                              aria-label={`Editar ${ft.label}`}
-                            >
-                              <Pencil className="h-3 w-3" />
-                            </button>
-                            <button
-                              type="button"
-                              className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
-                              onClick={async (e) => {
-                                e.stopPropagation();
-                                try {
-                                  await deleteCanonicalFieldApi(accessToken, ft.id);
-                                  toast.success('Removido');
-                                  void queryClient.invalidateQueries({ queryKey: ['admin-canonical-fields'] });
-                                } catch {
-                                  toast.error('Não foi possível remover (pode haver mapeamentos)');
-                                }
-                              }}
-                              aria-label={`Remover ${ft.label}`}
-                            >
-                              <Trash2 className="h-3 w-3" />
-                            </button>
-                          </div>
+            if (isLoadingData) {
+              return (
+                <div className="flex flex-col items-center justify-center rounded-lg border border-border bg-card/65 shadow-sm h-[clamp(22rem,calc(100vh-11.5rem),52rem)] w-full animate-in fade-in duration-300">
+                  <div className="flex flex-col items-center gap-3">
+                    <Loader2 className="h-8 w-8 animate-spin text-indigo-500" />
+                    <p className="text-sm font-semibold text-muted-foreground animate-pulse">Carregando catálogo de tipos...</p>
+                  </div>
+                </div>
+              );
+            }
 
-                          <div className="flex gap-2.5 pr-11">
-                            <div
-                              className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-md ${ftColorClass(ft.color, 'bg')}`}
-                              aria-hidden
-                            >
-                              <Tag className={`h-3.5 w-3.5 ${ftColorClass(ft.color, 'text')}`} />
-                            </div>
-                            <div className="min-w-0 flex-1 space-y-0.5">
-                              <p className="text-sm font-medium leading-tight text-foreground line-clamp-2">{ft.label}</p>
-                              <code
-                                className="block truncate font-mono text-[10px] leading-none text-muted-foreground/90"
-                                title={ft.key}
-                              >
-                                {ft.key}
-                              </code>
-                            </div>
-                          </div>
+            const currentFolders = folders.filter((f) => f.parentId === currentFolderId);
+            const currentTypes = searchTerm.trim()
+              ? fieldTypes.filter(
+                  (ft) =>
+                    ft.label.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                    ft.key.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                    ft.description.toLowerCase().includes(searchTerm.toLowerCase())
+                )
+              : fieldTypes.filter((ft) => {
+                  const assoc = associations.find((a) => a.fieldTypeKey === ft.key);
+                  const folderId = assoc ? assoc.folderId : null;
+                  return folderId === currentFolderId;
+                });
+            const isFolderEmpty = currentFolders.length === 0 && currentTypes.length === 0;
+            const hasSelection = selectedTypes.length > 0;
+            const isAllSelected = currentTypes.length > 0 && currentTypes.map((ft) => ft.key).every((key) => selectedTypes.includes(key));
 
-                          {ft.description ? (
-                            <p className="mt-1.5 line-clamp-2 pl-[2.75rem] text-[11px] leading-relaxed text-muted-foreground/85">
-                              {ft.description}
+            const handleSelectAll = () => {
+              const allCurrentKeys = currentTypes.map((ft) => ft.key);
+              const allAlreadySelected = allCurrentKeys.every((key) => selectedTypes.includes(key));
+              if (allAlreadySelected) {
+                setSelectedTypes((prev) => prev.filter((key) => !allCurrentKeys.includes(key)));
+              } else {
+                setSelectedTypes((prev) => {
+                  const next = [...prev];
+                  allCurrentKeys.forEach((key) => {
+                    if (!next.includes(key)) next.push(key);
+                  });
+                  return next;
+                });
+              }
+            };
+
+            const showNavigation = selectedFieldType !== null && isDetailsExpanded;
+            const showCatalog = selectedFieldType === null || (selectedFieldType !== null && !isDetailsExpanded);
+            const showDetails = selectedFieldType !== null;
+
+            return (
+              <div className="flex overflow-hidden rounded-lg border border-border bg-card shadow-sm h-[clamp(22rem,calc(100vh-11.5rem),52rem)] w-full">
+                <style>{`
+                  .catalog-panel-container {
+                    container-type: inline-size;
+                    container-name: catalog;
+                  }
+                  .catalog-cards-grid {
+                    display: grid;
+                    gap: 12px;
+                    grid-template-columns: repeat(3, minmax(0, 1fr));
+                  }
+                  .catalog-folders-grid {
+                    display: grid;
+                    gap: 12px;
+                    grid-template-columns: repeat(4, minmax(0, 1fr));
+                  }
+                  @container catalog (max-width: 850px) {
+                    .catalog-cards-grid {
+                      grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+                    }
+                    .catalog-folders-grid {
+                      grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+                    }
+                  }
+                  @container catalog (max-width: 580px) {
+                    .catalog-cards-grid {
+                      grid-template-columns: repeat(1, minmax(0, 1fr)) !important;
+                    }
+                    .catalog-folders-grid {
+                      grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+                    }
+                  }
+                  @container catalog (max-width: 380px) {
+                    .catalog-folders-grid {
+                      grid-template-columns: repeat(1, minmax(0, 1fr)) !important;
+                    }
+                  }
+                `}</style>
+                <ResizablePanelGroup
+                  key={`panel-group-${showNavigation}-${showCatalog}-${showDetails}`}
+                  direction="horizontal"
+                  className="h-full w-full"
+                >
+                  {/* Painel 1: Barra Lateral de Navegação (Folders / Types Reference) */}
+                  {showNavigation && (
+                    <ResizablePanel
+                      ref={navigationPanelRef}
+                      id="types-navigation"
+                      order={1}
+                      defaultSize={lastValidNavigationSizeRef.current}
+                      minSize={10}
+                      maxSize={45}
+                      collapsible={true}
+                      onResize={(size) => {
+                        if (selectedFieldType !== null && isDetailsExpanded && size < 95) {
+                          lastNavigationSizeRef.current = size;
+                          if (size >= 10 && size <= 25) {
+                            lastValidNavigationSizeRef.current = size;
+                          }
+                        }
+                        if (!isChangingLayoutRef.current && selectedFieldType !== null && size >= 25 && isDetailsExpanded) {
+                          isChangingLayoutRef.current = true;
+                          setIsDetailsExpanded(false);
+                          setTimeout(() => {
+                            isChangingLayoutRef.current = false;
+                          }, 400);
+                        }
+                      }}
+                      className={`border-r border-border bg-muted/20 flex flex-col h-full overflow-hidden shrink-0 ${isTransitioning ? 'transition-all duration-300 ease-in-out' : ''}`}
+                    >
+                      <motion.div
+                        initial={{ opacity: 0, x: -10 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        transition={{ duration: 0.25 }}
+                        className="w-full flex flex-col h-full min-w-[200px] shrink-0"
+                      >
+                        <div className="shrink-0 border-b border-border/70 px-3 py-2.5 flex items-center justify-between gap-2">
+                          <div className="min-w-0">
+                            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Tipos canônicos</p>
+                            <p className="mt-0.5 text-[11px] leading-snug text-muted-foreground">
+                              {searchTerm.trim() ? `${currentTypes.length} encontrados` : `${currentFolders.length} pastas · ${currentTypes.length} tipos`}
                             </p>
-                          ) : null}
+                          </div>
+                        </div>
 
-                          <div className="mt-2 flex justify-end">
-                            <Badge
-                              variant="secondary"
-                              className="h-5 gap-1 border-0 px-2 py-0 text-[10px] font-medium tabular-nums text-muted-foreground transition-colors duration-200 group-hover/card:bg-secondary/90 group-hover/card:text-secondary-foreground"
-                              title={`${linked.length} ${linked.length === 1 ? 'consulta vinculada' : 'consultas vinculadas'}`}
+                        {!searchTerm.trim() && currentFolderId && (
+                          <div 
+                            onDragOver={(e) => {
+                              e.preventDefault();
+                              e.currentTarget.classList.add("bg-indigo-500/10");
+                            }}
+                            onDragLeave={(e) => {
+                              e.currentTarget.classList.remove("bg-indigo-500/10");
+                            }}
+                            onDrop={async (e) => {
+                              e.preventDefault();
+                              e.currentTarget.classList.remove("bg-indigo-500/10");
+                              const folder = folders.find((f) => f.id === currentFolderId);
+                              const parentId = folder ? folder.parentId : null;
+                              const parentName = folder && folder.parentId 
+                                ? (folders.find(f => f.id === folder.parentId)?.name || 'Pasta anterior')
+                                : 'Raiz';
+                              await handleDropOnFolder(e, parentId, parentName);
+                            }}
+                            className="shrink-0 border-b border-border/70 px-3 py-2 flex items-center gap-1.5 bg-muted/10 transition-colors"
+                          >
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7 rounded-md cursor-pointer hover:bg-muted"
+                              onClick={() => {
+                                const folder = folders.find((f) => f.id === currentFolderId);
+                                setCurrentFolderId(folder ? folder.parentId : null);
+                                setSelectedFieldType(null);
+                                setIsDetailsExpanded(false);
+                              }}
                             >
-                              <Database className="h-3 w-3 shrink-0 opacity-70" aria-hidden />
-                              {linked.length}
-                            </Badge>
+                              <ArrowLeft className="w-3.5 h-3.5" />
+                            </Button>
+                            <span className="text-xs font-semibold text-foreground truncate">
+                              {folders.find((f) => f.id === currentFolderId)?.name || 'Voltar'}
+                            </span>
+                          </div>
+                        )}
+
+                        <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-contain px-2 py-2.5 [scrollbar-width:thin] space-y-2">
+                          {/* Listagem de pastas filhas na barra lateral */}
+                          {!searchTerm.trim() && currentFolders.length > 0 && (
+                            <div className="space-y-1.5 pb-2 border-b border-border/40">
+                              <p className="text-[10px] font-bold text-muted-foreground/80 uppercase px-1 tracking-wide">Pastas</p>
+                              {currentFolders.map((folder) => (
+                                <div
+                                  key={folder.id}
+                                  onClick={() => {
+                                           setCurrentFolderId(folder.id);
+                                           setSelectedFieldType(null);
+                                           setIsDetailsExpanded(false);
+                                         }}
+                                  onDragOver={(e) => {
+                                    e.preventDefault();
+                                    e.currentTarget.classList.add("border-indigo-500", "bg-indigo-500/10");
+                                  }}
+                                  onDragLeave={(e) => {
+                                    e.currentTarget.classList.remove("border-indigo-500", "bg-indigo-500/10");
+                                  }}
+                                  onDrop={async (e) => {
+                                    e.preventDefault();
+                                    e.currentTarget.classList.remove("border-indigo-500", "bg-indigo-500/10");
+                                    await handleDropOnFolder(e, folder.id, folder.name);
+                                  }}
+                                  className="group/folder flex items-center justify-between gap-2 p-1.5 rounded-lg border border-border/45 bg-card/65 hover:border-indigo-500/35 hover:bg-background/85 cursor-pointer transition-all duration-200"
+                                >
+                                  <div className="flex items-center gap-1.5 min-w-0">
+                                    <Folder className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                                    <span className="text-xs font-semibold text-foreground truncate">{folder.name}</span>
+                                  </div>
+                                  <DropdownMenu>
+                                    <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
+                                      <button className="h-6 w-6 flex items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-muted opacity-0 group-hover/folder:opacity-100 focus:opacity-100 transition-opacity">
+                                        <MoreVertical className="w-3.5 h-3.5" />
+                                      </button>
+                                    </DropdownMenuTrigger>
+                                    <DropdownMenuContent align="end" className="bg-background border-border text-foreground">
+                                      <DropdownMenuItem className="cursor-pointer text-xs" onClick={() => handleOpenRenameFolder(folder)}>
+                                        <Pencil className="w-3 h-3 mr-1.5" /> Renomear
+                                      </DropdownMenuItem>
+                                      <DropdownMenuItem className="cursor-pointer text-xs text-destructive hover:bg-destructive/10" onClick={() => handleDeleteFolder(folder.id)}>
+                                        <Trash2 className="w-3 h-3 mr-1.5" /> Excluir
+                                      </DropdownMenuItem>
+                                      <DropdownMenuItem className="cursor-pointer text-xs" onClick={() => handleOpenMoveItem('folder', folder.id, folder.name)}>
+                                        <Move className="w-3 h-3 mr-1.5" /> Mover
+                                      </DropdownMenuItem>
+                                    </DropdownMenuContent>
+                                  </DropdownMenu>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+
+                          {/* Listagem de tipos canônicos na barra lateral */}
+                          <div className="space-y-2">
+                            {!searchTerm.trim() && currentFolders.length > 0 && currentTypes.length > 0 && (
+                              <p className="text-[10px] font-bold text-muted-foreground/80 uppercase px-1 tracking-wide pt-1">Tipos Canônicos</p>
+                            )}
+                            {currentTypes.length > 0 ? (
+                              <div className="flex flex-col gap-2">
+                                {currentTypes.map((ft, i) => {
+                                  const isSelected = selectedTypes.includes(ft.key);
+                                  const isEditorSelected = selectedFieldType === ft.key;
+                                  
+                                  return (
+                                    <motion.div key={ft.id} initial={{ opacity: 0, x: -4 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.01 }}>
+                                      <div
+                                         onClick={() => setSelectedFieldType(isEditorSelected ? null : ft.key)}
+                                         onKeyDown={(e) => e.key === 'Enter' && setSelectedFieldType(isEditorSelected ? null : ft.key)}
+                                         draggable
+                                         onDragStart={(e) => {
+                                           const isSelected = selectedTypes.includes(ft.key);
+                                           const dragData = isSelected 
+                                             ? { type: 'bulk', keys: selectedTypes } 
+                                             : { type: 'single', key: ft.key };
+                                           e.dataTransfer.setData("application/json", JSON.stringify(dragData));
+                                           e.dataTransfer.setData("text/plain", ft.key);
+                                           e.dataTransfer.effectAllowed = "move";
+                                         }}
+                                         role="button"
+                                         tabIndex={0}
+                                         className={`group/card relative flex cursor-pointer flex-col rounded-lg border text-left transition-all duration-200 p-2.5 ${
+                                           isEditorSelected
+                                             ? `${ftColorClass(ft.color, 'bg')} ${ftColorClass(ft.color, 'border')} border-2 shadow-sm ring-1 ring-primary/10`
+                                             : isSelected
+                                             ? 'border-indigo-500 border-2 bg-indigo-500/5 shadow-sm'
+                                             : 'border-border/60 bg-card/90 hover:border-primary/25 hover:bg-background hover:shadow-sm'
+                                         }`}
+                                       >
+                                         <div className="pointer-events-none absolute right-1 top-1 z-10 flex items-center gap-px rounded-md border border-border/40 bg-background/90 p-px opacity-0 shadow-sm backdrop-blur-sm transition-all duration-200 group-hover/card:pointer-events-auto group-hover/card:opacity-100 group-focus-within/card:pointer-events-auto group-focus-within/card:opacity-100">
+                                           <button
+                                             type="button"
+                                             className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                                             onClick={(e) => {
+                                               e.stopPropagation();
+                                               setFieldTypeModal({ open: true, ft });
+                                             }}
+                                             aria-label={`Editar ${ft.label}`}
+                                           >
+                                             <Pencil className="h-3 w-3" />
+                                           </button>
+                                           <button
+                                             type="button"
+                                             className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
+                                             onClick={async (e) => {
+                                               e.stopPropagation();
+                                               try {
+                                                 await deleteCanonicalFieldApi(accessToken, ft.id);
+                                                 toast.success('Removido');
+                                                 void queryClient.invalidateQueries({ queryKey: ['admin-canonical-fields'] });
+                                               } catch {
+                                                 toast.error('Não foi possível remover (pode haver mapeamentos)');
+                                               }
+                                             }}
+                                             aria-label={`Remover ${ft.label}`}
+                                           >
+                                             <Trash2 className="h-3 w-3" />
+                                           </button>
+                                           <button
+                                             type="button"
+                                             className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                                             onClick={(e) => {
+                                               e.stopPropagation();
+                                               handleOpenMoveItem('type', ft.key, ft.label);
+                                             }}
+                                             aria-label={`Mover ${ft.label}`}
+                                           >
+                                             <Move className="h-3 w-3" />
+                                           </button>
+                                         </div>
+
+                                         <div className="flex gap-2 items-center">
+                                           <div
+                                             className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-md ${ftColorClass(ft.color, 'bg')}`}
+                                             aria-hidden
+                                           >
+                                             <Tag className={`h-3.5 w-3.5 ${ftColorClass(ft.color, 'text')}`} />
+                                           </div>
+                                           <div className="min-w-0 flex-1 space-y-0.5">
+                                             <p className="text-sm font-medium leading-tight text-foreground line-clamp-2">{ft.label}</p>
+                                             <code
+                                               className="block truncate font-mono text-[10px] leading-none text-muted-foreground/90"
+                                               title={ft.key}
+                                             >
+                                               {ft.key}
+                                             </code>
+                                           </div>
+                                         </div>
+                                       </div>
+                                     </motion.div>
+                                  );
+                                })}
+                              </div>
+                            ) : (
+                              <div className="text-center py-8 text-muted-foreground text-xs">
+                                Nenhum tipo nesta pasta
+                              </div>
+                            )}
                           </div>
                         </div>
                       </motion.div>
-                    );
-                  })}
-                </div>
-              </div>
-            </aside>
+                    </ResizablePanel>
+                  )}
 
-            <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-background/40">
-              <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-contain p-4 sm:p-5 [scrollbar-width:thin]">
-              {selectedFieldType ? (() => {
-                const ft = fieldTypes.find((f) => f.key === selectedFieldType);
-                const linked = getLinkedConsultations(selectedFieldType);
-                if (!ft) return null;
-
-                return (
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between gap-2 flex-wrap pb-2 border-b border-border/60">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <Tag className={`w-5 h-5 ${ftColorClass(ft.color, 'text')}`} />
-                        <span className="text-base font-semibold text-foreground">{ft.label}</span>
-                        <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded-md">{linked.length} consultas</span>
-                      </div>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        className="h-8 gap-1.5 px-3 rounded-md hover:bg-indigo-50 hover:text-indigo-600 dark:hover:bg-indigo-950/20 dark:hover:text-indigo-400 shrink-0 cursor-pointer text-xs"
-                        onClick={() => {
-                          useIsolatedEditorStore.getState().openEditor({
-                            targetType: "canonicalField",
-                            targetId: ft.id,
-                            elementTree: ft.reportFieldConfig?.elementTree ?? [],
-                            code: ft.reportFieldConfig?.code ?? "",
-                            format: ft.reportFieldConfig?.format ?? "html",
-                            onSave: async (newTree, newCode, newFormat) => {
-                              try {
-                                await handleSaveTypeReportFields(ft, {
-                                  version: 1,
-                                  fields: ft.reportFieldConfig?.fields ?? [],
-                                  code: newCode,
-                                  format: newFormat,
-                                  elementTree: newTree
-                                });
-                              } catch (e) {
-                                console.error(e);
-                              }
-                            }
-                          });
-                        }}
-                      >
-                        <Sliders className="w-3.5 h-3.5" />
-                        Editar Layout/Código
-                      </Button>
-                    </div>
-
-                    <TypeReportFieldsConfig
-                      fieldType={ft}
-                      saving={savingFieldType}
-                      onSave={async (nextConfig) => handleSaveTypeReportFields(ft, nextConfig)}
+                  {showNavigation && showCatalog && (
+                    <ResizableHandle 
+                      className="w-1 bg-border/40 hover:bg-indigo-500/50 transition-colors" 
+                      onDragging={(dragging) => {
+                        setIsDragging(dragging);
+                        if (!dragging) {
+                          handleDragEnd();
+                        }
+                      }}
                     />
+                  )}
 
-                    {linked.length === 0 ? (
-                      <div className="text-center py-12 bg-card rounded-md border border-border">
-                        <Database className="w-8 h-8 text-muted-foreground/20 mx-auto mb-2" />
-                        <p className="text-sm text-muted-foreground">Nenhuma consulta vinculada</p>
+                  {/* Painel 2: Grade de Catálogo (Subpastas e Cards de Tipos Canônicos) */}
+                  {showCatalog && (
+                    <ResizablePanel
+                      id="types-catalog"
+                      order={2}
+                      defaultSize={selectedFieldType ? lastValidCatalogSizeRef.current : 100}
+                      minSize={20}
+                      onResize={(size) => {
+                        if (selectedFieldType !== null && size < 95) {
+                          lastCatalogSizeRef.current = size;
+                          if (size >= 45 && size <= 85) {
+                            lastValidCatalogSizeRef.current = size;
+                          }
+                        }
+                        if (!isChangingLayoutRef.current && selectedFieldType !== null && size <= 25 && !isDetailsExpanded) {
+                          isChangingLayoutRef.current = true;
+                          setIsDetailsExpanded(true);
+                          setTimeout(() => {
+                            isChangingLayoutRef.current = false;
+                          }, 400);
+                        }
+                      }}
+                      className={`catalog-panel-container bg-background/40 flex flex-col h-full min-w-0 ${isTransitioning ? 'transition-all duration-300 ease-in-out' : ''}`}
+                    >
+                      {/* Toolbar Unificada */}
+                      <div className="shrink-0 border-b border-border/60 bg-muted/10 px-4 py-2.5 flex items-center justify-between gap-4 flex-wrap">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          {/* Botão Novo Dropdown */}
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button
+                                size="sm"
+                                className="gradient-primary text-primary-foreground h-8 gap-1.5 px-3 rounded-md text-xs cursor-pointer shadow-sm hover:shadow transition-all"
+                              >
+                                <Plus className="w-3.5 h-3.5" />
+                                Novo
+                                <ChevronDown className="w-3.5 h-3.5 opacity-80" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="start" className="bg-background border-border text-foreground shadow-lg rounded-lg">
+                              <DropdownMenuItem className="cursor-pointer text-xs" onClick={handleOpenCreateFolder}>
+                                <FolderPlus className="w-3.5 h-3.5 mr-2 text-amber-500" />
+                                Nova pasta
+                              </DropdownMenuItem>
+                              <DropdownMenuItem className="cursor-pointer text-xs" onClick={() => setFieldTypeModal({ open: true })}>
+                                <Plus className="w-3.5 h-3.5 mr-2 text-indigo-500" />
+                                Novo tipo canônico
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+
+                          {/* Botão Importar Padrões */}
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="h-8 gap-1.5 px-2.5 rounded-md text-xs cursor-pointer text-muted-foreground hover:text-foreground hover:bg-muted/80 transition-colors"
+                            onClick={() => void handleImportDefaultFieldTypes()}
+                            disabled={importingDefaultFieldTypes}
+                          >
+                            <RefreshCcw className={`w-3.5 h-3.5 text-indigo-500 ${importingDefaultFieldTypes ? 'animate-spin' : ''}`} />
+                            {importingDefaultFieldTypes ? 'Importando…' : 'Importar padrões'}
+                          </Button>
+
+                          <div className="h-4 w-px bg-border/60 mx-1" />
+
+                          {/* Ações em Lote */}
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={handleBulkCopy}
+                            disabled={!hasSelection}
+                            className={`h-8 gap-1.5 px-2.5 rounded-md text-xs cursor-pointer transition-all ${
+                              hasSelection 
+                                ? 'text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50/50 dark:hover:bg-indigo-950/20 font-medium' 
+                                : 'text-muted-foreground/30 opacity-50 cursor-not-allowed pointer-events-none'
+                            }`}
+                          >
+                            <Copy className="w-3.5 h-3.5" />
+                            Copiar
+                          </Button>
+
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleOpenMoveItem('type', 'bulk', `${selectedTypes.length} tipos`)}
+                            disabled={!hasSelection}
+                            className={`h-8 gap-1.5 px-2.5 rounded-md text-xs cursor-pointer transition-all ${
+                              hasSelection 
+                                ? 'text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50/50 dark:hover:bg-indigo-950/20 font-medium' 
+                                : 'text-muted-foreground/30 opacity-50 cursor-not-allowed pointer-events-none'
+                            }`}
+                          >
+                            <Move className="w-3.5 h-3.5" />
+                            Mover
+                          </Button>
+
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={handleBulkDelete}
+                            disabled={!hasSelection}
+                            className={`h-8 gap-1.5 px-2.5 rounded-md text-xs cursor-pointer transition-all ${
+                              hasSelection 
+                                ? 'text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/20 font-medium' 
+                                : 'text-muted-foreground/30 opacity-50 cursor-not-allowed pointer-events-none'
+                            }`}
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                            Excluir
+                          </Button>
+                        </div>
+
+                        {/* Selecionar Tudo e Contagem */}
+                        <div className="flex items-center gap-3">
+                          {hasSelection && (
+                            <span className="text-[11px] font-semibold text-indigo-600 dark:text-indigo-400 animate-in fade-in duration-200">
+                              {selectedTypes.length} selecionado{selectedTypes.length !== 1 ? 's' : ''}
+                            </span>
+                          )}
+
+                          <div
+                            role="button"
+                            tabIndex={0}
+                            className={`inline-flex items-center justify-center rounded-md font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 hover:bg-accent hover:text-accent-foreground h-8 gap-2 px-2.5 text-xs cursor-pointer text-muted-foreground hover:text-foreground hover:bg-muted/80 ${
+                              currentTypes.length === 0 ? 'opacity-50 pointer-events-none' : ''
+                            }`}
+                            onClick={currentTypes.length > 0 ? handleSelectAll : undefined}
+                            onKeyDown={(e) => {
+                              if (currentTypes.length > 0 && (e.key === 'Enter' || e.key === ' ')) {
+                                e.preventDefault();
+                                handleSelectAll();
+                              }
+                            }}
+                          >
+                            <Checkbox
+                              checked={isAllSelected}
+                              disabled={currentTypes.length === 0}
+                              className="h-3.5 w-3.5 pointer-events-none border-muted-foreground data-[state=checked]:bg-indigo-600 data-[state=checked]:border-indigo-600"
+                            />
+                            <span>Selecionar tudo</span>
+                          </div>
+                        </div>
                       </div>
-                    ) : (
-                      <div className="space-y-1">
-                        {linked.map((pc) => (
-                          <LinkedConsultationCard
-                            key={pc.id}
-                            consultation={pc}
-                            provider={providers.find((p) => p.id === pc.providerId)}
-                            fieldType={ft}
-                            fieldTypeKey={selectedFieldType!}
-                            initialFilters={linkedConsultationInitialFilters(pc, selectedFieldType, fieldTypes)}
-                            accessToken={accessToken}
-                            onFiltersPersisted={invalidateAll}
-                          />
+
+                      {/* Breadcrumbs */}
+                      <div className="shrink-0 border-b border-border/50 px-4 py-2 flex items-center gap-1.5 text-xs text-muted-foreground flex-wrap">
+                        {getBreadcrumbs(currentFolderId).map((crumb, idx, arr) => (
+                          <div 
+                            key={crumb.id ?? 'root'} 
+                            className="flex items-center gap-1.5"
+                            onDragOver={(e) => {
+                              e.preventDefault();
+                              e.currentTarget.classList.add("bg-indigo-500/10", "rounded", "px-1");
+                            }}
+                            onDragLeave={(e) => {
+                              e.currentTarget.classList.remove("bg-indigo-500/10", "rounded", "px-1");
+                            }}
+                            onDrop={async (e) => {
+                              e.preventDefault();
+                              e.currentTarget.classList.remove("bg-indigo-500/10", "rounded", "px-1");
+                              await handleDropOnFolder(e, crumb.id, crumb.name);
+                            }}
+                          >
+                            <button
+                              type="button"
+                              className={`hover:text-indigo-600 transition-colors font-semibold flex items-center gap-1 cursor-pointer ${
+                                idx === arr.length - 1 ? 'text-foreground font-bold' : ''
+                              }`}
+                              onClick={() => {
+                                 setCurrentFolderId(crumb.id);
+                                 setSelectedFieldType(null);
+                                 setIsDetailsExpanded(false);
+                              }}
+                            >
+                              {crumb.id === null ? <FolderTree className="w-3.5 h-3.5 text-indigo-500" /> : <Folder className="w-3.5 h-3.5 text-indigo-500" />}
+                              {crumb.name}
+                            </button>
+                            {idx < arr.length - 1 && <ChevronRight className="w-3.5 h-3.5 text-muted-foreground/60" />}
+                          </div>
                         ))}
                       </div>
-                    )}
-                  </div>
-                );
-              })() : (
-                <div className="flex min-h-[min(18rem,calc(100%-1rem))] flex-col items-center justify-center rounded-md border border-dashed border-border/70 bg-muted/10 px-4 py-12 text-center">
-                  <Tag className="mb-3 h-10 w-10 text-muted-foreground/20" aria-hidden />
-                  <p className="text-sm font-medium text-foreground">Nenhum tipo selecionado</p>
-                  <p className="mt-1 max-w-xs text-xs leading-relaxed text-muted-foreground">
-                    Escolha um tipo na barra lateral para editar campos de relatório e ver consultas vinculadas.
-                  </p>
-                </div>
-              )}
+
+                      <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-contain p-4 sm:p-5 [scrollbar-width:thin]">
+                        <AnimatePresence mode="wait" initial={false}>
+                          <motion.div
+                            key={currentFolderId ?? 'root'}
+                            initial={{ opacity: 0, x: isNavigatingBack ? -12 : 12 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            exit={{ opacity: 0, x: isNavigatingBack ? 12 : -12 }}
+                            transition={{
+                              opacity: { duration: 0.2, ease: "easeInOut" },
+                              x: { type: "spring", damping: 30, stiffness: 220 }
+                            }}
+                            className="space-y-6 h-full"
+                          >
+                            {isFolderEmpty ? (
+                              <div className="flex min-h-[min(26rem,calc(100vh-20rem))] flex-col items-center justify-center rounded-xl border border-dashed border-border/80 bg-muted/10 px-4 py-16 text-center">
+                                <div className="relative mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-indigo-500/10 text-indigo-500">
+                                  <FolderOpen className="h-7 w-7 animate-pulse" />
+                                </div>
+                                <h3 className="text-sm font-semibold text-foreground">Esta pasta está vazia</h3>
+                                <p className="mt-1 max-w-xs text-xs leading-relaxed text-muted-foreground/80">
+                                  Adicione subpastas para organize ou crie tipos canônicos de dados diretamente aqui.
+                                </p>
+                              </div>
+                            ) : (
+                              <>
+                                {!searchTerm.trim() && currentFolders.length > 0 && (
+                                  <div className="space-y-2.5">
+                                    <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
+                                      <Folder className="w-3.5 h-3.5 text-indigo-500" /> Pastas ({currentFolders.length})
+                                    </h3>
+                                    <div className="catalog-folders-grid">
+                                      {currentFolders.map((folder) => {
+                                        const folderAssocs = associations.filter(a => a.folderId === folder.id);
+                                        const subFolders = folders.filter(f => f.parentId === folder.id);
+                                        const itemsCount = folderAssocs.length + subFolders.length;
+
+                                        return (
+                                          <div
+                                            key={folder.id}
+                                            onClick={() => {
+                                              setCurrentFolderId(folder.id);
+                                              setSelectedFieldType(null);
+                                              setIsDetailsExpanded(false);
+                                            }}
+                                            onDragOver={(e) => {
+                                              e.preventDefault();
+                                              e.currentTarget.classList.add("border-indigo-500", "bg-indigo-500/10");
+                                            }}
+                                            onDragLeave={(e) => {
+                                              e.currentTarget.classList.remove("border-indigo-500", "bg-indigo-500/10");
+                                            }}
+                                            onDrop={async (e) => {
+                                              e.preventDefault();
+                                              e.currentTarget.classList.remove("border-indigo-500", "bg-indigo-500/10");
+                                              await handleDropOnFolder(e, folder.id, folder.name);
+                                            }}
+                                            className="group/folder-card flex items-center justify-between gap-3 p-3 rounded-lg border border-border bg-card hover:border-indigo-500/40 hover:shadow-sm cursor-pointer transition-all duration-200 border-2"
+                                          >
+                                            <div className="flex items-center gap-3 min-w-0">
+                                              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-amber-500/10 text-amber-500">
+                                                <Folder className="w-5 h-5 shrink-0" />
+                                              </div>
+                                              <div className="min-w-0">
+                                                <p className="text-xs font-semibold text-foreground truncate">{folder.name}</p>
+                                                <p className="text-[10px] text-muted-foreground mt-0.5 font-medium">
+                                                  {itemsCount} {itemsCount === 1 ? 'item' : 'itens'}
+                                                </p>
+                                              </div>
+                                            </div>
+                                            
+                                            <DropdownMenu>
+                                              <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
+                                                <button className="h-7 w-7 flex items-center justify-center rounded-md border border-transparent text-muted-foreground hover:text-foreground hover:bg-muted opacity-0 group-hover-card/folder-card:opacity-100 focus:opacity-100 transition-opacity">
+                                                  <MoreVertical className="w-4 h-4" />
+                                                </button>
+                                              </DropdownMenuTrigger>
+                                              <DropdownMenuContent align="end" className="bg-background border-border text-foreground">
+                                                <DropdownMenuItem className="cursor-pointer text-xs" onClick={() => handleOpenRenameFolder(folder)}>
+                                                  <Pencil className="w-3.5 h-3.5 mr-1.5" /> Renomear
+                                                </DropdownMenuItem>
+                                                <DropdownMenuItem className="cursor-pointer text-xs text-destructive hover:bg-destructive/10" onClick={() => handleDeleteFolder(folder.id)}>
+                                                  <Trash2 className="w-3.5 h-3.5 mr-1.5" /> Excluir
+                                                </DropdownMenuItem>
+                                                <DropdownMenuItem className="cursor-pointer text-xs" onClick={() => handleOpenMoveItem('folder', folder.id, folder.name)}>
+                                                  <Move className="w-3.5 h-3.5 mr-1.5" /> Mover pasta
+                                                </DropdownMenuItem>
+                                              </DropdownMenuContent>
+                                            </DropdownMenu>
+                                          </div>
+                                        );
+                                      })}
+                                    </div>
+                                  </div>
+                                )}
+
+                                {currentTypes.length > 0 && (
+                                  <div className="space-y-2.5">
+                                    <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
+                                      <Tag className="w-3.5 h-3.5 text-indigo-500" /> Tipos Canônicos ({currentTypes.length})
+                                    </h3>
+                                    <div className="catalog-cards-grid">
+                                      {currentTypes.map((ft) => {
+                                        const linked = getLinkedConsultations(ft.key);
+                                        const assoc = associations.find((a) => a.fieldTypeKey === ft.key);
+                                        const parentFolder = assoc ? folders.find((f) => f.id === assoc.folderId) : null;
+                                        const isSelected = selectedTypes.includes(ft.key);
+
+                                        return (
+                                          <div
+                                            key={ft.id}
+                                            onClick={(e) => {
+                                              if (e.shiftKey || e.ctrlKey || e.metaKey) {
+                                                e.stopPropagation();
+                                                e.preventDefault();
+                                                const isSelected = selectedTypes.includes(ft.key);
+                                                if (isSelected) {
+                                                  setSelectedTypes((prev) => prev.filter((k) => k !== ft.key));
+                                                } else {
+                                                  setSelectedTypes((prev) => [...prev, ft.key]);
+                                                }
+                                              } else {
+                                                setSelectedFieldType(ft.key);
+                                              }
+                                            }}
+                                            draggable
+                                            onDragStart={(e) => {
+                                              const isSelected = selectedTypes.includes(ft.key);
+                                              const dragData = isSelected 
+                                                ? { type: 'bulk', keys: selectedTypes } 
+                                                : { type: 'single', key: ft.key };
+                                              e.dataTransfer.setData("application/json", JSON.stringify(dragData));
+                                              e.dataTransfer.setData("text/plain", ft.key);
+                                              e.dataTransfer.effectAllowed = "move";
+                                            }}
+                                            className={`group/type-card relative flex flex-col justify-between p-4 rounded-xl border backdrop-blur-sm cursor-pointer transition-all duration-300 min-h-[8.5rem] ${
+                                              isSelected 
+                                                ? 'border-indigo-500 bg-indigo-500/5 shadow-md ring-2 ring-indigo-500/10' 
+                                                : 'border-border/30 bg-card/40 hover:bg-card/75 hover:border-indigo-500/25 shadow-sm hover:shadow-md hover:-translate-y-0.5'
+                                            }`}
+                                          >
+                                            <div className="absolute right-2 top-2 z-10 flex items-center gap-1.5">
+                                              <Checkbox
+                                                checked={isSelected}
+                                                onCheckedChange={(checked) => {
+                                                  if (checked) {
+                                                    setSelectedTypes((prev) => [...prev, ft.key]);
+                                                  } else {
+                                                    setSelectedTypes((prev) => prev.filter((k) => k !== ft.key));
+                                                  }
+                                                }}
+                                                onClick={(e) => e.stopPropagation()}
+                                                className={`h-3.5 w-3.5 border-muted-foreground data-[state=checked]:bg-indigo-600 data-[state=checked]:border-indigo-600 shrink-0 transition-opacity duration-200 ${
+                                                  isSelected ? 'opacity-100' : 'opacity-0 group-hover/type-card:opacity-100 focus-within/type-card:opacity-100'
+                                                }`}
+                                              />
+                                              <DropdownMenu>
+                                                <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
+                                                  <button className="h-6 w-6 flex items-center justify-center rounded-md border border-transparent text-muted-foreground hover:text-foreground hover:bg-muted opacity-0 group-hover/type-card:opacity-100 focus/type-card:opacity-100 transition-opacity">
+                                                    <MoreVertical className="w-3.5 h-3.5" />
+                                                  </button>
+                                                </DropdownMenuTrigger>
+                                                <DropdownMenuContent align="end" className="bg-background border-border text-foreground">
+                                                  <DropdownMenuItem className="cursor-pointer text-xs" onClick={() => handleOpenMoveItem('type', ft.key, ft.label)}>
+                                                    <Move className="w-3.5 h-3.5 mr-1.5" /> Mover para pasta
+                                                  </DropdownMenuItem>
+                                                  <DropdownMenuItem className="cursor-pointer text-xs" onClick={() => setFieldTypeModal({ open: true, ft })}>
+                                                    <Pencil className="w-3.5 h-3.5 mr-1.5" /> Editar
+                                                  </DropdownMenuItem>
+                                                  <DropdownMenuItem className="cursor-pointer text-xs text-destructive hover:bg-destructive/10" onClick={async () => {
+                                                    try {
+                                                      await deleteCanonicalFieldApi(accessToken, ft.id);
+                                                      toast.success('Removido');
+                                                      void queryClient.invalidateQueries({ queryKey: ['admin-canonical-fields'] });
+                                                    } catch {
+                                                      toast.error('Não foi possível remover');
+                                                    }
+                                                  }}>
+                                                    <Trash2 className="w-3.5 h-3.5 mr-1.5" /> Excluir
+                                                  </DropdownMenuItem>
+                                                </DropdownMenuContent>
+                                              </DropdownMenu>
+                                            </div>
+
+                                            <div className="space-y-1 pr-14">
+                                              <div className="flex items-center gap-2">
+                                                <div className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-indigo-500/5 text-indigo-500 ${ftColorClass(ft.color, 'bg').replace('/10', '/5')}`}>
+                                                  <Tag className={`h-3.5 w-3.5 ${ftColorClass(ft.color, 'text')}`} />
+                                                </div>
+                                                <span className="text-xs font-semibold text-foreground truncate leading-none">{ft.label}</span>
+                                              </div>
+                                              <code className="block font-mono text-[9px] text-muted-foreground/75 tracking-wider uppercase truncate pl-9">{ft.key}</code>
+                                              {ft.description && (
+                                                <p className="text-[10px] text-muted-foreground/70 line-clamp-2 leading-relaxed pl-9">{ft.description}</p>
+                                              )}
+                                            </div>
+
+                                            <div className="flex items-center justify-between gap-2 mt-3 pt-2 border-t border-border/40 shrink-0">
+                                              {parentFolder ? (
+                                                <div className="flex items-center gap-1 text-[10px] text-muted-foreground/80 font-medium truncate max-w-[120px]">
+                                                  <Folder className="w-3 h-3 text-amber-500/70 shrink-0" />
+                                                  <span className="truncate">{parentFolder.name}</span>
+                                                </div>
+                                              ) : (
+                                                <span />
+                                              )}
+                                              <div className="flex items-center gap-1 text-[10px] text-muted-foreground font-medium tabular-nums">
+                                                <Database className="h-3 w-3 shrink-0 text-muted-foreground/60" />
+                                                <span>{linked.length}</span>
+                                              </div>
+                                            </div>
+                                          </div>
+                                        );
+                                      })}
+                                    </div>
+                                  </div>
+                                )}
+                              </>
+                            )}
+                          </motion.div>
+                        </AnimatePresence>
+                      </div>
+                    </ResizablePanel>
+                  )}
+
+                  {((showCatalog && showDetails) || (showNavigation && !showCatalog && showDetails)) && (
+                    <ResizableHandle 
+                      className="w-1 bg-border/40 hover:bg-indigo-500/50 transition-colors" 
+                      onDragging={(dragging) => {
+                        setIsDragging(dragging);
+                        if (!dragging) {
+                          handleDragEnd();
+                        }
+                      }}
+                    />
+                  )}
+
+                  {/* Painel 3: Editor de Detalhes do Tipo Canônico */}
+                  {showDetails && (
+                    <ResizablePanel
+                      id="types-details"
+                      order={3}
+                      defaultSize={isDetailsExpanded ? (100 - lastValidNavigationSizeRef.current) : (100 - lastValidCatalogSizeRef.current)}
+                      minSize={30}
+                      collapsible={true}
+                      onCollapse={() => {
+                        setSelectedFieldType(null);
+                      }}
+                      className={`flex flex-col h-full overflow-hidden bg-background ${isTransitioning ? 'transition-all duration-300 ease-in-out' : ''}`}
+                    >
+                      {(() => {
+                        const ft = fieldTypes.find((f) => f.key === selectedFieldType);
+                        const linked = getLinkedConsultations(selectedFieldType);
+                        if (!ft) {
+                          return (
+                            <div className="flex-1 flex items-center justify-center p-8 text-muted-foreground text-xs">
+                              Tipo não encontrado
+                            </div>
+                          );
+                        }
+
+                        return (
+                          <motion.div
+                            initial={{ opacity: 0, x: 40 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            exit={{ opacity: 0, x: 40 }}
+                            transition={{ type: 'spring', damping: 26, stiffness: 200 }}
+                            style={{ originX: 1 }}
+                            className="flex flex-col h-full overflow-hidden bg-background"
+                          >
+                            {/* Detalhes Header */}
+                            <div className="shrink-0 border-b border-border/60 bg-muted/10 px-4 py-2.5 flex items-center justify-between gap-4 flex-wrap">
+                              <div className="flex items-center gap-1.5 text-xs text-muted-foreground truncate">
+                                <span className="font-semibold">Detalhes</span>
+                                <ChevronRight className="w-3 h-3 shrink-0" />
+                                <AnimatePresence mode="popLayout" initial={false}>
+                                  <motion.span
+                                    key={ft.key}
+                                    initial={{ opacity: 0, y: -4 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    exit={{ opacity: 0, y: 4 }}
+                                    transition={{
+                                      opacity: { duration: 0.2, ease: "easeInOut" },
+                                      y: { type: "spring", damping: 25, stiffness: 220 }
+                                    }}
+                                    className="text-foreground font-bold truncate max-w-[12rem] inline-block"
+                                  >
+                                    {ft.label}
+                                  </motion.span>
+                                </AnimatePresence>
+                              </div>
+                              
+                              <div className="flex items-center gap-1 shrink-0">
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      className="h-7 w-7 rounded-md cursor-pointer hover:bg-muted text-muted-foreground hover:text-foreground"
+                                      onClick={() => setIsDetailsExpanded(!isDetailsExpanded)}
+                                      aria-label={isDetailsExpanded ? "Recolher painel" : "Expandir painel"}
+                                    >
+                                      {isDetailsExpanded ? (
+                                        <Minimize2 className="w-3.5 h-3.5 text-indigo-500" />
+                                      ) : (
+                                        <Maximize2 className="w-3.5 h-3.5 text-indigo-500" />
+                                      )}
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent side="bottom">
+                                    {isDetailsExpanded ? "Recolher" : "Expandir"}
+                                  </TooltipContent>
+                                </Tooltip>
+
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      className="h-7 w-7 rounded-md cursor-pointer hover:bg-muted text-muted-foreground hover:text-foreground"
+                                      onClick={() => setSelectedFieldType(null)}
+                                      aria-label="Fechar painel"
+                                    >
+                                      <X className="w-3.5 h-3.5" />
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent side="bottom">Fechar</TooltipContent>
+                                </Tooltip>
+                              </div>
+                            </div>
+
+                            <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-contain p-4 sm:p-5 [scrollbar-width:thin]">
+                              <AnimatePresence mode="wait" initial={false}>
+                                <motion.div
+                                  key={ft.key}
+                                  initial={{ opacity: 0, y: 6 }}
+                                  animate={{ opacity: 1, y: 0 }}
+                                  exit={{ opacity: 0, y: -6 }}
+                                  transition={{
+                                    opacity: { duration: 0.25, ease: "easeInOut" },
+                                    y: { type: "spring", damping: 28, stiffness: 180 }
+                                  }}
+                                  className="space-y-4 h-full"
+                                >
+                              <div className="flex items-center justify-between gap-2 flex-wrap pb-2 border-b border-border/60">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <Tag className={`w-5 h-5 ${ftColorClass(ft.color, 'text')}`} />
+                                  <span className="text-base font-semibold text-foreground">{ft.label}</span>
+                                  <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded-md">{linked.length} consultas</span>
+                                </div>
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  className="h-8 gap-1.5 px-3 rounded-md hover:bg-indigo-50 hover:text-indigo-600 dark:hover:bg-indigo-950/20 dark:hover:text-indigo-400 shrink-0 cursor-pointer text-xs"
+                                  onClick={() => {
+                                    useIsolatedEditorStore.getState().openEditor({
+                                      targetType: "canonicalField",
+                                      targetId: ft.id,
+                                      elementTree: ft.reportFieldConfig?.elementTree ?? [],
+                                      code: ft.reportFieldConfig?.code ?? "",
+                                      format: ft.reportFieldConfig?.format ?? "html",
+                                      onSave: async (newTree, newCode, newFormat) => {
+                                        try {
+                                          await handleSaveTypeReportFields(ft, {
+                                            version: 1,
+                                            fields: ft.reportFieldConfig?.fields ?? [],
+                                            code: newCode,
+                                            format: newFormat,
+                                            elementTree: newTree
+                                          });
+                                        } catch (e) {
+                                          console.error(e);
+                                        }
+                                      }
+                                    });
+                                  }}
+                                >
+                                  <Sliders className="w-3.5 h-3.5" />
+                                  Editar Layout/Código
+                                </Button>
+                              </div>
+
+                              <TypeReportFieldsConfig
+                                fieldType={ft}
+                                saving={savingFieldType}
+                                onSave={(nextConfig) => handleSaveTypeReportFields(ft, nextConfig)}
+                              />
+
+                              {linked.length === 0 ? (
+                                <div className="text-center py-12 bg-card rounded-md border border-border">
+                                  <Database className="w-8 h-8 text-muted-foreground/20 mx-auto mb-2" />
+                                  <p className="text-sm text-muted-foreground">Nenhuma consulta vinculada</p>
+                                </div>
+                              ) : (
+                                <div className="space-y-1">
+                                  {linked.map((pc) => (
+                                    <LinkedConsultationCard
+                                      key={pc.id}
+                                      consultation={pc}
+                                      provider={providers.find((p) => p.id === pc.providerId)}
+                                      fieldType={ft}
+                                      fieldTypeKey={selectedFieldType!}
+                                      initialFilters={linkedConsultationInitialFilters(pc, selectedFieldType, fieldTypes)}
+                                      accessToken={accessToken}
+                                      onFiltersPersisted={invalidateAll}
+                                    />
+                                  ))}
+                                </div>
+                              )}
+                                </motion.div>
+                              </AnimatePresence>
+                            </div>
+                          </motion.div>
+                        );
+                      })()}
+                    </ResizablePanel>
+                  )}
+                </ResizablePanelGroup>
               </div>
-            </div>
-          </div>
+            );
+          })()}
         </TabsContent>
 
         <TabsContent value="settings" className="space-y-2">
@@ -2841,6 +4035,94 @@ export default function IntegrationsPage() {
         onSave={handleSaveFieldType}
         saving={savingFieldType}
       />
+      
+      {/* Diálogo para Criar/Renomear Pasta */}
+      <Dialog open={folderDialogOpen} onOpenChange={setFolderDialogOpen}>
+        <DialogContent className="max-w-sm gap-4 p-5 bg-background border border-border rounded-xl shadow-2xl">
+          <DialogHeader className="pb-1 border-b border-border/40">
+            <DialogTitle className="text-lg font-bold flex items-center gap-2 text-foreground">
+              {folderDialogMode === 'create' ? <FolderPlus className="w-5 h-5 text-indigo-500" /> : <Pencil className="w-5 h-5 text-indigo-500" />}
+              {folderDialogMode === 'create' ? 'Nova Pasta' : 'Renomear Pasta'}
+            </DialogTitle>
+            <DialogDescription className="text-xs text-muted-foreground mt-1">
+              {folderDialogMode === 'create' ? 'Digite o nome da nova pasta organizacional.' : 'Digite o novo nome para esta pasta organizacional.'}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-1 py-1">
+            <Label htmlFor="folder-name-input" className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Nome da pasta</Label>
+            <Input
+              id="folder-name-input"
+              value={folderNameInput}
+              onChange={(e) => setFolderNameInput(e.target.value)}
+              placeholder="Ex: Financeiro, SPC, EHM..."
+              className={inputCls}
+              onKeyDown={(e) => e.key === 'Enter' && void handleSaveFolder()}
+              autoFocus
+            />
+          </div>
+          <DialogFooter className="gap-2 border-t border-border/40 pt-3 mt-1">
+            <Button variant="ghost" size="sm" onClick={() => setFolderDialogOpen(false)} className="text-xs h-8">Cancelar</Button>
+            <Button size="sm" className="gradient-primary text-primary-foreground text-xs h-8 px-4" onClick={() => void handleSaveFolder()}>
+              {createFolderMutation.isPending || patchFolderMutation.isPending ? 'Salvando...' : 'Salvar'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Diálogo para Mover Pasta ou Tipo Canônico */}
+      <Dialog open={moveDialogOpen} onOpenChange={setMoveDialogOpen}>
+        <DialogContent className="max-w-md gap-4 p-5 bg-background border border-border rounded-xl shadow-2xl">
+          <DialogHeader className="pb-1 border-b border-border/40">
+            <DialogTitle className="text-lg font-bold flex items-center gap-2 text-foreground">
+              <Move className="w-5 h-5 text-indigo-500" />
+              Mover para pasta
+            </DialogTitle>
+            <DialogDescription className="text-xs text-muted-foreground mt-1">
+              Selecione a pasta de destino para: <strong className="text-foreground">{movingItem?.keyOrName}</strong>
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="border border-border rounded-lg max-h-60 overflow-y-auto p-2 space-y-1 bg-muted/20 scrollbar-thin">
+            <button
+              type="button"
+              className={`w-full flex items-center gap-2 px-3 py-2 rounded-md text-left text-xs transition-colors border ${
+                targetFolderIdForMove === null ? 'bg-indigo-500/10 text-indigo-600 font-semibold border-indigo-500/20' : 'hover:bg-muted text-foreground border-transparent'
+              }`}
+              onClick={() => setTargetFolderIdForMove(null)}
+            >
+              <FolderOpen className="w-4 h-4 text-indigo-500" />
+              <span>Raiz (Sem pasta)</span>
+            </button>
+            {folders
+              .filter((f) => movingItem?.type !== 'folder' || f.id !== movingItem.id)
+              .map((f) => {
+                const depth = getFolderDepth(f.id, folders);
+                return (
+                  <button
+                    key={f.id}
+                    type="button"
+                    className={`w-full flex items-center gap-2 px-3 py-2 rounded-md text-left text-xs transition-colors border ${
+                      targetFolderIdForMove === f.id ? 'bg-indigo-500/10 text-indigo-600 font-semibold border-indigo-500/20' : 'hover:bg-muted text-foreground border-transparent'
+                    }`}
+                    style={{ paddingLeft: `${12 + depth * 12}px` }}
+                    onClick={() => setTargetFolderIdForMove(f.id)}
+                  >
+                    <Folder className="w-4 h-4 text-indigo-500" />
+                    <span>{f.name}</span>
+                  </button>
+                );
+              })}
+          </div>
+          
+          <DialogFooter className="gap-2 border-t border-border/40 pt-3 mt-1">
+            <Button variant="ghost" size="sm" onClick={() => setMoveDialogOpen(false)} className="text-xs h-8">Cancelar</Button>
+            <Button size="sm" className="gradient-primary text-primary-foreground text-xs h-8 px-4" onClick={() => void handleConfirmMoveItem()}>
+              Confirmar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <IsolatedEditorDialog />
     </div>
   );

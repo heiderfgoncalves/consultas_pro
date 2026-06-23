@@ -170,6 +170,20 @@ function compareRegionsByPanelOrder(
   return a.regionId.localeCompare(b.regionId);
 }
 
+function getRootFieldTypeKey(pathKey: string): string {
+  const dot = pathKey.indexOf('.');
+  const bracket = pathKey.indexOf('[');
+  let idx = -1;
+  if (dot !== -1 && bracket !== -1) idx = Math.min(dot, bracket);
+  else if (dot !== -1) idx = dot;
+  else if (bracket !== -1) idx = bracket;
+  return idx === -1 ? pathKey : pathKey.slice(0, idx);
+}
+
+function normalizePathForMatching(p: string): string {
+  return p.replace(/\[\*\]/g, '').replace(/\[\d+\]/g, '').replace(/\.+/g, '.').replace(/^\.|\.$/g, '');
+}
+
 function parseJsonSections(jsonStr: string): { lines: string[]; sections: JsonSection[] } {
   const lines = jsonStr.split('\n');
   const sections: JsonSection[] = [];
@@ -194,6 +208,17 @@ function parseJsonSections(jsonStr: string): { lines: string[]; sections: JsonSe
       stack.push({ path, startLine: i, isArray: true, depth: stack.length, pushedKey });
       if (pushedKey) pathStack.push(lastKey);
       lastKey = '';
+    } else if (lastKey) {
+      const path = [...pathStack, lastKey].join('.');
+      sections.push({
+        path,
+        startLine: i,
+        endLine: i,
+        depth: stack.length,
+        isObject: false,
+        isArray: false,
+      });
+      lastKey = '';
     }
 
     if ((trimmed.startsWith('}') || trimmed.startsWith(']')) && stack.length > 0) {
@@ -213,9 +238,17 @@ function parseJsonSections(jsonStr: string): { lines: string[]; sections: JsonSe
   return { lines, sections };
 }
 
-/** Vários trechos podem compartilhar o mesmo path (ex.: chave do array e cada `{...}` interno). Prefere a seção do array. */
 function resolveSectionForJsonPath(sections: JsonSection[], jsonPath: string): JsonSection | undefined {
-  const candidates = sections.filter(s => s.path === jsonPath);
+  const normPath = normalizePathForMatching(jsonPath);
+  let candidates = sections.filter(s => normalizePathForMatching(s.path) === normPath);
+
+  let parentPath = normPath;
+  while (candidates.length === 0 && parentPath.includes('.')) {
+    const lastDot = parentPath.lastIndexOf('.');
+    parentPath = parentPath.slice(0, lastDot);
+    candidates = sections.filter(s => normalizePathForMatching(s.path) === parentPath);
+  }
+
   if (candidates.length === 0) return undefined;
   if (candidates.length === 1) return candidates[0];
   const arrays = candidates.filter(s => s.isArray);
@@ -1176,7 +1209,7 @@ export default function JsonFieldMapper({
 
   const lineSlicePreview = useCallback(
     (region: MappedRegion): string => lines.slice(region.startLine, region.endLine + 1).join('\n'),
-    [lines],
+    [lines]
   );
 
   const typePanelRank = useMemo(() => {
@@ -1186,7 +1219,7 @@ export default function JsonFieldMapper({
   }, [fieldTypeDisplayOrder]);
 
   const mappedTypeKeySet = useMemo(
-    () => new Set(displayRegions.map((r) => r.fieldTypeKey)),
+    () => new Set(displayRegions.map((r) => getRootFieldTypeKey(r.fieldTypeKey))),
     [displayRegions],
   );
 
@@ -1230,7 +1263,7 @@ export default function JsonFieldMapper({
       if (oldIndex < 0 || newIndex < 0) return;
       const nextOrder = arrayMove(fieldTypeDisplayOrder, oldIndex, newIndex);
       setFieldTypeDisplayOrder(nextOrder);
-      const mapped = new Set(displayRegions.map((r) => r.fieldTypeKey));
+      const mapped = new Set(displayRegions.map((r) => getRootFieldTypeKey(r.fieldTypeKey)));
       const previewKeys = nextOrder.filter((k) => mapped.has(k));
       onMappingsChange(reorderMappingsByTypeOrder(mappings, previewKeys));
     },
@@ -1238,15 +1271,9 @@ export default function JsonFieldMapper({
   );
 
   const handlePreviewMappedTypeReorder = useCallback(
-    (fromKey: string, toKey: string) => {
-      if (fromKey === toKey) return;
-      const keys = [...fieldTypeDisplayOrder];
-      const fi = keys.indexOf(fromKey);
-      const ti = keys.indexOf(toKey);
-      if (fi < 0 || ti < 0) return;
-      const nextOrder = arrayMove(keys, fi, ti);
-      setFieldTypeDisplayOrder(nextOrder);
-      const mapped = new Set(displayRegions.map((r) => r.fieldTypeKey));
+    (nextOrder: string[]) => {
+      setPreviewTypeStackOrder(nextOrder);
+      const mapped = new Set(displayRegions.map((r) => getRootFieldTypeKey(r.fieldTypeKey)));
       const previewKeys = nextOrder.filter((k) => mapped.has(k));
       onMappingsChange(reorderMappingsByTypeOrder(mappings, previewKeys));
     },
@@ -1272,10 +1299,10 @@ export default function JsonFieldMapper({
   );
 
   const suggestionsByType = useMemo(() => {
-    const keys = [...new Set(displayRegions.map(r => r.fieldTypeKey))];
+    const keys = [...new Set(displayRegions.map(r => getRootFieldTypeKey(r.fieldTypeKey)))];
     const out: Record<string, ReturnType<typeof collectFilterSuggestionsForMappedRegions>> = {};
     for (const k of keys) {
-      const regs = displayRegions.filter(r => r.fieldTypeKey === k);
+      const regs = displayRegions.filter(r => getRootFieldTypeKey(r.fieldTypeKey) === k);
       out[k] = collectFilterSuggestionsForMappedRegions(activeJson, lines, regs);
     }
     return out;
@@ -1285,7 +1312,7 @@ export default function JsonFieldMapper({
     return typeKeysInOrder.map(fieldTypeKey => {
       const ft = fieldTypes.find(f => f.key === fieldTypeKey);
       if (!ft) return null;
-      const regions = displayRegions.filter(r => r.fieldTypeKey === fieldTypeKey);
+      const regions = displayRegions.filter(r => getRootFieldTypeKey(r.fieldTypeKey) === fieldTypeKey);
       const filters = openFilterTypeKey === fieldTypeKey
         ? (draftTypeFilters[fieldTypeKey] ?? typeFilters[fieldTypeKey])
         : typeFilters[fieldTypeKey];

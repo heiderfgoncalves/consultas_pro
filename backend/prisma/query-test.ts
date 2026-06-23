@@ -3,44 +3,34 @@ import { PrismaClient } from '@prisma/client';
 const prisma = new PrismaClient();
 
 async function main() {
-  const product = await prisma.providerProduct.findFirst({
-    where: {
-      externalId: '1079'
-    }
+  console.log("=== INSPECIONANDO ELEMENTOS DO TEMPLATE IMPORT_TEST_1 ===");
+  const template = await prisma.template.findUnique({
+    where: { id: 'cmpuh6oue0000u6omv22c0fjb' }
   });
-  if (!product) {
-    console.log("Product not found by externalId '1079'. Trying by name...");
-    const productsByName = await prisma.providerProduct.findMany({
-      where: {
-        name: {
-          contains: 'COMPLETA BRASIL'
-        }
+
+  if (!template || !template.layout) {
+    console.log("Template Import_test_1 não encontrado ou sem layout.");
+    return;
+  }
+
+  const layoutObj: any = template.layout;
+  if (layoutObj.elements && Array.isArray(layoutObj.elements)) {
+    console.log(`Total de elementos: ${layoutObj.elements.length}`);
+    
+    // Procura por elementos que contêm referências a score ou a cor #ef4444
+    for (const el of layoutObj.elements) {
+      const elStr = JSON.stringify(el);
+      if (elStr.includes('SCORE_CREDITO') || elStr.includes('round(avg') || elStr.includes('#ef4444')) {
+        console.log(`\n[!] Encontrado elemento suspeito:`);
+        console.log(`ID: ${el.id}`);
+        console.log(`Tipo: ${el.type}`);
+        // Imprime todas as chaves do elemento
+        console.log(`Chaves: ${Object.keys(el).join(', ')}`);
+        // Imprime o conteúdo em formato formatado
+        console.log(`Conteúdo do Elemento:`);
+        console.log(JSON.stringify(el, null, 2));
       }
-    });
-    console.log(`Found ${productsByName.length} products by name.`);
-    for (const p of productsByName) {
-      console.log(`ID: ${p.id}, Name: ${p.name}, Code: ${p.code}, ExternalId: ${p.externalId}`);
     }
-    if (productsByName.length > 0) {
-      console.log("\nDetails of the first product found:");
-      console.log(JSON.stringify({
-        id: productsByName[0].id,
-        name: productsByName[0].name,
-        code: productsByName[0].code,
-        typeItemFilters: productsByName[0].typeItemFilters,
-        sampleResponseLength: String(productsByName[0].sampleResponse).length,
-        sampleResponsePreview: String(productsByName[0].sampleResponse).substring(0, 500)
-      }, null, 2));
-    }
-  } else {
-    console.log(JSON.stringify({
-      id: product.id,
-      name: product.name,
-      code: product.code,
-      typeItemFilters: product.typeItemFilters,
-      sampleResponseLength: String(product.sampleResponse).length,
-      sampleResponsePreview: String(product.sampleResponse).substring(0, 500)
-    }, null, 2));
   }
 }
 

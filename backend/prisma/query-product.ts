@@ -14,6 +14,7 @@ async function main() {
   for (const p of products) {
     console.log(`Product ID: ${p.id}, Code: ${p.code}, Name: ${p.name}`);
     console.log('typeItemFilters:', JSON.stringify(p.typeItemFilters, null, 2));
+    console.log('bodyTemplate:', JSON.stringify(p.bodyTemplate, null, 2));
     if (p.sampleResponse) {
       console.log('sampleResponse length:', String(p.sampleResponse).length);
       // Save it to a file so we can view it

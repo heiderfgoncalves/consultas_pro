@@ -1,0 +1,1069 @@
+{
+    "id": "9d63dc37-4a5f-420e-a3ae-6a5e1535e000",
+    "user_id": "34cd802e-331f-4c32-8b8e-c8237bc854e0",
+    "document": "40.120.281/0001-30",
+    "query_type": "radar-pronampe-pj",
+    "status": "success",
+    "created_at": "2026-06-18T18:54:08.632663+00:00",
+    "completed_at": "2026-06-18T18:54:34.519+00:00",
+    "score": 0,
+    "alerts": null,
+    "raw_data": {
+        "cnpj": "40120281000130",
+        "pgfn": {
+            "retorno": {
+                "uf": "SP",
+                "cnae": "0007 0041 0143 0349 0658",
+                "nome": "COLABONI RIO PRETO SERVICOS AUTOMOTORES LTDA",
+                "status": "A entidade consultada possui dívidas.",
+                "naturezas": [
+                    {
+                        "total": 3674.99,
+                        "status": null,
+                        "debitos": [],
+                        "natureza": null,
+                        "tipoDivida": "Tributário - Simples Nacional",
+                        "tipoCredito": null,
+                        "dataInscricao": null,
+                        "numeroInscricao": "80422680496",
+                        "receitaPrincipal": null,
+                        "unidadeInscricao": null,
+                        "situacaoInscricao": null,
+                        "entidadeResponsavel": null
+                    },
+                    {
+                        "total": 14954.57,
+                        "status": null,
+                        "debitos": [],
+                        "natureza": null,
+                        "tipoDivida": "Tributário - Simples Nacional",
+                        "tipoCredito": null,
+                        "dataInscricao": null,
+                        "numeroInscricao": "80424399796",
+                        "receitaPrincipal": null,
+                        "unidadeInscricao": null,
+                        "situacaoInscricao": null,
+                        "entidadeResponsavel": null
+                    },
+                    {
+                        "total": 2008.68,
+                        "status": null,
+                        "debitos": [],
+                        "natureza": null,
+                        "tipoDivida": "Tributário - Simples Nacional",
+                        "tipoCredito": null,
+                        "dataInscricao": null,
+                        "numeroInscricao": "80424894657",
+                        "receitaPrincipal": null,
+                        "unidadeInscricao": null,
+                        "situacaoInscricao": null,
+                        "entidadeResponsavel": null
+                    }
+                ],
+                "tipoPessoa": "Pessoa Jurídica",
+                "tipoDevedor": null,
+                "totalDivida": 20638.24,
+                "possuiDivida": true,
+                "cnaeDescricao": "Serviços de lavagem, lubrificação e polimento de veículos au",
+                "nomeMunicipio": "SAO JOSE DO RIO PRETO",
+                "codigoMunicipio": 7097,
+                "totalTributario": null,
+                "unidadeResponsavel": null,
+                "documentoConsultado": "40.120.281/0001-30",
+                "totalPrevidenciario": null
+            },
+            "metaDados": {
+                "ip": "15.228.60.117",
+                "data": "18/06/2026 15:54:14",
+                "chave": "CNPJ=40120281000130;",
+                "usuario": "Caio Ribeiro",
+                "mensagem": "Sucesso",
+                "apiVersao": "v3",
+                "resultado": "Sucesso",
+                "assincrono": false,
+                "consultaUid": "direct-e1f23ff3-4b2f-4966-ba5e-5c81b527ca8b",
+                "resultadoId": 1,
+                "consultaNome": "PGFN - Lista de Devedores da União",
+                "enviarCallback": false,
+                "urlComprovante": null,
+                "tempoExecucaoMs": 15466,
+                "gerarComprovante": false
+            }
+        },
+        "quod": {
+            "observacao": null,
+            "dataConsulta": "18/06/2026 15:54:15",
+            "pessoaFisica": null,
+            "pessoaJuridica": {
+                "score": 620,
+                "motivos": [
+                    "Possui atrasos de parcelas/faturas em contratos recentes",
+                    "Possui uma media alta de dias em atraso nas parcelas/faturas dos últimos 6 meses",
+                    "Possui atrasos vigentes",
+                    "Possui quadro societário com baixo número de sócios ou acionistas"
+                ],
+                "faixaScore": "Médio índice de inadimplência",
+                "indicadoresNegocio": [
+                    {
+                        "risco": null,
+                        "status": null,
+                        "indicador": null,
+                        "observacao": null
+                    }
+                ]
+            },
+            "documentoConsultado": "40.120.281/0001-30"
+        },
+        "jobId": "e0ffd8a9-56a4-4d3e-9e96-8ab7f9be822c",
+        "score": 0,
+        "errors": {
+            "pgfn": null,
+            "quod": null,
+            "socios": [],
+            "boaVista": null,
+            "scrBacen": null,
+            "recomenda": null,
+            "serproCnd": "Processamento OK - Certidão Não Emitida. Situação Cadastral Impeditiva.",
+            "serproCnpj": null,
+            "dadosAvulsos": null,
+            "cadastroPjPlus": null,
+            "processosJudiciais": null
+        },
+        "socios": [
+            {
+                "ok": true,
+                "cpf": "40509131867",
+                "data": {
+                    "reports": [
+                        {
+                            "facts": {
+                                "inquiry": {
+                                    "inquiryResponse": []
+                                },
+                                "inquirySummary": {
+                                    "inquiryQuantity": {
+                                        "actual": 0,
+                                        "creditInquiriesQuantity": [
+                                            {
+                                                "inquiryDate": "2026-05",
+                                                "occurrences": 0
+                                            },
+                                            {
+                                                "inquiryDate": "2026-04",
+                                                "occurrences": 0
+                                            },
+                                            {
+                                                "inquiryDate": "2026-03",
+                                                "occurrences": 0
+                                            },
+                                            {
+                                                "inquiryDate": "2026-02",
+                                                "occurrences": 0
+                                            }
+                                        ]
+                                    }
+                                },
+                                "stolenDocuments": {
+                                    "summary": {
+                                        "count": 0,
+                                        "balance": 0
+                                    },
+                                    "stolenDocumentsResponse": []
+                                }
+                            },
+                            "score": {
+                                "range": "A",
+                                "score": 350,
+                                "message": "ESPACO RESERVADO PARA MENSAGEM DA INSTITUICAO",
+                                "scoreModel": "HRLD",
+                                "codeMessage": 99,
+                                "defaultRate": "0,0"
+                            },
+                            "partner": {
+                                "summary": {
+                                    "count": 2,
+                                    "balance": 0
+                                },
+                                "partnershipResponse": [
+                                    {
+                                        "updateDate": "2024-10-09",
+                                        "companyName": "COLABONI RIO PRETO SERVICOS AUTOMOTORES LTDA ME",
+                                        "hasNegative": true,
+                                        "companyState": "SP",
+                                        "companyStatus": "ATIVA",
+                                        "businessDocument": "40120281000130",
+                                        "companyStatusCode": "2",
+                                        "companyStatusDate": "2025-05-10",
+                                        "participationPercentage": 100
+                                    },
+                                    {
+                                        "updateDate": "2025-05-20",
+                                        "companyName": "MAYCON VALENTIM PEREIRA 40509131867",
+                                        "hasNegative": true,
+                                        "companyState": "SP",
+                                        "companyStatus": "ATIVA",
+                                        "businessDocument": "28684176000129",
+                                        "companyStatusCode": "2",
+                                        "companyStatusDate": "2025-05-10",
+                                        "participationPercentage": 100
+                                    }
+                                ]
+                            },
+                            "reportName": "RELATORIO_BASICO_PF_PME",
+                            "negativeData": {
+                                "check": {
+                                    "summary": {
+                                        "count": 0,
+                                        "balance": 0,
+                                        "checkCount": 0
+                                    },
+                                    "checkResponse": []
+                                },
+                                "pefin": {
+                                    "summary": {
+                                        "count": 0,
+                                        "balance": 0
+                                    },
+                                    "pefinResponse": []
+                                },
+                                "refin": {
+                                    "summary": {
+                                        "count": 1,
+                                        "balance": 2681.92,
+                                        "lastOccurrence": "2024-12-05",
+                                        "firstOccurrence": "2024-12-05"
+                                    },
+                                    "refinResponse": [
+                                        {
+                                            "cadus": "C824993491",
+                                            "amount": 2681.92,
+                                            "principal": true,
+                                            "contractId": "6B003B41-9DAF-46",
+                                            "legalNature": "CRED CARTAO",
+                                            "creditorName": "NEON FINANCEIRA",
+                                            "inclusionDate": "2026-03-30",
+                                            "legalNatureId": "CT",
+                                            "occurrenceDate": "2024-12-05"
+                                        }
+                                    ]
+                                },
+                                "notary": {
+                                    "summary": {
+                                        "count": 26,
+                                        "balance": 38142.8,
+                                        "lastOccurrence": "2025-10-06",
+                                        "firstOccurrence": "2022-06-13"
+                                    },
+                                    "notaryResponse": [
+                                        {
+                                            "city": "SAO JOSE DO RIO PRETO",
+                                            "cadus": "A451148771",
+                                            "amount": 1366.83,
+                                            "dispute": {
+                                                "disputeIndicativeFlag": false
+                                            },
+                                            "federalUnit": "SP",
+                                            "officeNumber": "01",
+                                            "inclusionDate": "2025-10-23",
+                                            "occurrenceDate": "2025-10-06"
+                                        },
+                                        {
+                                            "city": "SAO JOSE DO RIO PRETO",
+                                            "cadus": "A446443869",
+                                            "amount": 14022.49,
+                                            "dispute": {
+                                                "disputeIndicativeFlag": false
+                                            },
+                                            "federalUnit": "SP",
+                                            "officeNumber": "01",
+                                            "inclusionDate": "2025-09-18",
+                                            "occurrenceDate": "2025-09-02"
+                                        },
+                                        {
+                                            "city": "SAO JOSE DO RIO PRETO",
+                                            "cadus": "A435285839",
+                                            "amount": 3385.64,
+                                            "dispute": {
+                                                "disputeIndicativeFlag": false
+                                            },
+                                            "federalUnit": "SP",
+                                            "officeNumber": "02",
+                                            "inclusionDate": "2025-06-23",
+                                            "occurrenceDate": "2025-06-05"
+                                        },
+                                        {
+                                            "city": "SAO JOSE DO RIO PRETO",
+                                            "cadus": "A408874524",
+                                            "amount": 3515.3,
+                                            "dispute": {
+                                                "disputeIndicativeFlag": false
+                                            },
+                                            "federalUnit": "SP",
+                                            "officeNumber": "02",
+                                            "inclusionDate": "2024-10-21",
+                                            "occurrenceDate": "2024-10-04"
+                                        },
+                                        {
+                                            "city": "SAO JOSE DO RIO PRETO",
+                                            "cadus": "A400064917",
+                                            "amount": 299,
+                                            "dispute": {
+                                                "disputeIndicativeFlag": false
+                                            },
+                                            "federalUnit": "SP",
+                                            "officeNumber": "02",
+                                            "inclusionDate": "2024-07-17",
+                                            "occurrenceDate": "2024-06-28"
+                                        }
+                                    ]
+                                },
+                                "collectionRecords": {
+                                    "summary": {
+                                        "count": 0,
+                                        "balance": 0
+                                    },
+                                    "collectionRecordsResponse": []
+                                }
+                            },
+                            "registration": {
+                                "birthDate": "1992-11-11",
+                                "motherName": "ROSANGELA VALENTIM DE SOUZA",
+                                "statusDate": "2026-06-04",
+                                "consumerName": "MAYCON VALENTIM PEREIRA",
+                                "documentNumber": "40509131867",
+                                "statusRegistration": "REGULAR"
+                            },
+                            "negativeSummary": {}
+                        }
+                    ]
+                },
+                "error": null,
+                "score": 0
+            }
+        ],
+        "status": "partial",
+        "boaVista": {
+            "risk": "Baixo",
+            "score": 573,
+            "riskRaw": "DE CADA 100 EMPRESAS CLASSIFICADAS NESTA CLASSE DE SCORE, E PROVAVEL QUE 18APRESENTEM DEBITOS NO MERCADO NOS PROXIMOS 12 MESES.",
+            "provider": "apifull",
+            "informant": "BASE III",
+            "scoreText": "DE CADA 100 EMPRESAS CLASSIFICADAS NESTA CLASSE DE SCORE, E PROVAVEL QUE 18APRESENTEM DEBITOS NO MERCADO NOS PROXIMOS 12 MESES.",
+            "scoreType": "SCORE RISCO 12 MESES",
+            "classification": "C",
+            "previousQueries": [],
+            "defaultProbability": "18,0%",
+            "classificationNumber": "8"
+        },
+        "scrBacen": {
+            "retorno": {
+                "score": "0",
+                "faixaRisco": "Risco Altíssimo",
+                "riscoTotal": null,
+                "modalidades": [],
+                "carteiraCredito": {
+                    "total": null,
+                    "limite": null,
+                    "vencer": null,
+                    "vencido": null,
+                    "prejuizo": null
+                },
+                "numeroHistorico": null,
+                "scoreObservacao": null,
+                "obrigacaoAssumida": "R$ 0,00",
+                "obrigacaoResumida": "R$ 0,00",
+                "documentoConsultado": "40.120.281/0001-30",
+                "quantidadeOperacoes": 0,
+                "riscoIndiretoVendor": "R$ 0,00",
+                "responsabilidadeTotal": "R$ 0,00",
+                "quantidadeInstituicoes": 0,
+                "dataInicioRelacionamento": null,
+                "percentualVolumeProcessado": "0,00%",
+                "quantidadeOperacoesSubjudice": 0,
+                "percentualDocumentoProcessado": "93,25%",
+                "responsabilidadeTotalSubJudice": "R$ 0,00",
+                "quantidadeOperacoesDiscordancia": 0,
+                "responsabilidadeTotalDiscordancia": "R$ 0,00"
+            },
+            "metaDados": {
+                "ip": "18.231.189.225",
+                "data": "18/06/2026 15:54:14",
+                "chave": "CNPJ=40120281000130;",
+                "usuario": "Caio Ribeiro",
+                "mensagem": "Sucesso",
+                "apiVersao": "v3",
+                "resultado": "Sucesso",
+                "assincrono": false,
+                "consultaUid": "direct-d4065b7d-e74e-4679-9485-13e3f2f040d2",
+                "resultadoId": 1,
+                "consultaNome": "SCR Detalhada - Resumo BACEN",
+                "enviarCallback": false,
+                "urlComprovante": null,
+                "tempoExecucaoMs": 3961,
+                "gerarComprovante": false
+            }
+        },
+        "queryType": "radar-pronampe-pj",
+        "recomenda": {
+            "code": 200,
+            "data": {
+                "cnpj": "40120281000130",
+                "score": {
+                    "taxa": null,
+                    "serasaScore": "2"
+                },
+                "criacao": "2026-06-18T15:54:12.077-03:00",
+                "politica": 1,
+                "enderecos": [
+                    {
+                        "uf": "SP",
+                        "cep": "15091450",
+                        "ddd": "17",
+                        "cidade": "SAO JOSE DO RIO PRETO",
+                        "endereco": "AV PRES JUSCELINO KUBITSCHEK DE OLIVEIRA 1540 QUADRA02A LT",
+                        "telefone": "981964120"
+                    }
+                ],
+                "tipoVenda": "Cliente Novo",
+                "razaoSocial": "COLABONI RIO PRETO SERVICOS AUTOMOTORES LTDA ME",
+                "codTipoVenda": 1,
+                "codNivelRisco": 5,
+                "mensagemScore": "DEFAULT - CESTA DE EVENTOS RELEVANTES",
+                "valorOperacao": 1000,
+                "numeroProposta": "EOA1000035809574",
+                "orientacaoVenda": "",
+                "quadroSocietario": [
+                    {
+                        "documento": "40509131867",
+                        "tipoPessoa": "F",
+                        "codSituacao": null,
+                        "dataEntrada": "2023-10-02",
+                        "percCapital": 100,
+                        "flagRestricao": "S",
+                        "percCapitalVotante": 0
+                    },
+                    {
+                        "documento": "40509131867",
+                        "tipoPessoa": "F",
+                        "codSituacao": null,
+                        "dataEntrada": "2023-10-02",
+                        "percCapital": 0,
+                        "flagRestricao": "S",
+                        "percCapitalVotante": 0
+                    },
+                    {
+                        "documento": "",
+                        "tipoPessoa": "",
+                        "codSituacao": null,
+                        "dataEntrada": null,
+                        "percCapital": 0,
+                        "flagRestricao": "N",
+                        "percCapitalVotante": 0
+                    }
+                ],
+                "tipoRecomendacao": "3",
+                "chequesDevolvidos": [
+                    {
+                        "chequesSustados": [],
+                        "chequesSemFundos": []
+                    }
+                ],
+                "anotacoesCompletas": [
+                    {
+                        "acao": {
+                            "anoFinal": null,
+                            "mesFinal": null,
+                            "anoInicial": null,
+                            "mesInicial": null,
+                            "valorTotalAcao": null,
+                            "quantidadeTotalAcao": 0
+                        },
+                        "falencias": [],
+                        "acoesJudiciais": [],
+                        "anoFinalFalencia": null,
+                        "mesFinalFalencia": null,
+                        "anoInicialFalencia": null,
+                        "mesInicialFalencia": null,
+                        "valorTotalFalencia": 0,
+                        "falenciasConcordatas": [],
+                        "dataUltimaOcorFalencia": null,
+                        "quantidadeTotalFalencia": 0,
+                        "dataPrimeiraOcorFalencia": null,
+                        "anoFinalFalenciaConcordata": null,
+                        "mesFinalFalenciaConcordata": null,
+                        "anoInicialFalenciaConcordata": null,
+                        "mesInicialFalenciaConcordata": null,
+                        "valorTotalFalenciaConcordata": 0,
+                        "quantidadeTotalFalenciaConcordata": 0
+                    }
+                ],
+                "anotacoesNegativas": [
+                    {
+                        "pefins": null,
+                        "refins": null,
+                        "protestos": [
+                            {
+                                "data": "2025-09-02T03:00:00.000+00:00",
+                                "valor": 14022,
+                                "cidade": "SAO JOSE DO RIO PRETO",
+                                "cartorio": "1"
+                            },
+                            {
+                                "data": "2025-06-05T03:00:00.000+00:00",
+                                "valor": 3386,
+                                "cidade": "SAO JOSE DO RIO PRETO",
+                                "cartorio": "2"
+                            },
+                            {
+                                "data": "2024-07-15T03:00:00.000+00:00",
+                                "valor": 4500,
+                                "cidade": "SAO JOSE DO RIO PRETO",
+                                "cartorio": "1"
+                            },
+                            {
+                                "data": "2024-06-15T03:00:00.000+00:00",
+                                "valor": 4500,
+                                "cidade": "SAO JOSE DO RIO PRETO",
+                                "cartorio": "2"
+                            },
+                            {
+                                "data": "2024-05-15T03:00:00.000+00:00",
+                                "valor": 4500,
+                                "cidade": "SAO JOSE DO RIO PRETO",
+                                "cartorio": "2"
+                            }
+                        ],
+                        "dividasVencidas": null,
+                        "valorTotalPefin": null,
+                        "valorTotalRefin": null,
+                        "valorTotalProtesto": 48867,
+                        "quantidadeTotalPefin": 0,
+                        "quantidadeTotalRefin": 0,
+                        "quantidadeTotalProtesto": 27,
+                        "valorTotalDividaVencida": null,
+                        "dataUltimaOcorrenciaPefin": null,
+                        "dataUltimaOcorrenciaRefin": null,
+                        "dataUltimaOcorrenciaProtesto": "2025-09-02T03:00:00.000+00:00",
+                        "quantidadeTotalDividaVencida": 0,
+                        "dataUltimaOcorrenciaDividaVencida": null
+                    }
+                ],
+                "anotacaoConsultaSpc": {
+                    "anotacoesSpc": [],
+                    "consultasSpc": [],
+                    "m0ConsultasSPC": 0,
+                    "m1ConsultasSPC": 0,
+                    "m2ConsultasSPC": 0,
+                    "m3ConsultasSPC": 0,
+                    "totalConsultas": 0,
+                    "ano0ConsultasSPC": 26,
+                    "ano1ConsultasSPC": 26,
+                    "ano2ConsultasSPC": 26,
+                    "ano3ConsultasSPC": 26,
+                    "mes0ConsultasSPC": 6,
+                    "mes1ConsultasSPC": 5,
+                    "mes2ConsultasSPC": 4,
+                    "mes3ConsultasSPC": 3,
+                    "valorTotalAnotacoesSPC": 0,
+                    "quantidadeTotalAnotacoesSPC": 0
+                },
+                "criteriosAnalisados": {
+                    "cnpjAtivo": true,
+                    "statusReceita": true,
+                    "tempoFundacao": true,
+                    "semRestritivoAtivo": false
+                },
+                "faturamentoEstimado": 150000,
+                "informacoesAdicionais": {
+                    "recomendaCompleto": false,
+                    "anotacoesCompletas": true,
+                    "faturamentoEstimado": true,
+                    "anotacoesConsultasSPC": true,
+                    "consultasDetalhadasSerasa": true,
+                    "historicoPagamentoComercial": true,
+                    "quadroSocietarioMaisCompleto": true,
+                    "historicoPagamentoFinanceiroBasico": true
+                },
+                "tipoRecomendacaoVenda": "Negocie à vista ou\nno cartão de crédito",
+                "identificacaoCadastral": {
+                    "razaoSocial": "COLABONI RIO PRETO SERVICOS AUTOMOTORES LTDA ME",
+                    "dataFundacao": "2020-12-15T00:00:00.000+00:00",
+                    "inscricaoEstatual": "124184690113",
+                    "situacaoCadastral": "ATIVA"
+                },
+                "valorLimiteRecomendado": 0,
+                "quadroSocietarioCompleto": [
+                    {
+                        "nome": "MAYCON VALENTIM PEREIRA",
+                        "cargo": null,
+                        "junta": null,
+                        "vinculo": "SOCIO(A) / ADMINISTRADOR(A)",
+                        "endereco": {
+                            "uf": "SP",
+                            "cep": "15015400",
+                            "bairro": "CENTRO",
+                            "cidade": "SAO JOSE DO RIO PRETO",
+                            "logradouro": "R GEN GLICERIO 4079"
+                        },
+                        "fundacao": null,
+                        "telefone": "1732250556",
+                        "documento": "40509131867",
+                        "descOrigem": "BRASIL",
+                        "fimMandato": null,
+                        "identidade": "",
+                        "estadoCivil": null,
+                        "capitalTotal": 100,
+                        "descNatureza": "FECHADO",
+                        "naturalidade": null,
+                        "inicioMandato": null,
+                        "nacionalidade": "",
+                        "tipoDocumento": "F",
+                        "capitalVotante": 0,
+                        "entradaSociedade": "2023-10-02T03:00:00.000+00:00",
+                        "descNacionalidade": "",
+                        "anotacoesNegativas": [
+                            {
+                                "valorTotalAcao": 0,
+                                "valorTotalPefin": 0,
+                                "valorTotalRefin": 2681,
+                                "valorTotalFalencia": 0,
+                                "valorTotalProtesto": 38142,
+                                "quantidadeTotalAcao": 0,
+                                "quantidadeTotalPefin": 0,
+                                "quantidadeTotalRefin": 1,
+                                "quantidadeTotalFalencia": 0,
+                                "quantidadeTotalProtesto": 26,
+                                "valorTotalChequeSustado": 0,
+                                "valorTotalDividaVencida": 0,
+                                "dataUltimaOcorrenciaAcao": null,
+                                "dataUltimaOcorrenciaPefin": null,
+                                "dataUltimaOcorrenciaRefin": "2024-12-05T03:00:00.000+00:00",
+                                "valorTotalChequeSemFundos": 0,
+                                "dataUltimaOcorrenciaFalencia": null,
+                                "dataUltimaOcorrenciaProtesto": "2025-10-06T03:00:00.000+00:00",
+                                "quantidadeTotalChequeSustado": 0,
+                                "quantidadeTotalDividaVencida": 0,
+                                "quantidadeTotalChequeSemFundos": 0,
+                                "dataUltimaOcorrenciaChequeSustado": null,
+                                "dataUltimaOcorrenciaDividaVencida": null,
+                                "dataUltimaOcorrenciaChequeSemFundos": null
+                            }
+                        ],
+                        "valorCapitalSocial": 15000,
+                        "valorCapitalRealizado": 15000
+                    },
+                    {
+                        "nome": "MAYCON VALENTIM PEREIRA",
+                        "cargo": "ADMINISTR",
+                        "junta": null,
+                        "vinculo": "SOCIO(A) / ADMINISTRADOR(A)",
+                        "endereco": {
+                            "uf": "SP",
+                            "cep": "15015400",
+                            "bairro": "CENTRO",
+                            "cidade": "SAO JOSE DO RIO PRETO",
+                            "logradouro": "R GEN GLICERIO 4079"
+                        },
+                        "fundacao": null,
+                        "telefone": "1732250556",
+                        "documento": "40509131867",
+                        "descOrigem": null,
+                        "fimMandato": null,
+                        "identidade": "",
+                        "estadoCivil": "",
+                        "capitalTotal": 0,
+                        "descNatureza": null,
+                        "naturalidade": null,
+                        "inicioMandato": "2023-10-02",
+                        "nacionalidade": "",
+                        "tipoDocumento": "F",
+                        "capitalVotante": 0,
+                        "entradaSociedade": "2023-10-02T03:00:00.000+00:00",
+                        "descNacionalidade": "",
+                        "anotacoesNegativas": [
+                            {
+                                "valorTotalAcao": 0,
+                                "valorTotalPefin": 0,
+                                "valorTotalRefin": 2681,
+                                "valorTotalFalencia": 0,
+                                "valorTotalProtesto": 38142,
+                                "quantidadeTotalAcao": 0,
+                                "quantidadeTotalPefin": 0,
+                                "quantidadeTotalRefin": 1,
+                                "quantidadeTotalFalencia": 0,
+                                "quantidadeTotalProtesto": 26,
+                                "valorTotalChequeSustado": 0,
+                                "valorTotalDividaVencida": 0,
+                                "dataUltimaOcorrenciaAcao": null,
+                                "dataUltimaOcorrenciaPefin": null,
+                                "dataUltimaOcorrenciaRefin": "2024-12-05T03:00:00.000+00:00",
+                                "valorTotalChequeSemFundos": 0,
+                                "dataUltimaOcorrenciaFalencia": null,
+                                "dataUltimaOcorrenciaProtesto": "2025-10-06T03:00:00.000+00:00",
+                                "quantidadeTotalChequeSustado": 0,
+                                "quantidadeTotalDividaVencida": 0,
+                                "quantidadeTotalChequeSemFundos": 0,
+                                "dataUltimaOcorrenciaChequeSustado": null,
+                                "dataUltimaOcorrenciaDividaVencida": null,
+                                "dataUltimaOcorrenciaChequeSemFundos": null
+                            }
+                        ],
+                        "valorCapitalSocial": 0,
+                        "valorCapitalRealizado": 0
+                    }
+                ],
+                "consultasDetalhadasSerasa": {
+                    "consultasSerasa": [
+                        {
+                            "consultasDia": 1,
+                            "dataConsulta": "2025-11-27T03:00:00.000+00:00",
+                            "tipoConsulta": 0,
+                            "cnpjConsultante": "10440482000154",
+                            "razaoSocialConsultante": "GETNET ADQUIRENCIA E SERVICOS PARA MEIOS DE PAGAMENTO S.A. INSTITUICAO DE PAGAMENTO"
+                        },
+                        {
+                            "consultasDia": 1,
+                            "dataConsulta": "2025-11-19T03:00:00.000+00:00",
+                            "tipoConsulta": 0,
+                            "cnpjConsultante": "01027058000191",
+                            "razaoSocialConsultante": "CIELO S.A - INSTITUICAO DE PAGAMENTO"
+                        },
+                        {
+                            "consultasDia": 1,
+                            "dataConsulta": "2025-11-14T03:00:00.000+00:00",
+                            "tipoConsulta": 0,
+                            "cnpjConsultante": "60005881000165",
+                            "razaoSocialConsultante": "SINDICATO DO COMERCIO VAREJISTA D SAO JOSE DO RIO PRETO"
+                        }
+                    ],
+                    "totalConsultasEmpresa6M": 0,
+                    "totalConsultasFinanceira6M": 0,
+                    "totalizadorConsultasSerasa": [
+                        {
+                            "anoConsulta": "26",
+                            "mesConsulta": "6",
+                            "descricaoMes": "JUN",
+                            "quantidadePorEmpresa": 0,
+                            "quantidadePorFinaceira": 0
+                        },
+                        {
+                            "anoConsulta": "26",
+                            "mesConsulta": "5",
+                            "descricaoMes": "MAI",
+                            "quantidadePorEmpresa": 0,
+                            "quantidadePorFinaceira": 0
+                        },
+                        {
+                            "anoConsulta": "26",
+                            "mesConsulta": "4",
+                            "descricaoMes": "ABR",
+                            "quantidadePorEmpresa": 0,
+                            "quantidadePorFinaceira": 0
+                        },
+                        {
+                            "anoConsulta": "26",
+                            "mesConsulta": "3",
+                            "descricaoMes": "MAR",
+                            "quantidadePorEmpresa": 0,
+                            "quantidadePorFinaceira": 0
+                        },
+                        {
+                            "anoConsulta": "26",
+                            "mesConsulta": "2",
+                            "descricaoMes": "FEV",
+                            "quantidadePorEmpresa": 0,
+                            "quantidadePorFinaceira": 0
+                        },
+                        {
+                            "anoConsulta": "26",
+                            "mesConsulta": "1",
+                            "descricaoMes": "JAN",
+                            "quantidadePorEmpresa": 0,
+                            "quantidadePorFinaceira": 0
+                        }
+                    ]
+                },
+                "historicoPagamentoComercial": {
+                    "mensagem": [],
+                    "compromisso": [
+                        {
+                            "valorDe": 0,
+                            "codFaixa": "",
+                            "valorAte": 0,
+                            "percentualAVista": 0,
+                            "percentualParcelado": 0
+                        },
+                        {
+                            "valorDe": 0,
+                            "codFaixa": "",
+                            "valorAte": 0,
+                            "percentualAVista": 0,
+                            "percentualParcelado": 0
+                        },
+                        {
+                            "valorDe": 0,
+                            "codFaixa": "",
+                            "valorAte": 0,
+                            "percentualAVista": 0,
+                            "percentualParcelado": 0
+                        },
+                        {
+                            "valorDe": 0,
+                            "codFaixa": "",
+                            "valorAte": 0,
+                            "percentualAVista": 0,
+                            "percentualParcelado": 0
+                        },
+                        {
+                            "valorDe": 0,
+                            "codFaixa": "",
+                            "valorAte": 0,
+                            "percentualAVista": 0,
+                            "percentualParcelado": 0
+                        }
+                    ],
+                    "pontualidade": [
+                        {
+                            "valorDe": 0,
+                            "codFaixa": "",
+                            "valorAte": 0,
+                            "percentualAtraso": 0,
+                            "percentualPontual": 0
+                        }
+                    ]
+                },
+                "mensagemFaturamentoEstimado": "O resultado é calculado por meio de técnicas estatísticas que utilizam informações cadastrais e comportamentais da empresa.",
+                "historicoPagamentoFinanceiroBasico": {
+                    "mensagemFeature": [],
+                    "valorETotalCompromissos": [
+                        {
+                            "quantidade": "",
+                            "valorTotal": "",
+                            "codFaixaTotal": "",
+                            "codFaixaQuantidade": ""
+                        }
+                    ],
+                    "pontualidadeContratosAtivos": [],
+                    "percentualParcelasCompromissos": [],
+                    "mensagemPontualidadeContratoAtivos": []
+                }
+            },
+            "message": "sucesso"
+        },
+        "serproCnd": {
+            "mensagem": "Processamento OK - Certidão Não Emitida. Situação Cadastral Impeditiva.",
+            "statusSerpro": 4
+        },
+        "serproCnpj": {
+            "ni": "40120281000130",
+            "porte": "01",
+            "socios": [
+                {
+                    "cpf": "40509131867",
+                    "nome": "MAYCON VALENTIM PEREIRA",
+                    "pais": {
+                        "codigo": "105",
+                        "descricao": "BRASIL"
+                    },
+                    "tipoSocio": "2",
+                    "dataInclusao": "2023-10-02",
+                    "qualificacao": "49",
+                    "representanteLegal": {
+                        "cpf": "00000000000",
+                        "nome": "",
+                        "qualificacao": "00"
+                    }
+                }
+            ],
+            "endereco": {
+                "uf": "SP",
+                "cep": "15091450",
+                "pais": {
+                    "codigo": "105",
+                    "descricao": "BRASIL"
+                },
+                "bairro": "JARDIM TARRAF II",
+                "numero": "1540",
+                "municipio": {
+                    "codigo": "7097",
+                    "descricao": "SAO JOSE DO RIO PRETO"
+                },
+                "logradouro": "PRESIDENTE JUSCELINO KUBITSCHEK DE OLIVEIRA",
+                "complemento": "QUADRA02A LOTE 01 A 08",
+                "tipoLogradouro": "AVENIDA"
+            },
+            "telefones": [
+                {
+                    "ddd": "17",
+                    "numero": "81964120"
+                }
+            ],
+            "dataAbertura": "2020-12-15",
+            "nomeFantasia": "",
+            "capitalSocial": 1500000,
+            "cnaePrincipal": {
+                "codigo": "4520005",
+                "descricao": "Serviços de lavagem, lubrificação e polimento de veículos automotores"
+            },
+            "cnaeSecundarias": [
+                {
+                    "codigo": "4520002",
+                    "descricao": "Serviços de lanternagem ou funilaria e pintura de veículos automotores"
+                },
+                {
+                    "codigo": "4530703",
+                    "descricao": "Comércio a varejo de peças e acessórios novos para veículos automotores"
+                },
+                {
+                    "codigo": "4789005",
+                    "descricao": "Comércio varejista de produtos saneantes domissanitários"
+                }
+            ],
+            "nomeEmpresarial": "COLABONI RIO PRETO SERVICOS AUTOMOTORES LTDA",
+            "naturezaJuridica": {
+                "codigo": "2062",
+                "descricao": "Sociedade Empresária Limitada"
+            },
+            "situacaoEspecial": "",
+            "correioEletronico": "MAYCONVALENTIM196@GMAIL.COM",
+            "situacaoCadastral": {
+                "data": "2026-06-18",
+                "codigo": "4",
+                "motivo": "Omissão De Declarações"
+            },
+            "municipioJurisdicao": {
+                "codigo": "0810700",
+                "descricao": "SÃO JOSÉ DO RIO PRETO"
+            },
+            "tipoEstabelecimento": "1",
+            "dataSituacaoEspecial": "",
+            "informacoesAdicionais": {
+                "optanteMei": "NÃO",
+                "optanteSimples": "NÃO",
+                "listaPeriodosSimples": [
+                    {
+                        "dataFim": "2023-12-31",
+                        "dataInicio": "2020-12-15"
+                    }
+                ]
+            }
+        },
+        "generatedAt": "2026-06-18T18:54:34.361Z",
+        "dadosAvulsos": {
+            "gastoEstimadoPositivo": 450000,
+            "capacidadeMensalPagamento": null
+        },
+        "cadastroPjPlus": {
+            "retorno": {
+                "cnpj": "40.120.281/0001-30",
+                "ramo": null,
+                "porte": "MICRO EMPRESA",
+                "emails": [
+                    {
+                        "enderecoEmail": "mayconvalentim196@gmail.com"
+                    },
+                    {
+                        "enderecoEmail": "iago@aclari.com.br"
+                    },
+                    {
+                        "enderecoEmail": "legal@velani.com.br"
+                    }
+                ],
+                "matriz": true,
+                "socios": [
+                    {
+                        "nome": "MAYCON VALENTIM PEREIRA",
+                        "cargo": "Sócio Administrador",
+                        "documento": "405.091.318-67",
+                        "dataEntrada": "02/10/2023 00:00:00"
+                    }
+                ],
+                "filiais": [],
+                "opcaoMEI": "NÃO",
+                "enderecos": [
+                    {
+                        "uf": "SP",
+                        "cep": "15091-450",
+                        "bairro": "JARDIM TARRAF II",
+                        "cidade": "SAO JOSE DO RIO PRETO",
+                        "numero": "1540",
+                        "logradouro": "PRESIDENTE JUSCELINO KUBITSCHEK DE OLIVEIRA",
+                        "complemento": "QUADRA02A     LOTE 01 A 08"
+                    }
+                ],
+                "telefones": [
+                    {
+                        "whatsApp": null,
+                        "operadora": null,
+                        "tipoTelefone": "TELEFONE RESIDENCIAL",
+                        "telefoneComDDD": "(17) 32017777",
+                        "telemarketingBloqueado": null
+                    },
+                    {
+                        "whatsApp": null,
+                        "operadora": null,
+                        "tipoTelefone": "TELEFONE MÓVEL",
+                        "telefoneComDDD": "(17) 981964120",
+                        "telemarketingBloqueado": null
+                    }
+                ],
+                "cnaeCodigo": 4520005,
+                "tributacao": null,
+                "razaoSocial": "COLABONI RIO PRETO SERVICOS AUTOMOTORES LTDA",
+                "tipoEmpresa": "LTDA",
+                "dataFundacao": "15/12/2020 00:00:00",
+                "nomeFantasia": null,
+                "opcaoSimples": "NÃO",
+                "orgaoPublico": null,
+                "cnaeDescricao": "Serviços de lavagem, lubrificação e polimento de veículos automotores",
+                "cnaEsSecundarios": [],
+                "faixaFaturamento": "R$ 270.000 até R$ 360.000",
+                "situacaoEspecial": null,
+                "faixaFuncionarios": "Até 9 Funcionários",
+                "quantidadeFiliais": "0 até 1 filial",
+                "situacaoCadastral": "ATIVA",
+                "ultimaAtualizacaoPJ": null,
+                "faturamentoMedioCNAE": "R$ 186.178,04",
+                "faturamentoPresumido": "R$ 292.797,48",
+                "naturezaJuridicaTipo": null,
+                "naturezaJuridicaCodigo": 2062,
+                "quantidadeFuncionarios": null,
+                "naturezaJuridicaDescricao": "Sociedade Empresária Limitada"
+            },
+            "metaDados": {
+                "ip": "18.229.142.218",
+                "data": "18/06/2026 15:54:14",
+                "chave": "CNPJ=40120281000130;",
+                "usuario": "Caio Ribeiro",
+                "mensagem": "Sucesso",
+                "apiVersao": "v3",
+                "resultado": "Sucesso",
+                "assincrono": false,
+                "consultaUid": "direct-0d6f5a77-cc6c-437e-b2ef-770893fb5d38",
+                "resultadoId": 1,
+                "consultaNome": "Cadastro - Pessoa Jurídica - Plus",
+                "enviarCallback": false,
+                "urlComprovante": null,
+                "tempoExecucaoMs": 2740,
+                "gerarComprovante": false
+            }
+        },
+        "processosJudiciais": null
+    },
+    "save_to_history": true,
+    "ip_address": null,
+    "user_agent": null,
+    "credits_used": 1,
+    "apis_consulted": null,
+    "api_token_id": null,
+    "api_branding": null,
+    "transaction_id": null,
+    "refund_needed_cents": null,
+    "refund_attempts": 0,
+    "last_refund_attempt_at": null,
+    "refund_completed_at": null,
+    "tenant_id": "00000000-0000-0000-0000-000000000001",
+    "parent_consultation_id": null,
+    "credit_model_version": null,
+    "consultation_events": []
+}
