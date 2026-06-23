@@ -3,6 +3,9 @@ FROM node:20-alpine AS build
 
 WORKDIR /app
 
+# Pula o download do Chromium do Puppeteer no build para acelerar e economizar espaço
+ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
+
 # Copia os arquivos de definição de dependências
 COPY package*.json ./
 
@@ -28,6 +31,19 @@ WORKDIR /app
 
 # Define a variável de ambiente para produção
 ENV NODE_ENV=production
+
+# Instala o Chromium e fontes necessárias para renderização perfeita do PDF no Alpine
+RUN apk add --no-cache \
+      chromium \
+      nss \
+      freetype \
+      harfbuzz \
+      ca-certificates \
+      ttf-freefont
+
+# Configura o Puppeteer para usar o Chromium instalado do sistema
+ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true \
+    PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser
 
 # Copia as definições de dependências
 COPY package*.json ./
