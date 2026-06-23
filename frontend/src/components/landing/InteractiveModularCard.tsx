@@ -147,8 +147,8 @@ export function InteractiveModularCard({
       }}
       className={`relative select-none border interactive-modular-card group/card ${
         isActive
-          ? "border-brand bg-card/98 dark:bg-stone-950/98 shadow-[0_0_24px_color-mix(in srgb, var(--brand) 22%, transparent)] scale-[1.01]"
-          : "border-hairline bg-card/98 dark:bg-stone-950/98 backdrop-blur-md"
+          ? "border-brand bg-card/98 dark:bg-card/98 shadow-[0_0_24px_color-mix(in srgb, var(--brand) 22%, transparent)] scale-[1.01]"
+          : "border-hairline bg-card/98 dark:bg-card/98 backdrop-blur-md"
       } ${isDragging ? "cursor-grabbing" : isHovered ? (useDragHandle ? "cursor-default" : "cursor-grab") : ""} ${className}`}
     >
       {/* Scanner vertical individual de fundo quando ativo ou showScanner for requisitado */}

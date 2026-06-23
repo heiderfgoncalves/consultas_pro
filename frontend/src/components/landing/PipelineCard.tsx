@@ -142,7 +142,7 @@ export function PipelineCard({ activeStepIndex, setActiveStepIndex }: PipelineCa
                       <div className={`flex h-10 w-10 items-center justify-center rounded-sm border relative overflow-hidden transition-all duration-500 ${
                         isActive
                           ? "border-brand/60 bg-brand/10 dark:bg-black text-brand shadow-[0_0_20px_-2px_color-mix(in_srgb,var(--brand),transparent)]"
-                          : "border-stone-200 dark:border-stone-800/80 bg-stone-100 dark:bg-stone-950 text-stone-500 dark:text-stone-500 group-hover/card:border-stone-400 group-hover/card:dark:border-stone-500 group-hover/card:text-stone-800 group-hover/card:dark:text-stone-300"
+                          : "border-stone-200 dark:border-border/80 bg-stone-100 dark:bg-muted text-stone-500 dark:text-muted-foreground group-hover/card:border-stone-400 group-hover/card:dark:border-accent group-hover/card:text-stone-800 group-hover/card:dark:text-foreground"
                       }`}>
                         {isActive && (
                           <>

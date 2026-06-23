@@ -209,8 +209,8 @@ export function WorkflowSplit() {
                           value={s}
                           className={`group/step relative flex items-center gap-5 pl-1 py-3.5 pr-4 rounded-lg cursor-grab active:cursor-grabbing transition-all duration-300 z-10 ${
                             isActive
-                              ? "border border-brand bg-card/96 dark:bg-stone-950/96 shadow-[0_0_24px_color-mix(in_srgb,_var(--brand)_12%,_transparent)] scale-[1.015]"
-                              : "border border-hairline/40 bg-card/90 dark:bg-stone-950/90 hover:bg-accent/40 hover:border-brand/20"
+                              ? "border border-brand bg-card/96 dark:bg-card/96 shadow-[0_0_24px_color-mix(in_srgb,_var(--brand)_12%,_transparent)] scale-[1.015]"
+                              : "border border-hairline/40 bg-card/90 dark:bg-card/90 hover:bg-accent/40 hover:border-brand/20"
                           }`}
                         >
                           {/* Linha horizontal conectora da linha vertical ao bloco numérico */}
@@ -218,7 +218,7 @@ export function WorkflowSplit() {
                             className={`absolute left-4 w-6 h-[1px] transition-colors duration-500 -z-10 ${
                               idx <= activeStageIndex 
                                 ? "bg-brand shadow-[0_0_6px_var(--brand)]" 
-                                : "bg-stone-800/80 dark:bg-stone-900 group-hover/step:bg-stone-600"
+                                : "bg-stone-800/80 dark:bg-muted group-hover/step:bg-stone-600"
                             }`} 
                           />
 
@@ -237,8 +237,8 @@ export function WorkflowSplit() {
                           <div
                             className={`w-10 h-10 flex items-center justify-center shrink-0 border relative overflow-hidden transition-all duration-550 rounded-sm ml-2 z-10 ${
                               isActive
-                                ? "border-brand bg-black text-brand shadow-[0_0_20px_-2px_color-mix(in_srgb,var(--brand),transparent)] scale-110"
-                                : "border-stone-800 dark:border-stone-800/80 bg-stone-950 text-stone-500 group-hover/step:border-stone-500 group-hover/step:text-stone-300"
+                                ? "border-brand bg-background text-brand shadow-[0_0_20px_-2px_color-mix(in_srgb,var(--brand),transparent)] scale-110"
+                                : "border-stone-800 dark:border-border/80 bg-stone-950 dark:bg-muted text-stone-500 dark:text-muted-foreground group-hover/step:border-accent group-hover/step:text-foreground"
                             }`}
                           >
                             {isActive && (

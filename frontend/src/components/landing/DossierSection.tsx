@@ -114,7 +114,7 @@ export function DossierSection() {
     (
       <div 
         onClick={() => setActiveImageIndex(0)}
-        className="flex flex-col h-full w-full bg-card dark:bg-slate-900 border border-brand/20 p-4 text-left select-none relative overflow-hidden group cursor-target"
+        className="flex flex-col h-full w-full bg-card dark:bg-muted border border-brand/20 p-4 text-left select-none relative overflow-hidden group cursor-target"
       >
         {/* Marca d'água de fundo */}
         <div className="absolute right-2 bottom-2 opacity-5 text-brand pointer-events-none">
@@ -153,7 +153,7 @@ export function DossierSection() {
     (
       <div 
         onClick={() => setActiveImageIndex(1)}
-        className="flex flex-col h-full w-full bg-card dark:bg-slate-950 border border-brand/20 p-4 text-left select-none relative overflow-hidden group cursor-target"
+        className="flex flex-col h-full w-full bg-card dark:bg-card border border-brand/20 p-4 text-left select-none relative overflow-hidden group cursor-target"
       >
         <div className="absolute right-2 bottom-2 opacity-5 text-brand pointer-events-none">
           <ShieldAlert size={120} />
@@ -191,7 +191,7 @@ export function DossierSection() {
     (
       <div 
         onClick={() => setActiveImageIndex(2)}
-        className="flex flex-col h-full w-full bg-card dark:bg-slate-900 border border-brand/20 p-4 text-left select-none relative overflow-hidden group cursor-target"
+        className="flex flex-col h-full w-full bg-card dark:bg-muted border border-brand/20 p-4 text-left select-none relative overflow-hidden group cursor-target"
       >
         <div className="flex items-center justify-between border-b border-hairline pb-2 mb-3">
           <span className="mono text-[8px] tracking-[0.2em] text-brand uppercase font-bold">Orquestração Multi-API</span>
@@ -287,7 +287,7 @@ export function DossierSection() {
                     >
                       <div
                         onClick={() => setActiveImageIndex(idx)}
-                        className="group relative bg-card/85 dark:bg-[#090e18]/85 border border-hairline hover:border-brand/40 rounded-lg p-5 text-left transition-all duration-300 flex flex-col justify-between cursor-pointer cursor-target shadow-lg shadow-black/10 select-none h-[420px] md:h-[530px]"
+                        className="group relative bg-card/85 dark:bg-card/85 border border-hairline hover:border-brand/40 rounded-lg p-5 text-left transition-all duration-300 flex flex-col justify-between cursor-pointer cursor-target shadow-lg shadow-black/10 select-none h-[420px] md:h-[530px]"
                       >
                         {/* Glow interno sutil na cor do tema */}
                         <div className="absolute inset-0 bg-brand/[0.01] group-hover:bg-brand/[0.04] transition-colors duration-300 rounded-lg" />

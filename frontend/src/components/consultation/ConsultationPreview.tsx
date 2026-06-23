@@ -526,8 +526,8 @@ ${parentStyles}
       return <div className="p-8 text-center text-muted-foreground animate-pulse">Renderizando visualização prévia...</div>;
     }
 
-    const bgIframe = isDark ? '#0f172a' : '#f1f5f9';
-    const colorIframe = isDark ? '#f8fafc' : '#0f172a';
+    const bgIframe = isDark ? '#1e1e1e' : '#f1f5f9';
+    const colorIframe = isDark ? '#dadada' : '#0f172a';
     const pageShadow = isDark 
       ? '0 10px 25px -5px rgba(0, 0, 0, 0.4), 0 8px 10px -6px rgba(0, 0, 0, 0.4)' 
       : '0 10px 25px -5px rgba(15, 23, 42, 0.08), 0 8px 10px -6px rgba(15, 23, 42, 0.08)';
@@ -599,11 +599,11 @@ ${parentStyles}
     `;
 
     return (
-      <div className={`overflow-hidden w-full relative flex-1 h-full min-h-[400px] transition-colors duration-300 ${isDark ? 'bg-slate-950' : 'bg-slate-50'}`}>
+      <div className={`overflow-hidden w-full relative flex-1 h-full min-h-[400px] transition-colors duration-300 ${isDark ? 'bg-background' : 'bg-slate-50'}`}>
         <iframe
           title="Prévia do Relatório"
           srcDoc={iframeSrcDoc}
-          className={`w-full h-full border-0 transition-colors duration-300 ${isDark ? 'bg-slate-950' : 'bg-slate-50'}`}
+          className={`w-full h-full border-0 transition-colors duration-300 ${isDark ? 'bg-background' : 'bg-slate-50'}`}
         />
         
         {/* Controle de Zoom Flutuante Premium em Glassmorphism */}

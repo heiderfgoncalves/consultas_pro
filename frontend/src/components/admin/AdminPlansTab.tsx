@@ -367,7 +367,7 @@ export function AdminPlansTab({ accessToken }: AdminPlansTabProps) {
                     )}
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">White-Label:</span>
-                      <span className={cn("font-semibold", plan.allowWhiteLabel ? "text-emerald-400" : "text-slate-400")}>
+                      <span className={cn("font-semibold", plan.allowWhiteLabel ? "text-emerald-500 dark:text-emerald-400" : "text-muted-foreground")}>
                         {plan.allowWhiteLabel ? 'Disponível' : 'Não incluso'}
                       </span>
                     </div>
@@ -553,7 +553,7 @@ export function AdminPlansTab({ accessToken }: AdminPlansTabProps) {
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="w-full max-w-xl bg-slate-900 border border-border rounded-2xl p-6 md:p-8 relative shadow-2xl overflow-hidden"
+              className="w-full max-w-xl bg-popover text-popover-foreground border border-border rounded-2xl p-6 md:p-8 relative shadow-2xl overflow-hidden"
             >
               <button 
                 onClick={() => setEditingPlan(null)}
