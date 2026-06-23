@@ -258,3 +258,35 @@
 .dark .swagger-docs-wrap .swagger-ui .curl-command .copy-to-clipboard {
   opacity: 0.85;
 }
+
+/* Correção de contraste para tags e botões do Swagger */
+.dark .swagger-docs-wrap .swagger-ui .opblock-tag,
+.dark .swagger-docs-wrap .swagger-ui .opblock-tag a,
+.dark .swagger-docs-wrap .swagger-ui .opblock-tag button,
+.dark .swagger-docs-wrap .swagger-ui .opblock-tag span {
+  color: hsl(var(--foreground)) !important;
+}
+
+.dark .swagger-docs-wrap .swagger-ui .opblock-tag:hover,
+.dark .swagger-docs-wrap .swagger-ui .opblock-tag a:hover {
+  color: hsl(var(--primary)) !important;
+}
+
+/* Correção de contraste para os caminhos de API (ex: /auth/login) */
+.dark .swagger-docs-wrap .swagger-ui .opblock .opblock-summary .opblock-summary-path,
+.dark .swagger-docs-wrap .swagger-ui .opblock .opblock-summary .opblock-summary-path a,
+.dark .swagger-docs-wrap .swagger-ui .opblock .opblock-summary .opblock-summary-path span {
+  color: hsl(var(--foreground)) !important;
+  text-decoration: none !important;
+}
+
+.dark .swagger-docs-wrap .swagger-ui .opblock .opblock-summary .opblock-summary-path:hover,
+.dark .swagger-docs-wrap .swagger-ui .opblock .opblock-summary .opblock-summary-path a:hover {
+  color: hsl(var(--primary)) !important;
+}
+
+/* Forçar a descrição da rota a respeitar a cor de muted-foreground */
+.dark .swagger-docs-wrap .swagger-ui .opblock .opblock-summary-description {
+  color: hsl(var(--muted-foreground)) !important;
+}
+
