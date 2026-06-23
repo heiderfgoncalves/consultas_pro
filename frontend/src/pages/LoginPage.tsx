@@ -134,7 +134,7 @@ export default function LoginPage() {
       <div className="hidden md:block absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[1px] h-3/5 bg-gradient-to-b from-transparent via-hairline/50 dark:via-hairline/25 to-transparent z-10 pointer-events-none" />
 
       {/* Lado Esquerdo - Painel Institucional Premium */}
-      <div className="relative hidden md:flex md:w-1/2 flex-col justify-between p-14 md:p-16 overflow-hidden md:h-screen select-none bg-[radial-gradient(circle_at_top_left,rgba(var(--color-brand-rgb),0.12),transparent_50%),radial-gradient(circle_at_bottom_right,rgba(var(--color-brand-rgb),0.03),transparent_60%)] bg-slate-50 dark:bg-[#04060d]">
+      <div className="relative hidden md:flex md:w-1/2 flex-col justify-between p-14 md:p-16 overflow-hidden md:h-screen select-none bg-[radial-gradient(circle_at_top_left,rgba(var(--color-brand-rgb),0.12),transparent_50%),radial-gradient(circle_at_bottom_right,rgba(var(--color-brand-rgb),0.03),transparent_60%)] bg-slate-50 dark:bg-[#181818]">
         {/* Background Ripple interativo do design antigo */}
         <div className="absolute inset-0 z-0 opacity-40 dark:opacity-60 pointer-events-auto">
           <BackgroundRippleEffect
@@ -326,7 +326,7 @@ export default function LoginPage() {
             {/* Google Simulation Modal */}
             <AnimatePresence>
               {showGoogleModal && (
-                <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-50 flex items-center justify-center p-4">
+                <div className="fixed inset-0 bg-background/80 backdrop-blur-md z-50 flex items-center justify-center p-4">
                   <motion.div
                     initial={{ opacity: 0, scale: 0.95 }}
                     animate={{ opacity: 1, scale: 1 }}
@@ -486,7 +486,7 @@ function Field({
           value={value}
           onChange={(e) => onChange(e.target.value)}
           placeholder={placeholder}
-          autocomplete={autocomplete}
+          autoComplete={autocomplete}
           required={required}
           className="w-full bg-transparent pl-3 pr-10 py-3 text-sm text-foreground placeholder:text-muted-foreground/45 outline-none border-none focus:ring-0"
         />

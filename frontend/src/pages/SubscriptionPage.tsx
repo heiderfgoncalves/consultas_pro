@@ -86,9 +86,7 @@ export default function SubscriptionPage() {
           title="Gestão Geral de Assinaturas" 
           subtitle="Acompanhe o faturamento recorrente (MRR), assinaturas ativas de empresas e leads comerciais da plataforma." 
         />
-        <div className="bg-card rounded-2xl border border-border p-6 shadow-sm">
-          <AdminPlansTab accessToken={accessToken} />
-        </div>
+        <AdminPlansTab accessToken={accessToken} />
       </div>
     );
   }
@@ -124,7 +122,7 @@ export default function SubscriptionPage() {
                   <span className={cn(
                     "text-xs font-semibold px-2.5 py-1 rounded-full border shadow-sm uppercase tracking-wider",
                     isIndividual 
-                      ? "bg-slate-900 border-slate-800 text-slate-400" 
+                      ? "bg-muted border-border text-muted-foreground" 
                       : "bg-primary/10 border-primary/20 text-primary"
                   )}>
                     {sub?.plan?.name || 'Individual (Grátis)'}
@@ -288,7 +286,7 @@ export default function SubscriptionPage() {
               <div className="border-t border-border pt-4 flex justify-between items-baseline">
                 <span className="text-base font-bold text-foreground">Total Esperado:</span>
                 <div className="text-right">
-                  <span className="text-2xl font-extrabold bg-clip-text text-transparent bg-gradient-to-r from-white to-slate-200">
+                  <span className="text-2xl font-extrabold text-foreground">
                     R$ {data ? Number(data.totalExpectedBill).toLocaleString('pt-BR', { minimumFractionDigits: 2 }) : '0,00'}
                   </span>
                   <span className="text-[10px] text-muted-foreground block">/período</span>

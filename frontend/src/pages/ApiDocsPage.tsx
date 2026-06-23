@@ -46,7 +46,7 @@ export default function ApiDocsPage() {
           &quot;Authorize&quot;.
         </p>
       </div>
-      <div className="rounded-lg border border-border bg-card swagger-docs-wrap">
+      <div className="rounded-lg border border-border swagger-docs-wrap">
         <Suspense
           fallback={
             <div className="p-6 text-sm text-muted-foreground">Carregando interface Swagger…</div>

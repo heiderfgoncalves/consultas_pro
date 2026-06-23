@@ -1652,7 +1652,7 @@ function WhiteLabelTab({ companies, tokens, onNavigateToTokens }: WhiteLabelTabP
                       </p>
                     </div>
 
-                    <div className="relative rounded-lg bg-zinc-950 p-4 border border-zinc-800 font-mono text-xs text-zinc-200 shadow-lg">
+                    <div className="relative rounded-lg bg-[#181818] p-4 border border-border font-mono text-xs text-zinc-200 shadow-lg">
                       <div className="flex justify-between items-center pb-2 mb-3 border-b border-zinc-800 text-zinc-500 text-[10px]">
                         <span>INTEGRAÇÃO DO WIDGET JS</span>
                         <Button
@@ -1732,7 +1732,7 @@ function WhiteLabelTab({ companies, tokens, onNavigateToTokens }: WhiteLabelTabP
                         Para desativar a injeção do CSS embutido, defina <code className="font-mono text-foreground">useDefaultStyles: false</code> no construtor do widget:
                       </p>
 
-                      <div className="rounded-lg bg-zinc-950 p-3 border border-zinc-800 font-mono text-[11px] text-zinc-300">
+                      <div className="rounded-lg bg-[#181818] p-3 border border-border font-mono text-[11px] text-zinc-300">
                         useDefaultStyles: false
                       </div>
 

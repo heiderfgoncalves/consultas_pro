@@ -131,9 +131,9 @@ function ConsultationLoadingModal({
 }) {
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!o && (status === 'completed' || status === 'error')) onClose(); }}>
-      <DialogContent showClose={false} className="max-w-md p-6 bg-slate-950 text-white border border-slate-800 rounded-2xl shadow-2xl flex flex-col items-center text-center">
+      <DialogContent showClose={false} className="max-w-md p-6 bg-card text-foreground border border-border rounded-2xl shadow-2xl flex flex-col items-center text-center">
         <DialogHeader className="w-full flex flex-col items-center">
-          <DialogTitle className="text-base font-bold flex items-center gap-2 text-white">
+          <DialogTitle className="text-base font-bold flex items-center gap-2 text-foreground">
             <Sparkles className="w-5 h-5 text-indigo-400 animate-pulse" />
             Análise em Tempo Real
           </DialogTitle>
@@ -146,7 +146,7 @@ function ConsultationLoadingModal({
           
           <div className="absolute w-20 h-20 rounded-full border-t-2 border-r-2 border-indigo-500 animate-spin" />
           
-          <div className="relative w-16 h-16 rounded-full bg-slate-900 border border-slate-800 flex items-center justify-center">
+          <div className="relative w-16 h-16 rounded-full bg-muted border border-border flex items-center justify-center">
             {status === 'queued' && <Clock className="w-8 h-8 text-indigo-400 animate-pulse" />}
             {status === 'processing' && <RefreshCw className="w-8 h-8 text-violet-400 animate-spin" />}
             {status === 'completed' && <CheckCircle className="w-8 h-8 text-emerald-400 scale-110 transition-transform duration-300" />}
@@ -161,13 +161,13 @@ function ConsultationLoadingModal({
             {status === 'completed' && 'Relatório Gerado!'}
             {status === 'error' && 'Erro no Processamento'}
           </h4>
-          <p className="text-xs text-slate-400 max-w-[280px] leading-relaxed">
+          <p className="text-xs text-muted-foreground max-w-[280px] leading-relaxed">
             {message}
           </p>
         </div>
 
         {/* Barra de progresso fofa */}
-        <div className="w-full bg-slate-900 h-1.5 rounded-full overflow-hidden mt-6 border border-slate-800">
+        <div className="w-full bg-muted h-1.5 rounded-full overflow-hidden mt-6 border border-border">
           <motion.div 
             className={`h-full ${status === 'completed' ? 'bg-emerald-500' : status === 'error' ? 'bg-rose-500' : 'bg-gradient-to-r from-indigo-500 to-violet-500'}`}
             initial={{ width: '5%' }}
@@ -181,7 +181,7 @@ function ConsultationLoadingModal({
         {(status === 'completed' || status === 'error') && (
           <Button 
             onClick={onClose} 
-            className={`w-full mt-6 text-xs h-9 font-medium ${status === 'completed' ? 'bg-emerald-600 hover:bg-emerald-500 text-white' : 'bg-slate-800 hover:bg-slate-700 text-white'}`}
+            className={`w-full mt-6 text-xs h-9 font-medium ${status === 'completed' ? 'bg-emerald-600 hover:bg-emerald-500 text-white' : 'bg-secondary hover:bg-secondary/80 text-secondary-foreground'}`}
           >
             {status === 'completed' ? 'Ver Relatório Completo' : 'Fechar'}
           </Button>

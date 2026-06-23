@@ -121,7 +121,7 @@ export default function ProfilePage() {
         <div className="p-6 space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-muted/20 p-4 rounded-xl border border-border/50">
             <div className="flex items-start gap-3">
-              <div className="p-2 bg-slate-900 border border-slate-850 rounded-lg flex items-center justify-center font-bold text-white text-xs select-none">
+              <div className="p-2 bg-muted border border-border rounded-lg flex items-center justify-center font-bold text-foreground text-xs select-none">
                 G
               </div>
               <div>
