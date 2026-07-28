@@ -19,6 +19,7 @@ import {
   Play, Tag, ChevronDown, ChevronRight, Search, RefreshCcw,
   Code2, Link2, Save, Hash, Filter, Undo2, Loader2, Layers3, Cog, Sliders, Braces, Eye,
   WrapText, Copy, Folder, FolderPlus, FolderOpen, ArrowLeft, MoreVertical, FolderTree, Move,
+  Factory,
   Maximize2, Minimize2, X
 } from 'lucide-react';
 import { useIsolatedEditorStore } from '@/features/templates-drawer/store/isolated-editor.store';
@@ -58,6 +59,7 @@ import TypeReportFieldsConfig from '@/components/integrations/TypeReportFieldsCo
 import TemplatesMvpTab from '@/components/integrations/TemplatesMvpTab';
 import IntegrationsSettingsTab from '@/components/integrations/IntegrationsSettingsTab';
 import CompanyApiTokensTab from '@/components/integrations/CompanyApiTokensTab';
+import { ContractAuditTab } from '@/features/data-contract-audit';
 import { buildTypeLinkedConsultationMappedPreview } from '@/lib/consultationMappedPreview';
 import {
   buildSingleGroupTypeItemFilterConfig,
@@ -2647,6 +2649,9 @@ export default function IntegrationsPage() {
             <TabsTrigger value="templates" className="text-sm h-8 gap-2 px-4 rounded-md shrink-0">
               <Layers3 className="w-4 h-4" /> Templates
             </TabsTrigger>
+            <TabsTrigger value="data_contract" className="text-sm h-8 gap-2 px-4 rounded-md shrink-0">
+              <Factory className="w-4 h-4" /> Fábrica de Templates
+            </TabsTrigger>
             <TabsTrigger value="settings" className="text-sm h-8 gap-2 px-4 rounded-md shrink-0">
               <Cog className="w-4 h-4" /> Configurações
             </TabsTrigger>
@@ -4018,6 +4023,16 @@ export default function IntegrationsPage() {
             accessToken={accessToken}
             consultations={consultations}
           />
+        </TabsContent>
+
+        <TabsContent value="data_contract" className="space-y-2">
+          {integrationsTab === 'data_contract' && (
+            <ContractAuditTab
+              consultations={consultations}
+              fieldTypes={fieldTypes}
+              testLogs={testLog}
+            />
+          )}
         </TabsContent>
       </Tabs>
 
