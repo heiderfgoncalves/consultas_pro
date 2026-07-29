@@ -404,12 +404,20 @@ export default function ContractAuditTab({
 
   const consultation =
     consultations.find((item) => item.externalId === productCode.trim()) ?? null;
+  const sollosProvider = useMemo(
+    () =>
+      providers.find((provider) =>
+        provider.name.toLowerCase().includes('sollos'),
+      ) ?? null,
+    [providers],
+  );
   const draftMapping = useMemo(() => {
-    if (consultation || !draftRawJson.trim()) return null;
+    if (consultation || !draftRawJson.trim() || !sollosProvider) return null;
     try {
       return buildAutomaticDraftMapping({
         rawJson: draftRawJson,
         productCode: productCode.trim(),
+        providerId: sollosProvider.id,
         consultations,
         fieldTypes,
       });
@@ -422,6 +430,7 @@ export default function ContractAuditTab({
     draftRawJson,
     fieldTypes,
     productCode,
+    sollosProvider,
   ]);
   const effectiveConsultation =
     consultation ?? draftMapping?.consultation ?? null;
@@ -493,9 +502,6 @@ export default function ContractAuditTab({
       return;
     }
 
-    const sollosProvider = providers.find((provider) =>
-      provider.name.toLowerCase().includes('sollos'),
-    );
     const reference = consultations.find(
       (item) =>
         item.providerId === sollosProvider?.id && item.bodyTemplateJson?.trim(),

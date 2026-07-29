@@ -211,6 +211,7 @@ function cloneFilterConfig(
 export function buildAutomaticDraftMapping(params: {
   rawJson: string;
   productCode: string;
+  providerId: string;
   consultations: ProviderConsultation[];
   fieldTypes: ConsultationFieldType[];
 }): {
@@ -232,14 +233,20 @@ export function buildAutomaticDraftMapping(params: {
   const claimedPaths = new Set<string>();
 
   for (const fieldType of params.fieldTypes) {
-    const references = params.consultations.flatMap((consultation) =>
-      consultation.fieldMappings
-        .filter((mapping) => mapping.fieldTypeKey === fieldType.key)
-        .map((mapping) => ({
-          consultation,
-          path: mapping.jsonPath,
-        })),
-    );
+    const references = params.consultations
+      .filter(
+        (consultation) =>
+          consultation.providerId === params.providerId &&
+          consultation.status === 'active',
+      )
+      .flatMap((consultation) =>
+        consultation.fieldMappings
+          .filter((mapping) => mapping.fieldTypeKey === fieldType.key)
+          .map((mapping) => ({
+            consultation,
+            path: mapping.jsonPath,
+          })),
+      );
     const referencePaths = references.map((reference) => reference.path);
     const ranked = nodes
       .map((node) => ({
@@ -279,7 +286,9 @@ export function buildAutomaticDraftMapping(params: {
       typeLabel: fieldType.label,
       sourcePath: best.node.path,
       confidence: best.score >= 88 ? 'high' : 'review',
-      reason: best.reason,
+      reason: reference
+        ? `${best.reason} no produto ${reference.consultation.externalId}`
+        : best.reason,
     });
   }
 
@@ -458,7 +467,7 @@ export function buildAutomaticDraftMapping(params: {
   return {
     consultation: {
       id: `draft-${params.productCode}`,
-      providerId: '',
+      providerId: params.providerId,
       name: `Produto Sollos ${params.productCode} · rascunho`,
       externalId: params.productCode,
       endpoint: '/json/homologa.aspx',

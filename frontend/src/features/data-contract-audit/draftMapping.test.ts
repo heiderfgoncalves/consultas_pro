@@ -62,6 +62,7 @@ describe('buildAutomaticDraftMapping', () => {
         },
       }),
       productCode: '676',
+      providerId: 'sollos',
       consultations: [reference],
       fieldTypes,
     });
@@ -87,6 +88,7 @@ describe('buildAutomaticDraftMapping', () => {
     const result = buildAutomaticDraftMapping({
       rawJson: JSON.stringify({ HEADER: { STATUS: '1' } }),
       productCode: '676',
+      providerId: 'sollos',
       consultations: [reference],
       fieldTypes,
     });
@@ -122,6 +124,7 @@ describe('buildAutomaticDraftMapping', () => {
         },
       }),
       productCode: '676',
+      providerId: 'sollos',
       consultations: [reference],
       fieldTypes,
     });
@@ -146,5 +149,34 @@ describe('buildAutomaticDraftMapping', () => {
         }),
       ]),
     );
+  });
+
+  it('reaproveita somente contratos homologados do mesmo provedor', () => {
+    const foreignReference: ProviderConsultation = {
+      ...reference,
+      id: 'foreign-product',
+      providerId: 'outro-provedor',
+      externalId: 'externo-1',
+      fieldMappings: [
+        {
+          jsonPath: 'BLOCO_EXCLUSIVO',
+          fieldTypeKey: 'DIVIDAS_SERASA',
+          label: 'Dívidas Serasa',
+        },
+      ],
+    };
+    const result = buildAutomaticDraftMapping({
+      rawJson: JSON.stringify({
+        BLOCO_EXCLUSIVO: [{ VALOR: '10,00' }],
+      }),
+      productCode: '676',
+      providerId: 'sollos',
+      consultations: [foreignReference],
+      fieldTypes,
+    });
+
+    expect(
+      result.suggestions.find((item) => item.typeKey === 'DIVIDAS_SERASA'),
+    ).toEqual(expect.objectContaining({ confidence: 'unmapped' }));
   });
 });
