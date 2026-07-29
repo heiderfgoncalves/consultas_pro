@@ -1682,6 +1682,8 @@ export async function registerAdminRoutes(app: FastifyInstance) {
       bodyTemplate: payload.bodyTemplate,
       queryTemplate: payload.queryTemplate,
       headersTemplate: payload.headersTemplate,
+      homologationOnly: payload.homologationOnly,
+      persistLog: payload.persistLog,
     }));
   });
 

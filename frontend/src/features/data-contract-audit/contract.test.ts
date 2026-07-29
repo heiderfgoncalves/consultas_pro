@@ -116,6 +116,56 @@ describe('contrato DE–PARA', () => {
     );
   });
 
+  it('considera CPF formatado e sem pontuação como o mesmo documento', () => {
+    const documentFieldTypes: ConsultationFieldType[] = [
+      {
+        ...fieldTypes[0],
+        reportFieldConfig: {
+          version: 1,
+          fields: [
+            {
+              id: 'field-document',
+              key: 'documento',
+              label: 'Documento',
+              sortOrder: 0,
+              dataType: 'document',
+              conditionalRules: [],
+            },
+          ],
+        },
+      },
+    ];
+    const documentConsultation: ProviderConsultation = {
+      ...consultation,
+      typeItemFilters: {
+        DADOS: {
+          version: 2,
+          groups: [],
+          dedupFieldIds: [],
+          fieldMappings: [
+            {
+              id: 'map-document',
+              reportFieldId: 'field-document',
+              reportFieldLabel: 'Documento',
+              sourceTrechoPath: 'retorno',
+              jsonPath: 'documento',
+            },
+          ],
+          computedFields: [],
+        },
+      },
+    };
+    const report = buildDataContractReport({
+      rawJson: '{"retorno":{"documento":"30298981807"}}',
+      consultation: documentConsultation,
+      fieldTypes: documentFieldTypes,
+    });
+
+    expect(report.lineage[0].sourceValues).toEqual(['30298981807']);
+    expect(report.lineage[0].previewValues).toEqual(['302.989.818-07']);
+    expect(report.lineage[0].status).toBe('ok');
+  });
+
   it('sinaliza ausência de saída PARA quando não há mapeamento aplicável', () => {
     const report = buildDataContractReport({
       rawJson: '{"retorno":{"nome":"Maria"}}',

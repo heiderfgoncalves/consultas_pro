@@ -15,9 +15,11 @@ import {
 } from 'lucide-react';
 import type {
   ConsultationFieldType,
+  Provider,
   ProviderConsultation,
   TestLogEntry,
 } from '@/types/integrations';
+import { testProductDraftApi } from '@/api/admin-integrations';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -37,12 +39,44 @@ import {
   type BureauOccurrenceAudit,
   type DataContractReport,
 } from './contract';
+import { buildAutomaticDraftMapping } from './draftMapping';
 
 type ContractAuditTabProps = {
+  accessToken: string | null;
+  providers: Provider[];
   consultations: ProviderConsultation[];
   fieldTypes: ConsultationFieldType[];
   testLogs: TestLogEntry[];
 };
+
+const SOLLOS_HOMOLOGATION_URL =
+  'https://api.sollosconsultas.com.br/json/homologa.aspx';
+
+function buildSollosHomologationBody(
+  templateJson: string,
+  productCode: string,
+  document: string,
+) {
+  const jsonCompatibleTemplate = templateJson.replace(
+    /:\s*`([\s\S]*?)`(?=\s*[,}])/g,
+    (_match, value: string) => `: ${JSON.stringify(value)}`,
+  );
+  const parsed = JSON.parse(jsonCompatibleTemplate) as Record<string, unknown>;
+  const parametros =
+    parsed.Parametros && typeof parsed.Parametros === 'object'
+      ? { ...(parsed.Parametros as Record<string, unknown>) }
+      : {};
+
+  return {
+    ...parsed,
+    CodigoProduto: productCode,
+    Parametros: {
+      ...parametros,
+      TipoPessoa: document.length === 14 ? 'J' : 'F',
+      CPFCNPJ: document,
+    },
+  };
+}
 
 const STEPS = [
   ['Produto', 'Escolha o tipo de consulta'],
@@ -305,7 +339,54 @@ function FieldLineage({ report }: { report: DataContractReport }) {
   );
 }
 
+function WizardNavigation({
+  step,
+  canContinue,
+  onPrevious,
+  onNext,
+  position,
+}: {
+  step: number;
+  canContinue: boolean;
+  onPrevious: () => void;
+  onNext: () => void;
+  position: 'top' | 'bottom';
+}) {
+  return (
+    <div
+      className={cn(
+        'flex items-center justify-between gap-3',
+        position === 'top' &&
+          'border-b border-border bg-muted/15 px-5 py-3',
+      )}
+    >
+      <Button
+        variant="outline"
+        size={position === 'top' ? 'sm' : 'default'}
+        onClick={onPrevious}
+        disabled={step === 1}
+      >
+        <ArrowLeft className="mr-2 h-4 w-4" />
+        Voltar
+      </Button>
+      <div className="text-center text-xs text-muted-foreground">
+        {step < 6 ? `Etapa ${step} de 6` : 'Fim da esteira'}
+      </div>
+      <Button
+        size={position === 'top' ? 'sm' : 'default'}
+        onClick={onNext}
+        disabled={step === 6 || !canContinue}
+      >
+        Continuar
+        <ArrowRight className="ml-2 h-4 w-4" />
+      </Button>
+    </div>
+  );
+}
+
 export default function ContractAuditTab({
+  accessToken,
+  providers,
   consultations,
   fieldTypes,
   testLogs,
@@ -317,9 +398,34 @@ export default function ContractAuditTab({
   const [sourceId, setSourceId] = useState('sample');
   const [testDocument, setTestDocument] = useState('');
   const [manualApproval, setManualApproval] = useState(false);
+  const [draftRawJson, setDraftRawJson] = useState('');
+  const [isRunningHomologation, setIsRunningHomologation] = useState(false);
+  const [homologationError, setHomologationError] = useState('');
 
   const consultation =
     consultations.find((item) => item.externalId === productCode.trim()) ?? null;
+  const draftMapping = useMemo(() => {
+    if (consultation || !draftRawJson.trim()) return null;
+    try {
+      return buildAutomaticDraftMapping({
+        rawJson: draftRawJson,
+        productCode: productCode.trim(),
+        consultations,
+        fieldTypes,
+      });
+    } catch {
+      return null;
+    }
+  }, [
+    consultation,
+    consultations,
+    draftRawJson,
+    fieldTypes,
+    productCode,
+  ]);
+  const effectiveConsultation =
+    consultation ?? draftMapping?.consultation ?? null;
+  const effectiveFieldTypes = draftMapping?.fieldTypes ?? fieldTypes;
   const logsForConsultation = useMemo(
     () =>
       testLogs
@@ -332,16 +438,19 @@ export default function ContractAuditTab({
     [consultation?.id, testLogs],
   );
   const selectedLog = logsForConsultation.find((log) => log.id === sourceId);
-  const rawJson = selectedLog?.responseJson || consultation?.sampleResponse || '';
+  const rawJson =
+    draftRawJson || selectedLog?.responseJson || consultation?.sampleResponse || '';
 
   const result = useMemo(() => {
-    if (!consultation || !rawJson.trim()) return { report: null, error: '' };
+    if (!effectiveConsultation || !rawJson.trim()) {
+      return { report: null, error: '' };
+    }
     try {
       return {
         report: buildDataContractReport({
           rawJson,
-          consultation,
-          fieldTypes,
+          consultation: effectiveConsultation,
+          fieldTypes: effectiveFieldTypes,
         }),
         error: '',
       };
@@ -352,14 +461,19 @@ export default function ContractAuditTab({
           error instanceof Error ? error.message : 'Falha ao analisar o contrato.',
       };
     }
-  }, [consultation, fieldTypes, rawJson]);
+  }, [effectiveConsultation, effectiveFieldTypes, rawJson]);
 
   const isReady =
     result.report?.diagnostics.every((item) => item.status === 'ok') ?? false;
 
   useEffect(() => {
     setManualApproval(false);
-  }, [productCode, sourceId]);
+  }, [productCode, sourceId, draftRawJson]);
+
+  useEffect(() => {
+    setDraftRawJson('');
+    setHomologationError('');
+  }, [productCode]);
 
   const canContinue =
     step === 1
@@ -370,6 +484,72 @@ export default function ContractAuditTab({
 
   function goToStep(nextStep: number) {
     setStep(Math.min(6, Math.max(1, nextStep)));
+  }
+
+  async function runSollosHomologation() {
+    const document = testDocument.replace(/\D/g, '');
+    if (document.length !== 11 && document.length !== 14) {
+      setHomologationError('Informe um CPF com 11 números ou CNPJ com 14 números.');
+      return;
+    }
+
+    const sollosProvider = providers.find((provider) =>
+      provider.name.toLowerCase().includes('sollos'),
+    );
+    const reference = consultations.find(
+      (item) =>
+        item.providerId === sollosProvider?.id && item.bodyTemplateJson?.trim(),
+    );
+
+    if (!sollosProvider || !reference?.bodyTemplateJson) {
+      setHomologationError(
+        'Não encontrei a configuração segura da Sollos para montar esta consulta.',
+      );
+      return;
+    }
+
+    setIsRunningHomologation(true);
+    setHomologationError('');
+    try {
+      const bodyTemplate = buildSollosHomologationBody(
+        reference.bodyTemplateJson,
+        productCode.trim(),
+        document,
+      );
+      const response = await testProductDraftApi(accessToken, {
+        providerId: sollosProvider.id,
+        endpointPath: SOLLOS_HOMOLOGATION_URL,
+        method: 'POST',
+        context: {
+          document,
+          documento: document,
+          is_cpf: document.length === 11,
+          is_cnpj: document.length === 14,
+        },
+        bodyTemplate,
+        homologationOnly: true,
+        persistLog: false,
+      });
+
+      if (
+        response.response.statusCode < 200 ||
+        response.response.statusCode >= 300
+      ) {
+        throw new Error(
+          `A Sollos respondeu com status ${response.response.statusCode}.`,
+        );
+      }
+
+      setDraftRawJson(JSON.stringify(response.response.payload, null, 2));
+    } catch (error) {
+      setHomologationError(
+        error instanceof Error
+          ? error.message
+          : 'Não foi possível executar a consulta de homologação.',
+      );
+    } finally {
+      setIsRunningHomologation(false);
+    }
   }
 
   return (
@@ -451,13 +631,22 @@ export default function ContractAuditTab({
                 {STEPS[step - 1][1]}
               </p>
             </div>
-            {consultation ? (
+            {effectiveConsultation ? (
               <Badge variant="outline" className="px-3 py-1.5">
-                Produto {consultation.externalId} · {consultation.name}
+                Produto {effectiveConsultation.externalId} ·{' '}
+                {consultation ? consultation.name : 'rascunho automático'}
               </Badge>
             ) : null}
           </div>
         </CardHeader>
+
+        <WizardNavigation
+          step={step}
+          canContinue={canContinue}
+          onPrevious={() => goToStep(step - 1)}
+          onNext={() => goToStep(step + 1)}
+          position="top"
+        />
 
         <CardContent className="p-5">
           {step === 1 ? (
@@ -480,6 +669,7 @@ export default function ContractAuditTab({
                       onChange={(event) => {
                         setProductCode(event.target.value.replace(/\D/g, ''));
                         setSourceId('sample');
+                        setDraftRawJson('');
                       }}
                       className="pl-9 font-mono"
                       placeholder="Ex.: 1079"
@@ -494,6 +684,7 @@ export default function ContractAuditTab({
                     onValueChange={(value) => {
                       setProductCode(value);
                       setSourceId('sample');
+                      setDraftRawJson('');
                     }}
                   >
                     <SelectTrigger>
@@ -588,20 +779,125 @@ export default function ContractAuditTab({
                       inputMode="numeric"
                     />
                   </div>
-                  <Button disabled className="w-full sm:w-auto">
-                    Executar consulta gratuita na homologação
+                  <Button
+                    onClick={() => void runSollosHomologation()}
+                    disabled={
+                      isRunningHomologation ||
+                      (testDocument.length !== 11 && testDocument.length !== 14)
+                    }
+                    className="w-full sm:w-auto"
+                  >
+                    {isRunningHomologation
+                      ? 'Consultando a homologação...'
+                      : 'Executar consulta gratuita na homologação'}
                   </Button>
                   <p className="text-xs text-muted-foreground">
-                    A execução permanece desabilitada até a conexão segura do
-                    endpoint de homologação com esta etapa.
+                    Esta ação consulta somente a homologação e não cataloga nem
+                    grava o produto automaticamente.
                   </p>
+                  {homologationError ? (
+                    <div className="flex items-start gap-2 rounded-md border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-700 dark:text-red-300">
+                      <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                      {homologationError}
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+              {draftRawJson ? (
+                <div className="space-y-3">
+                  <div className="flex items-start gap-3 rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-4">
+                    <CheckCircle2 className="mt-0.5 h-5 w-5 text-emerald-500" />
+                    <div>
+                      <p className="font-semibold">Amostra recebida da homologação</p>
+                      <p className="mt-1 text-sm text-muted-foreground">
+                        O JSON está apenas nesta esteira. Confira-o e clique em
+                        Continuar para iniciar o mapeamento.
+                      </p>
+                    </div>
+                  </div>
+                  <JsonPanel
+                    title="JSON original Sollos"
+                    subtitle="Resposta bruta recebida na homologação."
+                    value={JSON.parse(draftRawJson)}
+                  />
                 </div>
               ) : null}
             </div>
           ) : null}
 
           {step === 3 ? (
-            result.report ? (
+            draftMapping ? (
+              <div className="space-y-5">
+                <div className="rounded-lg border border-primary/20 bg-primary/5 p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <p className="font-semibold">
+                        Mapeamento provisório criado automaticamente
+                      </p>
+                      <p className="mt-1 text-sm text-muted-foreground">
+                        A fábrica comparou o novo JSON com os contratos já
+                        catalogados. Isto ainda é um rascunho e não foi salvo.
+                      </p>
+                    </div>
+                    <Badge variant="outline">
+                      {draftMapping.coverage.coveredLeafPaths}/
+                      {draftMapping.coverage.totalLeafPaths} caminhos catalogados
+                    </Badge>
+                  </div>
+                </div>
+
+                <div className="overflow-hidden rounded-lg border border-border">
+                  <div className="grid grid-cols-[minmax(12rem,0.8fr)_minmax(16rem,1.4fr)_minmax(10rem,0.8fr)] gap-3 border-b border-border bg-muted/30 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    <span>Tipo de destino</span>
+                    <span>Bloco encontrado no JSON</span>
+                    <span>Resultado</span>
+                  </div>
+                  <div className="max-h-[28rem] overflow-y-auto">
+                    {draftMapping.suggestions.map((suggestion) => (
+                      <div
+                        key={suggestion.typeKey}
+                        className="grid grid-cols-[minmax(12rem,0.8fr)_minmax(16rem,1.4fr)_minmax(10rem,0.8fr)] gap-3 border-b border-border/60 px-4 py-3 text-sm last:border-b-0"
+                      >
+                        <span className="font-medium">
+                          {suggestion.typeLabel}
+                        </span>
+                        <span className="break-all font-mono text-xs text-muted-foreground">
+                          {suggestion.sourcePath ?? 'Não reconhecido nesta amostra'}
+                        </span>
+                        <div>
+                          <Badge
+                            variant="outline"
+                            className={cn(
+                              suggestion.confidence === 'high' &&
+                                'border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400',
+                              suggestion.confidence === 'review' &&
+                                'border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-400',
+                              suggestion.confidence === 'new' &&
+                                'border-violet-500/30 bg-violet-500/10 text-violet-600 dark:text-violet-400',
+                            )}
+                          >
+                            {suggestion.confidence === 'high'
+                              ? 'Correspondência forte'
+                              : suggestion.confidence === 'review'
+                                ? 'Revisar'
+                                : suggestion.confidence === 'new'
+                                  ? 'Novo tipo provisório'
+                                : 'Não encontrado'}
+                          </Badge>
+                          <p className="mt-1 text-xs text-muted-foreground">
+                            {suggestion.reason}
+                          </p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {result.report ? (
+                  <BureauAudit items={result.report.bureauAudit} />
+                ) : null}
+              </div>
+            ) : result.report ? (
               <BureauAudit items={result.report.bureauAudit} />
             ) : (
               <EmptyGuidance
@@ -739,26 +1035,13 @@ export default function ContractAuditTab({
         </CardContent>
       </Card>
 
-      <div className="flex items-center justify-between gap-3">
-        <Button
-          variant="outline"
-          onClick={() => goToStep(step - 1)}
-          disabled={step === 1}
-        >
-          <ArrowLeft className="mr-2 h-4 w-4" />
-          Voltar
-        </Button>
-        <div className="text-center text-xs text-muted-foreground">
-          {step < 6 ? 'Avance quando esta etapa estiver clara.' : 'Fim da esteira'}
-        </div>
-        <Button
-          onClick={() => goToStep(step + 1)}
-          disabled={step === 6 || !canContinue}
-        >
-          Continuar
-          <ArrowRight className="ml-2 h-4 w-4" />
-        </Button>
-      </div>
+      <WizardNavigation
+        step={step}
+        canContinue={canContinue}
+        onPrevious={() => goToStep(step - 1)}
+        onNext={() => goToStep(step + 1)}
+        position="bottom"
+      />
     </div>
   );
 }

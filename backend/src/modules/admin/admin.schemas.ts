@@ -194,6 +194,8 @@ export const testProductDraftSchema = z.object({
   bodyTemplate: z.any().optional(),
   queryTemplate: z.record(z.any()).optional(),
   headersTemplate: z.record(z.any()).optional(),
+  homologationOnly: z.boolean().optional().default(false),
+  persistLog: z.boolean().optional().default(true),
 });
 
 export const previewMergeSchema = z.object({

@@ -130,6 +130,10 @@ function parseLocaleNumber(value: unknown): number | null {
 }
 
 function comparableValue(value: unknown, dataType?: string): string {
+  if (dataType === 'document') {
+    const digits = String(value ?? '').replace(/\D/g, '');
+    if (digits) return `document:${digits}`;
+  }
   if (dataType === 'currency' || dataType === 'numeric' || dataType === 'number') {
     const numeric = parseLocaleNumber(value);
     if (numeric !== null) return `number:${numeric}`;

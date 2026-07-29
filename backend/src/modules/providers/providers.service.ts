@@ -1,11 +1,14 @@
 import type { FastifyInstance } from 'fastify';
 import type { HttpMethod, Prisma, ProviderAuthType, ProviderProduct } from '@prisma/client';
-import { ConflictError, NotFoundError } from '../../core/errors';
+import { AppError, ConflictError, NotFoundError } from '../../core/errors';
 import { getAdminTargetTenant, getEffectiveIntegrationSettingsForTenant } from '../../lib/integration-settings';
 import { callProviderOperation, callProviderProduct } from './provider-client.service';
 import { normalizeProviderPayload } from './normalization.service';
 import { mergeNormalizedPayloads } from './merge.service';
 import { generateOpaqueToken, sha256 } from '../../lib/hash';
+
+const SOLLOS_HOMOLOGATION_SAFE_LABEL =
+  'https://api.sollosconsultas.com.br/json/homologa.aspx';
 
 export async function createProvider(app: FastifyInstance, payload: {
   name: string;
@@ -111,12 +114,33 @@ export async function testProviderProductDraft(app: FastifyInstance, input: {
   bodyTemplate?: unknown;
   queryTemplate?: Record<string, unknown>;
   headersTemplate?: Record<string, unknown>;
+  homologationOnly?: boolean;
+  persistLog?: boolean;
 }) {
   const provider = await app.prisma.provider.findUnique({
     where: { id: input.providerId },
   });
 
   if (!provider) throw new NotFoundError('Provedor não encontrado');
+
+  if (input.homologationOnly) {
+    const providerIsSollos =
+      provider.slug.toLowerCase() === 'sollos' ||
+      provider.name.toLowerCase().includes('sollos');
+    const target = new URL(input.endpointPath, provider.baseUrl);
+    const isSollosHomologation =
+      target.protocol === 'https:' &&
+      target.hostname === 'api.sollosconsultas.com.br' &&
+      target.pathname.toLowerCase() === '/json/homologa.aspx';
+
+    if (!providerIsSollos || !isSollosHomologation) {
+      throw new AppError(
+        400,
+        'HOMOLOGATION_ENDPOINT_REQUIRED',
+        'A Fábrica de Templates permite somente a homologação da Sollos',
+      );
+    }
+  }
 
   const productStub = {
     endpointPath: input.endpointPath,
@@ -140,25 +164,32 @@ export async function testProviderProductDraft(app: FastifyInstance, input: {
     app.prisma,
     adminTenantDraft?.id ?? null,
   );
-  if (integrationSettingsDraft.verboseProviderTestLogs) {
+  if (integrationSettingsDraft.verboseProviderTestLogs && !input.homologationOnly) {
     app.log.debug({ providerId: input.providerId, request: execution.request }, 'provider_test_verbose_draft');
   }
 
-  const log = await app.prisma.providerTestLog.create({
-    data: {
-      providerId: provider.id,
-      productId: null,
-      createdById: input.actorUserId,
-      requestPayload: execution.request as never,
-      responsePayload: execution.response.payload as never,
-      statusCode: execution.response.statusCode,
-      success: execution.response.statusCode >= 200 && execution.response.statusCode < 300,
-    },
-  });
+  const log = input.persistLog === false
+    ? null
+    : await app.prisma.providerTestLog.create({
+        data: {
+          providerId: provider.id,
+          productId: null,
+          createdById: input.actorUserId,
+          requestPayload: execution.request as never,
+          responsePayload: execution.response.payload as never,
+          statusCode: execution.response.statusCode,
+          success: execution.response.statusCode >= 200 && execution.response.statusCode < 300,
+        },
+      });
 
   return {
-    testLogId: log.id,
-    request: execution.request,
+    testLogId: log?.id ?? null,
+    request: input.homologationOnly
+      ? {
+          url: SOLLOS_HOMOLOGATION_SAFE_LABEL,
+          method: execution.request.method,
+        }
+      : execution.request,
     response: execution.response,
     normalizedPayload: null as null,
   };

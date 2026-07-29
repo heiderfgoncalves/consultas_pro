@@ -4028,6 +4028,8 @@ export default function IntegrationsPage() {
         <TabsContent value="data_contract" className="space-y-2">
           {integrationsTab === 'data_contract' && (
             <ContractAuditTab
+              accessToken={accessToken}
+              providers={providers}
               consultations={consultations}
               fieldTypes={fieldTypes}
               testLogs={testLog}

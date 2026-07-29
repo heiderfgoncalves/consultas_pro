@@ -793,7 +793,7 @@ export async function deleteCanonicalFieldApi(accessToken: string | null, fieldI
 
 /** Resposta de POST .../products/:id/test e .../products/test-draft */
 export interface ApiProviderTestResult {
-  testLogId: string;
+  testLogId: string | null;
   request: unknown;
   response: {
     statusCode: number;
@@ -810,6 +810,8 @@ export async function testProductApi(
     bodyTemplate?: unknown;
     queryTemplate?: Record<string, unknown>;
     headersTemplate?: Record<string, unknown>;
+    homologationOnly?: boolean;
+    persistLog?: boolean;
   } = {},
 ) {
   const body: Record<string, unknown> = { context: payload.context ?? {} };
@@ -844,6 +846,8 @@ export async function testProductDraftApi(
   if (body.bodyTemplate !== undefined) req.bodyTemplate = body.bodyTemplate;
   if (body.queryTemplate !== undefined) req.queryTemplate = body.queryTemplate;
   if (body.headersTemplate !== undefined) req.headersTemplate = body.headersTemplate;
+  if (body.homologationOnly !== undefined) req.homologationOnly = body.homologationOnly;
+  if (body.persistLog !== undefined) req.persistLog = body.persistLog;
   return apiRequest<ApiProviderTestResult>('/admin/providers/products/test-draft', {
     method: 'POST',
     token: tok(accessToken),
@@ -950,4 +954,3 @@ export async function postCanonicalFolderAssociation(
     body: JSON.stringify(body),
   });
 }
-
