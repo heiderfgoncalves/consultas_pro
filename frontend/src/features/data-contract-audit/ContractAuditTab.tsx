@@ -1035,38 +1035,72 @@ export default function ContractAuditTab({
                 </p>
               </div>
               {catalogProduct ? (
-                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                  <div className="rounded-lg border border-border bg-muted/20 p-3">
-                    <p className="text-xs text-muted-foreground">Produto esperado</p>
-                    <p className="mt-1 font-semibold">{catalogProduct.name}</p>
+                <div className="space-y-3">
+                  <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                    <div className="rounded-lg border border-border bg-muted/20 p-3">
+                      <p className="text-xs text-muted-foreground">Produto esperado</p>
+                      <p className="mt-1 font-semibold">{catalogProduct.name}</p>
+                    </div>
+                    <div className="rounded-lg border border-border bg-muted/20 p-3">
+                      <p className="text-xs text-muted-foreground">Pessoa</p>
+                      <p className="mt-1 font-semibold">{catalogProduct.personType}</p>
+                    </div>
+                    <div className="rounded-lg border border-border bg-muted/20 p-3">
+                      <p className="text-xs text-muted-foreground">
+                        Plano de amostragem
+                      </p>
+                      <p className="mt-1 font-semibold">
+                        {catalogProduct.officialSampleCount} oficiais disponíveis
+                      </p>
+                    </div>
+                    <div
+                      className={cn(
+                        'rounded-lg border p-3',
+                        catalogProduct.sampleCoverage === 'sufficient'
+                          ? 'border-emerald-500/25 bg-emerald-500/5'
+                          : 'border-amber-500/30 bg-amber-500/10',
+                      )}
+                    >
+                      <p className="text-xs text-muted-foreground">
+                        Cobertura documental
+                      </p>
+                      <p className="mt-1 font-semibold">
+                        {catalogProduct.sampleCoverage === 'sufficient'
+                          ? 'Amostragem suficiente'
+                          : 'Amostragem oficial limitada'}
+                      </p>
+                    </div>
                   </div>
-                  <div className="rounded-lg border border-border bg-muted/20 p-3">
-                    <p className="text-xs text-muted-foreground">Pessoa</p>
-                    <p className="mt-1 font-semibold">{catalogProduct.personType}</p>
-                  </div>
-                  <div className="rounded-lg border border-border bg-muted/20 p-3">
-                    <p className="text-xs text-muted-foreground">
-                      Plano de amostragem
-                    </p>
-                    <p className="mt-1 font-semibold">
-                      {catalogProduct.officialSampleCount} oficiais disponíveis
-                    </p>
-                  </div>
-                  <div
-                    className={cn(
-                      'rounded-lg border p-3',
-                      catalogProduct.sampleCoverage === 'sufficient'
-                        ? 'border-emerald-500/25 bg-emerald-500/5'
-                        : 'border-amber-500/30 bg-amber-500/10',
-                    )}
-                  >
-                    <p className="text-xs text-muted-foreground">
-                      Cobertura documental
-                    </p>
-                    <p className="mt-1 font-semibold">
-                      {catalogProduct.sampleCoverage === 'sufficient'
-                        ? 'Amostragem suficiente'
-                        : 'Amostragem oficial limitada'}
+                  <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-4">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                      <div>
+                        <p className="font-semibold">
+                          Última homologação comprovada
+                        </p>
+                        <p className="mt-1 text-sm text-muted-foreground">
+                          {catalogProduct.audit.samples} amostras oficiais,{' '}
+                          {catalogProduct.audit.failedSamples} falhas,{' '}
+                          {catalogProduct.audit.uniquePaths} caminhos,{' '}
+                          {catalogProduct.audit.validatedFields} campos e{' '}
+                          {catalogProduct.audit.validatedOccurrences} ocorrências
+                          conferidos até o Preview.
+                        </p>
+                      </div>
+                      <div className="text-left sm:text-right">
+                        <Badge className="bg-emerald-500/15 text-emerald-700 hover:bg-emerald-500/15 dark:text-emerald-300">
+                          Sem bloqueios
+                        </Badge>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          {catalogProduct.audit.auditedAt
+                            .split('-')
+                            .reverse()
+                            .join('/')}
+                        </p>
+                      </div>
+                    </div>
+                    <p className="mt-3 border-t border-emerald-500/20 pt-3 text-xs text-emerald-800 dark:text-emerald-200">
+                      Evidência pronta para sua auditoria. Nada novo foi aprovado
+                      ou catalogado automaticamente.
                     </p>
                   </div>
                 </div>
@@ -1117,7 +1151,7 @@ export default function ContractAuditTab({
                   </div>
                 </>
               ) : null}
-              {!rawJson && catalogProduct && officialSamples.length > 0 ? (
+              {catalogProduct && officialSamples.length > 0 ? (
                 <div className="space-y-4 rounded-xl border border-primary/25 bg-primary/5 p-4">
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                     <div>
@@ -1127,7 +1161,8 @@ export default function ContractAuditTab({
                       <p className="mt-1 text-sm text-muted-foreground">
                         A Fábrica executa documentos oficiais variados, mede
                         novos caminhos e monta uma amostra consolidada para o
-                        mapeamento.
+                        mapeamento. Isso também permite revalidar produtos já
+                        catalogados sem alterar o cadastro atual.
                       </p>
                     </div>
                     <Badge variant="outline">

@@ -101,11 +101,22 @@ function provisionalTypeForBlock(node: JsonNode, keyOverride?: string) {
   const typeKey = keyOverride ?? `NOVO_${normalize(node.path)}`;
   const relativeLeafPaths = collectLeafPaths(node.value);
   const uniquePaths = [...new Set(relativeLeafPaths)].filter(Boolean);
+  const tailCounts = new Map<string, number>();
+  for (const path of uniquePaths) {
+    const tail = normalize(pathTail(path));
+    tailCounts.set(tail, (tailCounts.get(tail) ?? 0) + 1);
+  }
   const fields = uniquePaths.map((jsonPath, index) => {
-    const label = pathTail(jsonPath).replace(/_/g, ' ');
+    const normalizedTail = normalize(pathTail(jsonPath));
+    const hasDuplicateTail = (tailCounts.get(normalizedTail) ?? 0) > 1;
+    const uniqueKeySource = hasDuplicateTail ? jsonPath : pathTail(jsonPath);
+    const label = (hasDuplicateTail ? jsonPath : pathTail(jsonPath)).replace(
+      /[._]/g,
+      ' ',
+    );
     return {
       id: `${typeKey.toLowerCase()}-field-${index}`,
-      key: normalize(pathTail(jsonPath)).toLowerCase(),
+      key: normalize(uniqueKeySource).toLowerCase(),
       label,
       sortOrder: index,
       dataType: inferDataType(sampleValueAtRelativePath(node.value, jsonPath)),

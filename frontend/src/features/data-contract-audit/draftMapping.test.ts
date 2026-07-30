@@ -184,4 +184,36 @@ describe('buildAutomaticDraftMapping', () => {
       result.suggestions.find((item) => item.typeKey === 'DIVIDAS_SERASA'),
     ).toEqual(expect.objectContaining({ confidence: 'unmapped' }));
   });
+
+  it('mantém chaves distintas quando blocos aninhados repetem o nome do campo', () => {
+    const result = buildAutomaticDraftMapping({
+      rawJson: JSON.stringify({
+        CREDCADASTRAL: {
+          EMPRESA: {
+            ENDERECO: { CIDADE: 'SÃO PAULO', UF: 'SP' },
+            ENDERECO_MATRIZ: { CIDADE: 'CAMPINAS', UF: 'SP' },
+          },
+        },
+      }),
+      productCode: 'novo',
+      providerId: 'sollos',
+      consultations: [],
+      fieldTypes: [],
+    });
+    const companyType = result.fieldTypes.find(
+      (fieldType) => fieldType.key === 'NOVO_CREDCADASTRAL_EMPRESA',
+    );
+    const keys =
+      companyType?.reportFieldConfig?.fields.map((field) => field.key) ?? [];
+
+    expect(new Set(keys).size).toBe(keys.length);
+    expect(keys).toEqual(
+      expect.arrayContaining([
+        'endereco_cidade',
+        'endereco_matriz_cidade',
+        'endereco_uf',
+        'endereco_matriz_uf',
+      ]),
+    );
+  });
 });

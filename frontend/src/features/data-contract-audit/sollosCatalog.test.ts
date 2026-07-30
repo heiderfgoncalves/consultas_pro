@@ -42,6 +42,30 @@ describe('Sollos master catalog', () => {
     });
   });
 
+  it('keeps a completed homologation audit for every target product', () => {
+    expect(
+      SOLLOS_TARGET_PRODUCTS.every(
+        (product) =>
+          product.audit.samples > 0 &&
+          product.audit.failedSamples === 0 &&
+          product.audit.uniquePaths > 0 &&
+          product.audit.blocked === false,
+      ),
+    ).toBe(true);
+    expect(
+      SOLLOS_TARGET_PRODUCTS.reduce(
+        (total, product) => total + product.audit.samples,
+        0,
+      ),
+    ).toBe(560);
+    expect(findSollosCatalogProductById('1079')?.audit.result).toBe(
+      'cataloged-and-revalidated',
+    );
+    expect(findSollosCatalogProductById('676')?.audit.result).toBe(
+      'ready-for-manual-review',
+    );
+  });
+
   it('reports the real limitation when Sollos offers fewer than ten documents', () => {
     expect(findSollosCatalogProductById('2391')).toMatchObject({
       officialSampleCount: 7,

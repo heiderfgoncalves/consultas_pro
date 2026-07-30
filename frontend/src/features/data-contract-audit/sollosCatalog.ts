@@ -11,6 +11,19 @@ export type SollosCatalogStatus =
   | 'ready-for-review'
   | 'approved';
 
+export type SollosHomologationAudit = {
+  auditedAt: string;
+  samples: number;
+  failedSamples: number;
+  uniquePaths: number;
+  mappedPaths?: number;
+  totalMappablePaths?: number;
+  validatedFields: number;
+  validatedOccurrences: number;
+  blocked: boolean;
+  result: 'ready-for-manual-review' | 'cataloged-and-revalidated';
+};
+
 export type SollosProductCatalogEntry = {
   key: string;
   name: string;
@@ -21,9 +34,10 @@ export type SollosProductCatalogEntry = {
   expectedCapabilities: string[];
   officialSampleCount: number;
   sampleCoverage: 'sufficient' | 'limited';
+  audit: SollosHomologationAudit;
 };
 
-export const SOLLOS_CATALOG_VERSION = 2;
+export const SOLLOS_CATALOG_VERSION = 3;
 
 export const SOLLOS_ADAPTIVE_SAMPLING_POLICY = {
   minimumSamples: 10,
@@ -42,6 +56,41 @@ type CatalogSeed = readonly [
   personType: SollosProductCatalogEntry['personType'],
   expectedCapabilities?: readonly string[],
 ];
+
+const SOLLOS_HOMOLOGATION_AUDITS: Readonly<
+  Record<string, SollosHomologationAudit>
+> = {
+  '2451': { auditedAt: '2026-07-30', samples: 20, failedSamples: 0, uniquePaths: 484, mappedPaths: 471, totalMappablePaths: 471, validatedFields: 355, validatedOccurrences: 18, blocked: false, result: 'ready-for-manual-review' },
+  '2391': { auditedAt: '2026-07-30', samples: 7, failedSamples: 0, uniquePaths: 337, mappedPaths: 331, totalMappablePaths: 331, validatedFields: 250, validatedOccurrences: 0, blocked: false, result: 'ready-for-manual-review' },
+  '2392': { auditedAt: '2026-07-30', samples: 5, failedSamples: 0, uniquePaths: 347, mappedPaths: 340, totalMappablePaths: 340, validatedFields: 224, validatedOccurrences: 1, blocked: false, result: 'ready-for-manual-review' },
+  '2450': { auditedAt: '2026-07-30', samples: 20, failedSamples: 0, uniquePaths: 455, mappedPaths: 442, totalMappablePaths: 442, validatedFields: 370, validatedOccurrences: 17, blocked: false, result: 'ready-for-manual-review' },
+  '723': { auditedAt: '2026-07-30', samples: 20, failedSamples: 0, uniquePaths: 397, mappedPaths: 387, totalMappablePaths: 387, validatedFields: 306, validatedOccurrences: 60, blocked: false, result: 'ready-for-manual-review' },
+  '1723': { auditedAt: '2026-07-30', samples: 20, failedSamples: 0, uniquePaths: 287, mappedPaths: 284, totalMappablePaths: 284, validatedFields: 230, validatedOccurrences: 0, blocked: false, result: 'ready-for-manual-review' },
+  '2502': { auditedAt: '2026-07-30', samples: 12, failedSamples: 0, uniquePaths: 274, mappedPaths: 271, totalMappablePaths: 271, validatedFields: 217, validatedOccurrences: 0, blocked: false, result: 'ready-for-manual-review' },
+  '708': { auditedAt: '2026-07-30', samples: 20, failedSamples: 0, uniquePaths: 731, mappedPaths: 692, totalMappablePaths: 692, validatedFields: 594, validatedOccurrences: 41, blocked: false, result: 'ready-for-manual-review' },
+  '1080': { auditedAt: '2026-07-30', samples: 20, failedSamples: 0, uniquePaths: 322, mappedPaths: 314, totalMappablePaths: 314, validatedFields: 236, validatedOccurrences: 0, blocked: false, result: 'ready-for-manual-review' },
+  '756': { auditedAt: '2026-07-30', samples: 20, failedSamples: 0, uniquePaths: 782, mappedPaths: 750, totalMappablePaths: 750, validatedFields: 642, validatedOccurrences: 25, blocked: false, result: 'ready-for-manual-review' },
+  '1076': { auditedAt: '2026-07-30', samples: 20, failedSamples: 0, uniquePaths: 369, mappedPaths: 360, totalMappablePaths: 360, validatedFields: 279, validatedOccurrences: 29, blocked: false, result: 'ready-for-manual-review' },
+  '1264': { auditedAt: '2026-07-30', samples: 20, failedSamples: 0, uniquePaths: 435, mappedPaths: 425, totalMappablePaths: 425, validatedFields: 336, validatedOccurrences: 25, blocked: false, result: 'ready-for-manual-review' },
+  '1266': { auditedAt: '2026-07-30', samples: 20, failedSamples: 0, uniquePaths: 655, mappedPaths: 623, totalMappablePaths: 623, validatedFields: 533, validatedOccurrences: 36, blocked: false, result: 'ready-for-manual-review' },
+  '707': { auditedAt: '2026-07-30', samples: 20, failedSamples: 0, uniquePaths: 383, mappedPaths: 373, totalMappablePaths: 373, validatedFields: 284, validatedOccurrences: 38, blocked: false, result: 'ready-for-manual-review' },
+  '2259': { auditedAt: '2026-07-30', samples: 20, failedSamples: 0, uniquePaths: 396, mappedPaths: 386, totalMappablePaths: 386, validatedFields: 305, validatedOccurrences: 21, blocked: false, result: 'ready-for-manual-review' },
+  '1083': { auditedAt: '2026-07-30', samples: 20, failedSamples: 0, uniquePaths: 627, mappedPaths: 598, totalMappablePaths: 598, validatedFields: 473, validatedOccurrences: 33, blocked: false, result: 'ready-for-manual-review' },
+  '1078': { auditedAt: '2026-07-30', samples: 20, failedSamples: 0, uniquePaths: 364, mappedPaths: 355, totalMappablePaths: 355, validatedFields: 266, validatedOccurrences: 40, blocked: false, result: 'ready-for-manual-review' },
+  '1079': { auditedAt: '2026-07-30', samples: 20, failedSamples: 0, uniquePaths: 395, validatedFields: 27, validatedOccurrences: 59, blocked: false, result: 'cataloged-and-revalidated' },
+  '680': { auditedAt: '2026-07-30', samples: 16, failedSamples: 0, uniquePaths: 302, mappedPaths: 298, totalMappablePaths: 298, validatedFields: 233, validatedOccurrences: 0, blocked: false, result: 'ready-for-manual-review' },
+  '1721': { auditedAt: '2026-07-30', samples: 20, failedSamples: 0, uniquePaths: 594, mappedPaths: 566, totalMappablePaths: 566, validatedFields: 476, validatedOccurrences: 25, blocked: false, result: 'ready-for-manual-review' },
+  '699': { auditedAt: '2026-07-30', samples: 20, failedSamples: 0, uniquePaths: 600, mappedPaths: 581, totalMappablePaths: 581, validatedFields: 483, validatedOccurrences: 25, blocked: false, result: 'ready-for-manual-review' },
+  '700': { auditedAt: '2026-07-30', samples: 20, failedSamples: 0, uniquePaths: 681, mappedPaths: 655, totalMappablePaths: 655, validatedFields: 557, validatedOccurrences: 38, blocked: false, result: 'ready-for-manual-review' },
+  '676': { auditedAt: '2026-07-30', samples: 20, failedSamples: 0, uniquePaths: 570, mappedPaths: 546, totalMappablePaths: 546, validatedFields: 430, validatedOccurrences: 50, blocked: false, result: 'ready-for-manual-review' },
+  '1082': { auditedAt: '2026-07-30', samples: 20, failedSamples: 0, uniquePaths: 733, mappedPaths: 700, totalMappablePaths: 700, validatedFields: 611, validatedOccurrences: 25, blocked: false, result: 'ready-for-manual-review' },
+  '1077': { auditedAt: '2026-07-30', samples: 20, failedSamples: 0, uniquePaths: 641, mappedPaths: 619, totalMappablePaths: 619, validatedFields: 503, validatedOccurrences: 25, blocked: false, result: 'ready-for-manual-review' },
+  '724': { auditedAt: '2026-07-30', samples: 20, failedSamples: 0, uniquePaths: 364, mappedPaths: 355, totalMappablePaths: 355, validatedFields: 266, validatedOccurrences: 47, blocked: false, result: 'ready-for-manual-review' },
+  '863': { auditedAt: '2026-07-30', samples: 20, failedSamples: 0, uniquePaths: 372, mappedPaths: 364, totalMappablePaths: 364, validatedFields: 256, validatedOccurrences: 25, blocked: false, result: 'ready-for-manual-review' },
+  '747': { auditedAt: '2026-07-30', samples: 20, failedSamples: 0, uniquePaths: 697, mappedPaths: 667, totalMappablePaths: 667, validatedFields: 586, validatedOccurrences: 25, blocked: false, result: 'ready-for-manual-review' },
+  '697': { auditedAt: '2026-07-30', samples: 20, failedSamples: 0, uniquePaths: 394, mappedPaths: 384, totalMappablePaths: 384, validatedFields: 268, validatedOccurrences: 25, blocked: false, result: 'ready-for-manual-review' },
+  '753': { auditedAt: '2026-07-30', samples: 20, failedSamples: 0, uniquePaths: 494, mappedPaths: 475, totalMappablePaths: 475, validatedFields: 386, validatedOccurrences: 4, blocked: false, result: 'ready-for-manual-review' },
+};
 
 const CATALOG_SEEDS: readonly CatalogSeed[] = [
   ['quod-completo-pj-score', 'QUOD COMPLETO PJ + SCORE', '2451', 'PJ', ['QUOD', 'SCORE']],
@@ -139,6 +188,7 @@ export const SOLLOS_TARGET_PRODUCTS: SollosProductCatalogEntry[] =
           officialSampleCount >= SOLLOS_ADAPTIVE_SAMPLING_POLICY.minimumSamples
             ? 'sufficient'
             : 'limited',
+        audit: SOLLOS_HOMOLOGATION_AUDITS[productId],
       };
     },
   );

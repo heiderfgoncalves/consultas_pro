@@ -148,9 +148,12 @@ function comparableValue(value: unknown, dataType?: string): string {
     if (numeric !== null) return `number:${numeric}`;
   }
   if (dataType === 'date' && typeof value === 'string') {
-    const digits = value.replace(/\D/g, '');
-    if (digits.length === 8) {
-      const normalized = /^\d{4}/.test(value)
+    const datePart = value.trim().match(
+      /^(\d{2}\/\d{2}\/\d{4}|\d{4}-\d{2}-\d{2})/,
+    )?.[1];
+    if (datePart) {
+      const digits = datePart.replace(/\D/g, '');
+      const normalized = /^\d{4}/.test(datePart)
         ? digits
         : `${digits.slice(4)}${digits.slice(2, 4)}${digits.slice(0, 2)}`;
       return `date:${normalized}`;
@@ -217,6 +220,15 @@ function previewContainsOccurrence(
   preview: unknown,
   occurrence: Record<string, unknown>,
 ): boolean {
+  const exactFingerprint = JSON.stringify(occurrence);
+  const containsExactOccurrence = (value: unknown): boolean => {
+    if (JSON.stringify(value) === exactFingerprint) return true;
+    if (Array.isArray(value)) return value.some(containsExactOccurrence);
+    const record = asRecord(value);
+    return record ? Object.values(record).some(containsExactOccurrence) : false;
+  };
+  if (containsExactOccurrence(preview)) return true;
+
   const values = deepValues(preview);
   const normalizedTexts = new Set(values.map(normalizedLabel));
   const normalizedNumbers = new Set(
@@ -365,6 +377,9 @@ function buildLineage(params: {
   const lineage: FieldLineage[] = [];
 
   for (const fieldType of params.fieldTypes) {
+    if (Object.values(TYPE_KEY_BY_BUREAU).includes(fieldType.key)) {
+      continue;
+    }
     const config = params.consultation.typeItemFilters?.[fieldType.key];
     const fieldsById = new Map(
       (fieldType.reportFieldConfig?.fields ?? []).map((field) => [field.id, field]),
@@ -497,7 +512,7 @@ export function buildDataContractReport(params: {
   });
   const bureauAudit = buildBureauAudit(original, para);
   const lineageOk =
-    lineage.length > 0 &&
+    (lineage.length > 0 || bureauAudit.length > 0) &&
     lineage.every(
       (item) => item.status === 'ok' || item.status === 'not-applicable',
     );

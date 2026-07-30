@@ -166,6 +166,55 @@ describe('contrato DE–PARA', () => {
     expect(report.lineage[0].status).toBe('ok');
   });
 
+  it('considera data com horário e data formatada como o mesmo dia', () => {
+    const dateFieldTypes: ConsultationFieldType[] = [
+      {
+        ...fieldTypes[0],
+        reportFieldConfig: {
+          version: 1,
+          fields: [
+            {
+              id: 'field-date',
+              key: 'data',
+              label: 'Data',
+              sortOrder: 0,
+              dataType: 'date',
+              conditionalRules: [],
+            },
+          ],
+        },
+      },
+    ];
+    const dateConsultation: ProviderConsultation = {
+      ...consultation,
+      typeItemFilters: {
+        DADOS: {
+          version: 2,
+          groups: [],
+          dedupFieldIds: [],
+          fieldMappings: [
+            {
+              id: 'map-date',
+              reportFieldId: 'field-date',
+              reportFieldLabel: 'Data',
+              sourceTrechoPath: 'retorno',
+              jsonPath: 'data',
+            },
+          ],
+          computedFields: [],
+        },
+      },
+    };
+    const report = buildDataContractReport({
+      rawJson: '{"retorno":{"data":"29/07/2026 14:36:25"}}',
+      consultation: dateConsultation,
+      fieldTypes: dateFieldTypes,
+    });
+
+    expect(report.lineage[0].previewValues).toEqual(['29/07/2026']);
+    expect(report.lineage[0].status).toBe('ok');
+  });
+
   it('sinaliza ausência de saída PARA quando não há mapeamento aplicável', () => {
     const report = buildDataContractReport({
       rawJson: '{"retorno":{"nome":"Maria"}}',
