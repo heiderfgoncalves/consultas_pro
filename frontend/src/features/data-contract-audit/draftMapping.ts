@@ -64,89 +64,230 @@ function collectJsonNodes(value: unknown, path = ''): JsonNode[] {
 
 function collectLeafPaths(value: unknown, path = ''): string[] {
   if (Array.isArray(value)) {
-    const first = value.find((item) => item !== null && item !== undefined);
-    return first === undefined ? [] : collectLeafPaths(first, path);
+    return [
+      ...new Set(
+        value.flatMap((item) =>
+          item === null || item === undefined
+            ? []
+            : collectLeafPaths(item, path),
+        ),
+      ),
+    ];
   }
   if (value === null || typeof value !== 'object') return path ? [path] : [];
+  return [
+    ...new Set(
+      Object.entries(value as Record<string, unknown>).flatMap(([key, child]) =>
+        collectLeafPaths(child, path ? `${path}.${key}` : key),
+      ),
+    ),
+  ];
+}
+
+type RoutedDebtBlock = {
+  blockPath: string;
+  occurrencePath: string;
+  leafPaths: string[];
+};
+
+function collectRoutedDebtBlocks(
+  value: unknown,
+  path = '',
+): RoutedDebtBlock[] {
+  if (Array.isArray(value)) {
+    return value.flatMap((item) => collectRoutedDebtBlocks(item, path));
+  }
+  if (value === null || typeof value !== 'object') return [];
+
   return Object.entries(value as Record<string, unknown>).flatMap(
-    ([key, child]) =>
-      collectLeafPaths(child, path ? `${path}.${key}` : key),
+    ([key, child]) => {
+      const childPath = path ? `${path}.${key}` : key;
+      const nested = collectRoutedDebtBlocks(child, childPath);
+      if (
+        !/^(PEND_FINANCEIRAS|PEND_REFIN|PEND_VENCIDAS)$/i.test(key) ||
+        child === null ||
+        typeof child !== 'object' ||
+        Array.isArray(child)
+      ) {
+        return nested;
+      }
+      const occurrences = (
+        child as Record<string, unknown>
+      ).OCORRENCIAS;
+      if (!Array.isArray(occurrences)) return nested;
+      const occurrencePath = `${childPath}.OCORRENCIAS`;
+      const leafPaths = collectLeafPaths(occurrences).map(
+        (leafPath) => `${occurrencePath}.${leafPath}`,
+      );
+      return [
+        {
+          blockPath: childPath,
+          occurrencePath,
+          leafPaths,
+        },
+        ...nested,
+      ];
+    },
   );
 }
 
-function inferDataType(value: unknown) {
-  if (typeof value === 'boolean') return 'boolean' as const;
-  if (typeof value === 'number') return 'numeric' as const;
-  const text = String(value ?? '');
-  if (/^\d{2}\/\d{2}\/\d{4}$/.test(text)) return 'date' as const;
-  if (/^(R\$\s*)?[\d.]+,\d{2}$/.test(text)) return 'currency' as const;
-  if (/^\d{11}$|^\d{14}$/.test(text.replace(/\D/g, ''))) {
-    return 'document' as const;
-  }
-  return 'text' as const;
-}
-
-function sampleValueAtRelativePath(value: unknown, relativePath: string): unknown {
-  let current = value;
-  for (const segment of relativePath.split('.')) {
-    if (Array.isArray(current)) current = current[0];
-    if (current === null || typeof current !== 'object') return undefined;
-    current = (current as Record<string, unknown>)[segment];
-  }
-  if (Array.isArray(current)) return current[0];
-  return current;
-}
-
-function provisionalTypeForBlock(node: JsonNode, keyOverride?: string) {
-  const typeKey = keyOverride ?? `NOVO_${normalize(node.path)}`;
+function completeTypeForBlock(params: {
+  node: JsonNode;
+  typeKey: string;
+  label: string;
+  description: string;
+  baseType?: ConsultationFieldType;
+  baseConfig?: TypeItemFilterConfig;
+  leafPaths?: string[];
+}) {
+  const {
+    node,
+    typeKey,
+    label,
+    description,
+    baseType,
+    baseConfig,
+    leafPaths,
+  } = params;
   const relativeLeafPaths = collectLeafPaths(node.value);
-  const uniquePaths = [...new Set(relativeLeafPaths)].filter(Boolean);
+  const uniquePaths = [
+    ...new Set(leafPaths ?? relativeLeafPaths),
+  ].filter(Boolean);
+  const existingFields = new Map(
+    (baseType?.reportFieldConfig?.fields ?? []).map((field) => [field.id, field]),
+  );
+  const existingMappings = baseConfig?.fieldMappings ?? [];
+  const existingByPath = new Map(
+    existingMappings.map((mapping) => [normalize(mapping.jsonPath), mapping]),
+  );
   const tailCounts = new Map<string, number>();
   for (const path of uniquePaths) {
     const tail = normalize(pathTail(path));
     tailCounts.set(tail, (tailCounts.get(tail) ?? 0) + 1);
   }
+  const usedKeys = new Set<string>();
   const fields = uniquePaths.map((jsonPath, index) => {
+    const existingMapping = existingByPath.get(normalize(jsonPath));
+    const existingField = existingMapping
+      ? existingFields.get(existingMapping.reportFieldId)
+      : undefined;
     const normalizedTail = normalize(pathTail(jsonPath));
-    const hasDuplicateTail = (tailCounts.get(normalizedTail) ?? 0) > 1;
+    const hasDuplicateTail =
+      (tailCounts.get(normalizedTail) ?? 0) > 1 ||
+      usedKeys.has(existingField?.key ?? normalizedTail.toLowerCase());
     const uniqueKeySource = hasDuplicateTail ? jsonPath : pathTail(jsonPath);
     const label = (hasDuplicateTail ? jsonPath : pathTail(jsonPath)).replace(
       /[._]/g,
       ' ',
     );
-    return {
-      id: `${typeKey.toLowerCase()}-field-${index}`,
-      key: normalize(uniqueKeySource).toLowerCase(),
+    const key = existingField?.key ?? normalize(uniqueKeySource).toLowerCase();
+    usedKeys.add(key);
+    return existingField
+      ? { ...existingField, sortOrder: index }
+      : {
+      id: `${typeKey.toLowerCase()}-field-${normalize(jsonPath).toLowerCase()}`,
+      key,
       label,
       sortOrder: index,
-      dataType: inferDataType(sampleValueAtRelativePath(node.value, jsonPath)),
+      dataType: 'text' as const,
       conditionalRules: [],
-    };
+        };
   });
   const fieldType: ConsultationFieldType = {
-    id: `draft-type-${typeKey.toLowerCase()}`,
+    ...(baseType ?? {
+      id: `draft-type-${typeKey.toLowerCase()}`,
+      key: typeKey,
+      label,
+      color: '#f59e0b',
+      icon: 'sparkles',
+    }),
     key: typeKey,
-    label: keyOverride
-      ? keyOverride.replace(/_/g, ' ')
-      : `Novo · ${node.tail.replace(/_/g, ' ')}`,
-    description: `Tipo provisório descoberto em ${node.path}`,
-    color: '#f59e0b',
-    icon: 'sparkles',
+    label,
+    description,
     reportFieldConfig: {
       version: 1,
       fields,
     },
   };
   const config: TypeItemFilterConfig = {
+    ...(baseConfig ?? {}),
     version: 2,
-    groups: [],
-    fieldMappings: fields.map((field, index) => ({
-      id: `${typeKey.toLowerCase()}-mapping-${index}`,
+    groups: baseConfig?.groups ?? [],
+    fieldMappings: fields.map((field, index) => {
+      const jsonPath = uniquePaths[index]!;
+      const existingMapping = existingByPath.get(normalize(jsonPath));
+      return {
+      id:
+        existingMapping?.id ??
+        `${typeKey.toLowerCase()}-mapping-${normalize(jsonPath).toLowerCase()}`,
       reportFieldId: field.id,
       reportFieldLabel: field.label,
-      jsonPath: uniquePaths[index]!,
-      sourceTrechoPath: node.path,
-    })),
+      jsonPath,
+      sourceTrechoPath: node.path.replace(/\[\*\]$/g, ''),
+      };
+    }),
+    dedupFieldIds: (baseConfig?.dedupFieldIds ?? []).filter((fieldId) =>
+      fields.some((field) => field.id === fieldId),
+    ),
+    computedFields: baseConfig?.computedFields ?? [],
+  };
+  return { fieldType, config };
+}
+
+function provisionalTypeForBlock(
+  node: JsonNode,
+  keyOverride?: string,
+  leafPaths?: string[],
+) {
+  const typeKey = keyOverride ?? `NOVO_${normalize(node.path)}`;
+  return completeTypeForBlock({
+    node,
+    typeKey,
+    label: keyOverride
+      ? keyOverride.replace(/_/g, ' ')
+      : `Novo · ${node.tail.replace(/_/g, ' ')}`,
+    description: `Tipo provisório descoberto em ${node.path}`,
+    leafPaths,
+  });
+}
+
+function provisionalTypeForScalar(path: string) {
+  const typeKey = `NOVO_${normalize(path)}`;
+  const fieldId = `${typeKey.toLowerCase()}-field-value`;
+  const fieldKey = normalize(pathTail(path)).toLowerCase();
+  const fieldType: ConsultationFieldType = {
+    id: `draft-type-${typeKey.toLowerCase()}`,
+    key: typeKey,
+    label: `Novo · ${pathTail(path).replace(/_/g, ' ')}`,
+    description: `Valor de raiz descoberto em ${path}`,
+    color: '#f59e0b',
+    icon: 'sparkles',
+    reportFieldConfig: {
+      version: 1,
+      fields: [
+        {
+          id: fieldId,
+          key: fieldKey,
+          label: pathTail(path).replace(/_/g, ' '),
+          sortOrder: 0,
+          dataType: 'text',
+          conditionalRules: [],
+        },
+      ],
+    },
+  };
+  const config: TypeItemFilterConfig = {
+    version: 2,
+    groups: [],
+    fieldMappings: [
+      {
+        id: `${typeKey.toLowerCase()}-mapping-value`,
+        reportFieldId: fieldId,
+        reportFieldLabel: pathTail(path).replace(/_/g, ' '),
+        jsonPath: '$',
+        sourceTrechoPath: path,
+      },
+    ],
     dedupFieldIds: [],
     computedFields: [],
   };
@@ -164,6 +305,14 @@ function matchScore(
   const typeLabel = normalize(fieldType.label);
   let score = 0;
   let reason = '';
+  const genericTails = new Set([
+    'OCORRENCIAS',
+    'STATUS_RETORNO',
+    'PROVEDORES',
+    'ITENS',
+    'DADOS',
+    'RESULTADO',
+  ]);
 
   if (candidateTail === typeKey || candidateTail === typeLabel) {
     score = 95;
@@ -179,19 +328,37 @@ function matchScore(
   for (const referencePath of referencePaths) {
     const referenceTail = normalize(pathTail(referencePath));
     const referenceFull = normalize(referencePath);
-    if (candidateTail === referenceTail && score < 100) {
-      score = 100;
-      reason = 'mesmo bloco usado por produto já catalogado';
+    const referenceParent = normalize(
+      referencePath.split('.').slice(0, -1).join('.'),
+    );
+    const candidateParent = normalize(
+      candidate.path.split('.').slice(0, -1).join('.'),
+    );
+    if (candidatePath === referenceFull && score < 110) {
+      score = 110;
+      reason = 'mesmo caminho usado por produto já catalogado';
     } else if (
-      referenceTail.length >= 5 &&
-      candidatePath.includes(referenceTail) &&
+      candidateTail === referenceTail &&
+      candidateParent === referenceParent &&
+      score < 105
+    ) {
+      score = 105;
+      reason = 'mesmo bloco e mesmo contexto do produto catalogado';
+    } else if (
+      candidateTail === referenceTail &&
+      !genericTails.has(candidateTail) &&
       score < 88
     ) {
       score = 88;
+      reason = 'mesmo bloco semântico usado por produto já catalogado';
+    } else if (
+      referenceTail.length >= 5 &&
+      !genericTails.has(referenceTail) &&
+      candidatePath.includes(referenceTail) &&
+      score < 82
+    ) {
+      score = 82;
       reason = 'estrutura equivalente a produto já catalogado';
-    } else if (candidatePath === referenceFull && score < 105) {
-      score = 105;
-      reason = 'mesmo caminho usado por produto já catalogado';
     }
   }
 
@@ -200,7 +367,6 @@ function matchScore(
 
 function cloneFilterConfig(
   config: TypeItemFilterConfig | undefined,
-  sourcePath: string,
 ): TypeItemFilterConfig {
   if (!config) {
     return {
@@ -211,18 +377,48 @@ function cloneFilterConfig(
       computedFields: [],
     };
   }
-  const cloned = JSON.parse(JSON.stringify(config)) as TypeItemFilterConfig;
-  cloned.fieldMappings = cloned.fieldMappings.map((mapping) => ({
-    ...mapping,
-    sourceTrechoPath:
-      mapping.sourceTrechoPath &&
-      normalize(pathTail(mapping.sourceTrechoPath)) === 'OCORRENCIAS' &&
-      normalize(pathTail(sourcePath)) !== 'OCORRENCIAS'
-        ? `${sourcePath}.OCORRENCIAS`
-        : sourcePath,
-  }));
-  return cloned;
+  return JSON.parse(JSON.stringify(config)) as TypeItemFilterConfig;
 }
+
+const CANONICAL_DEBT_TYPES = new Set([
+  'DIVIDAS_SERASA',
+  'DIVIDAS_SPC',
+  'DIVIDAS_BOA_VISTA',
+  'DIVIDAS_QUOD',
+]);
+
+function absoluteMappedLeafPaths(
+  fieldMappings: FieldMapping[],
+  typeItemFilters: Record<string, TypeItemFilterConfig>,
+) {
+  const paths = new Set<string>();
+  for (const mapping of fieldMappings) {
+    const config = typeItemFilters[mapping.fieldTypeKey];
+    for (const fieldMapping of config?.fieldMappings ?? []) {
+      const root = fieldMapping.sourceTrechoPath?.trim() || mapping.jsonPath;
+      const relative = fieldMapping.jsonPath.trim();
+      if (!root || !relative) continue;
+      paths.add(
+        (relative === '$' ? root : `${root}.${relative}`)
+          .replace(/\[\*\]/g, '')
+          .replace(/\[\]/g, ''),
+      );
+    }
+  }
+  return paths;
+}
+
+export type AutomaticDraftMapping = {
+  consultation: ProviderConsultation;
+  suggestions: DraftMappingSuggestion[];
+  fieldTypes: ConsultationFieldType[];
+  coverage: {
+    totalLeafPaths: number;
+    coveredLeafPaths: number;
+    uncoveredLeafPaths: string[];
+    newTypeCount: number;
+  };
+};
 
 export function buildAutomaticDraftMapping(params: {
   rawJson: string;
@@ -231,23 +427,19 @@ export function buildAutomaticDraftMapping(params: {
   providerId: string;
   consultations: ProviderConsultation[];
   fieldTypes: ConsultationFieldType[];
-}): {
-  consultation: ProviderConsultation;
-  suggestions: DraftMappingSuggestion[];
-  fieldTypes: ConsultationFieldType[];
-  coverage: {
-    totalLeafPaths: number;
-    coveredLeafPaths: number;
-    newTypeCount: number;
-  };
-} {
+}): AutomaticDraftMapping {
   const original = JSON.parse(params.rawJson) as unknown;
   const nodes = collectJsonNodes(original);
   const fieldMappings: FieldMapping[] = [];
   const typeItemFilters: Record<string, TypeItemFilterConfig> = {};
   const suggestions: DraftMappingSuggestion[] = [];
   const discoveredFieldTypes: ConsultationFieldType[] = [];
+  const expandedFieldTypes: ConsultationFieldType[] = [];
   const claimedPaths = new Set<string>();
+  const routedDebtBlocks = collectRoutedDebtBlocks(original);
+  const routedDebtLeafPaths = new Set(
+    routedDebtBlocks.flatMap((block) => block.leafPaths),
+  );
 
   for (const fieldType of params.fieldTypes) {
     const references = params.consultations
@@ -265,7 +457,12 @@ export function buildAutomaticDraftMapping(params: {
           })),
       );
     const referencePaths = references.map((reference) => reference.path);
+    const allowsSharedPath = CANONICAL_DEBT_TYPES.has(fieldType.key);
     const ranked = nodes
+      .filter((node) => {
+        const cleanPath = node.path.replace(/\[\*\]$/g, '');
+        return allowsSharedPath || !claimedPaths.has(cleanPath);
+      })
       .map((node) => ({
         node,
         ...matchScore(node, fieldType, referencePaths),
@@ -274,34 +471,38 @@ export function buildAutomaticDraftMapping(params: {
     const best = ranked[0];
 
     if (!best || best.score < 70) {
-      suggestions.push({
-        typeKey: fieldType.key,
-        typeLabel: fieldType.label,
-        sourcePath: null,
-        confidence: 'unmapped',
-        reason: 'nenhum bloco equivalente foi reconhecido',
-      });
       continue;
     }
 
-    fieldMappings.push({
-      jsonPath: best.node.path,
-      fieldTypeKey: fieldType.key,
-      label: fieldType.label,
-    });
-    claimedPaths.add(best.node.path.replace(/\[\*\]$/g, ''));
+    const cleanBestPath = best.node.path.replace(/\[\*\]$/g, '');
     const reference =
       references.find(
         (item) => normalize(pathTail(item.path)) === normalize(best.node.tail),
       ) ?? references[0];
-    typeItemFilters[fieldType.key] = cloneFilterConfig(
-      reference?.consultation.typeItemFilters?.[fieldType.key],
-      best.node.path,
-    );
+    const complete = completeTypeForBlock({
+      node: { ...best.node, path: cleanBestPath },
+      typeKey: fieldType.key,
+      label: fieldType.label,
+      description:
+        fieldType.description ||
+        `Tipo reaproveitado e completado para ${cleanBestPath}`,
+      baseType: fieldType,
+      baseConfig: cloneFilterConfig(
+        reference?.consultation.typeItemFilters?.[fieldType.key],
+      ),
+    });
+    expandedFieldTypes.push(complete.fieldType);
+    fieldMappings.push({
+      jsonPath: cleanBestPath,
+      fieldTypeKey: fieldType.key,
+      label: fieldType.label,
+    });
+    claimedPaths.add(cleanBestPath);
+    typeItemFilters[fieldType.key] = complete.config;
     suggestions.push({
       typeKey: fieldType.key,
       typeLabel: fieldType.label,
-      sourcePath: best.node.path,
+      sourcePath: cleanBestPath,
       confidence: best.score >= 88 ? 'high' : 'review',
       reason: reference
         ? `${best.reason} no produto ${reference.consultation.externalId}`
@@ -322,7 +523,6 @@ export function buildAutomaticDraftMapping(params: {
     'BOA VISTA',
     'SCPC',
   ]);
-  const discriminatorPaths = new Set<string>();
   const seenDiscriminatorTypes = new Set<string>();
 
   for (const node of nodes) {
@@ -396,7 +596,6 @@ export function buildAutomaticDraftMapping(params: {
         confidence: 'new',
         reason: `nova base encontrada pelo valor “${value}”`,
       });
-      discriminatorPaths.add(cleanPath);
       claimedPaths.add(cleanPath);
       seenDiscriminatorTypes.add(debtTypeKey);
     }
@@ -417,14 +616,21 @@ export function buildAutomaticDraftMapping(params: {
 
   for (const node of blockCandidates) {
     const cleanPath = node.path.replace(/\[\*\]$/g, '');
-    const alreadyCovered = [...claimedPaths].some(
-      (path) =>
-        cleanPath === path ||
-        cleanPath.startsWith(`${path}.`) ||
-        path.startsWith(`${cleanPath}.`),
+    const mappedPaths = absoluteMappedLeafPaths(
+      fieldMappings,
+      typeItemFilters,
     );
-    if (alreadyCovered || discriminatorPaths.has(cleanPath)) continue;
-    const provisional = provisionalTypeForBlock({ ...node, path: cleanPath });
+    const uncoveredRelativePaths = collectLeafPaths(node.value).filter(
+      (path) =>
+        !mappedPaths.has(`${cleanPath}.${path}`) &&
+        !routedDebtLeafPaths.has(`${cleanPath}.${path}`),
+    );
+    if (uncoveredRelativePaths.length === 0) continue;
+    const provisional = provisionalTypeForBlock(
+      { ...node, path: cleanPath },
+      undefined,
+      uncoveredRelativePaths,
+    );
     if (provisional.fieldType.reportFieldConfig?.fields.length === 0) continue;
 
     discoveredFieldTypes.push(provisional.fieldType);
@@ -442,6 +648,40 @@ export function buildAutomaticDraftMapping(params: {
       reason: 'estrutura inédita catalogada integralmente como tipo provisório',
     });
     claimedPaths.add(cleanPath);
+  }
+
+  for (const block of routedDebtBlocks) {
+    suggestions.push({
+      typeKey: `ROTEAMENTO_DIVIDAS_${normalize(block.blockPath)}`,
+      typeLabel: 'Roteamento canônico de dívidas',
+      sourcePath: block.occurrencePath,
+      confidence: 'high',
+      reason:
+        'cada ocorrência e todos os seus campos são separados automaticamente pela base Sollos (I Serasa, II SPC, III Boa Vista/SCPC e IV Quod)',
+    });
+  }
+
+  if (original !== null && typeof original === 'object' && !Array.isArray(original)) {
+    for (const [path, value] of Object.entries(
+      original as Record<string, unknown>,
+    )) {
+      if (value !== null && typeof value === 'object') continue;
+      const provisional = provisionalTypeForScalar(path);
+      discoveredFieldTypes.push(provisional.fieldType);
+      fieldMappings.push({
+        jsonPath: path,
+        fieldTypeKey: provisional.fieldType.key,
+        label: provisional.fieldType.label,
+      });
+      typeItemFilters[provisional.fieldType.key] = provisional.config;
+      suggestions.push({
+        typeKey: provisional.fieldType.key,
+        typeLabel: provisional.fieldType.label,
+        sourcePath: path,
+        confidence: 'new',
+        reason: 'metadado de raiz preservado integralmente no Preview',
+      });
+    }
   }
 
   const declaredCapabilities = nodes.filter(
@@ -489,7 +729,33 @@ export function buildAutomaticDraftMapping(params: {
   }
 
   const now = new Date().toISOString();
-  const totalLeafPaths = collectLeafPaths(original).length;
+  const leafPaths = [...new Set(collectLeafPaths(original))];
+  const mappedLeafPaths = absoluteMappedLeafPaths(
+    fieldMappings,
+    typeItemFilters,
+  );
+  const uncoveredLeafPaths = leafPaths.filter(
+    (path) => !mappedLeafPaths.has(path) && !routedDebtLeafPaths.has(path),
+  );
+  const effectiveFieldTypes = new Map(
+    params.fieldTypes.map((fieldType) => [fieldType.key, fieldType]),
+  );
+  for (const fieldType of [
+    ...expandedFieldTypes,
+    ...discoveredFieldTypes,
+  ]) {
+    effectiveFieldTypes.set(fieldType.key, fieldType);
+  }
+  const originalTypeKeys = new Set(
+    params.fieldTypes.map((fieldType) => fieldType.key),
+  );
+  const newTypeCount = [
+    ...new Set(
+      discoveredFieldTypes
+        .filter((fieldType) => !originalTypeKeys.has(fieldType.key))
+        .map((fieldType) => fieldType.key),
+    ),
+  ].length;
   return {
     consultation: {
       id: `draft-${params.productCode}`,
@@ -509,11 +775,12 @@ export function buildAutomaticDraftMapping(params: {
       status: 'inactive',
     },
     suggestions,
-    fieldTypes: [...params.fieldTypes, ...discoveredFieldTypes],
+    fieldTypes: [...effectiveFieldTypes.values()],
     coverage: {
-      totalLeafPaths,
-      coveredLeafPaths: totalLeafPaths,
-      newTypeCount: discoveredFieldTypes.length,
+      totalLeafPaths: leafPaths.length,
+      coveredLeafPaths: leafPaths.length - uncoveredLeafPaths.length,
+      uncoveredLeafPaths,
+      newTypeCount,
     },
   };
 }

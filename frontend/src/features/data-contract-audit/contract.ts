@@ -5,6 +5,10 @@ import type {
 } from '@/types/integrations';
 import { buildTypeKeyedDataForDrawer } from '@/lib/buildTypeKeyedDataForDrawer';
 import { collectValuesAtPath } from '@/lib/consultationMappedPreview';
+import {
+  filterValueForPreviewDeep,
+  getValueAtJsonPath,
+} from '@/lib/providerResponseMapping';
 
 export type ContractStageName = 'original' | 'de' | 'para' | 'editor';
 export type CreditBureau =
@@ -48,6 +52,7 @@ export type BureauOccurrenceAudit = {
   creditor: string;
   contract: string;
   amount: unknown;
+  fieldCount: number;
   status: 'ok' | 'unknown-base' | 'missing-target' | 'misrouted';
   message: string;
 };
@@ -96,6 +101,8 @@ const TYPE_KEY_BY_BUREAU: Record<Exclude<CreditBureau, 'unknown'>, string> = {
   quod: 'DIVIDAS_QUOD',
 };
 
+const CANONICAL_DEBT_TYPE_KEYS = new Set(Object.values(TYPE_KEY_BY_BUREAU));
+
 function sortJson(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(sortJson);
   if (value !== null && typeof value === 'object') {
@@ -133,6 +140,8 @@ function parseLocaleNumber(value: unknown): number | null {
   if (!raw) return null;
   const normalized = raw.includes(',')
     ? raw.replace(/\./g, '').replace(',', '.')
+    : /^-?[1-9]\d{0,2}(?:\.\d{3})+$/.test(raw)
+      ? raw.replace(/\./g, '')
     : raw;
   const parsed = Number(normalized);
   return Number.isFinite(parsed) ? parsed : null;
@@ -216,7 +225,21 @@ function flattenComparableValues(value: unknown): unknown[] {
   return [value];
 }
 
-function previewContainsOccurrence(
+function countLeafFields(value: unknown): number {
+  if (Array.isArray(value)) {
+    return value.reduce((total, item) => total + countLeafFields(item), 0);
+  }
+  const record = asRecord(value);
+  if (record) {
+    return Object.values(record).reduce(
+      (total, item) => total + countLeafFields(item),
+      0,
+    );
+  }
+  return 1;
+}
+
+function previewContainsExactOccurrence(
   preview: unknown,
   occurrence: Record<string, unknown>,
 ): boolean {
@@ -227,30 +250,7 @@ function previewContainsOccurrence(
     const record = asRecord(value);
     return record ? Object.values(record).some(containsExactOccurrence) : false;
   };
-  if (containsExactOccurrence(preview)) return true;
-
-  const values = deepValues(preview);
-  const normalizedTexts = new Set(values.map(normalizedLabel));
-  const normalizedNumbers = new Set(
-    values
-      .map(parseLocaleNumber)
-      .filter((value): value is number => value !== null),
-  );
-  const creditor = occurrence.CREDOR ?? occurrence.ORIGEM ?? occurrence.NOME;
-  const contract = occurrence.CONTRATO;
-  const amount = occurrence.VALOR ?? occurrence.VALOR_DIVIDA;
-  const checks = [
-    creditor ? normalizedTexts.has(normalizedLabel(creditor)) : null,
-    contract ? normalizedTexts.has(normalizedLabel(contract)) : null,
-    amount
-      ? normalizedNumbers.has(parseLocaleNumber(amount) ?? Number.NaN)
-      : null,
-  ].filter((value): value is boolean => value !== null);
-
-  return (
-    checks.length > 0 &&
-    checks.filter(Boolean).length >= Math.min(2, checks.length)
-  );
+  return containsExactOccurrence(preview);
 }
 
 function buildBureauAudit(
@@ -278,14 +278,14 @@ function buildBureauAudit(
       const foundInExpected =
         expectedTypeKey !== null &&
         para[expectedTypeKey] !== undefined &&
-        previewContainsOccurrence(para[expectedTypeKey], occurrence);
+        previewContainsExactOccurrence(para[expectedTypeKey], occurrence);
       const wrongTypeKey =
         bureau === 'unknown'
           ? null
           : Object.values(TYPE_KEY_BY_BUREAU).find(
               (typeKey) =>
                 typeKey !== expectedTypeKey &&
-                previewContainsOccurrence(para[typeKey], occurrence),
+                previewContainsExactOccurrence(para[typeKey], occurrence),
             ) ?? null;
       const status: BureauOccurrenceAudit['status'] =
         bureau === 'unknown'
@@ -306,10 +306,11 @@ function buildBureauAudit(
         creditor: String(occurrence.CREDOR ?? occurrence.ORIGEM ?? 'Não informado'),
         contract: String(occurrence.CONTRATO ?? 'Não informado'),
         amount: occurrence.VALOR ?? occurrence.VALOR_DIVIDA ?? null,
+        fieldCount: countLeafFields(occurrence),
         status,
         message:
           status === 'ok'
-            ? `Ocorrência localizada em ${expectedTypeKey}.`
+            ? `Ocorrência completa localizada em ${expectedTypeKey}; ${countLeafFields(occurrence)} campo(s) conferido(s).`
             : status === 'unknown-base'
               ? 'Base não reconhecida. A catalogação deve permanecer bloqueada.'
               : status === 'misrouted'
@@ -354,17 +355,7 @@ function routeDebtOccurrencesToCanonicalTypes(
   }
 
   for (const [typeKey, occurrences] of routed) {
-    const current = Array.isArray(para[typeKey]) ? para[typeKey] : [];
-    const seen = new Set(current.map((item) => JSON.stringify(item)));
-    para[typeKey] = [
-      ...current,
-      ...occurrences.filter((item) => {
-        const fingerprint = JSON.stringify(item);
-        if (seen.has(fingerprint)) return false;
-        seen.add(fingerprint);
-        return true;
-      }),
-    ];
+    para[typeKey] = occurrences;
   }
 }
 
@@ -377,9 +368,7 @@ function buildLineage(params: {
   const lineage: FieldLineage[] = [];
 
   for (const fieldType of params.fieldTypes) {
-    if (Object.values(TYPE_KEY_BY_BUREAU).includes(fieldType.key)) {
-      continue;
-    }
+    if (CANONICAL_DEBT_TYPE_KEYS.has(fieldType.key)) continue;
     const config = params.consultation.typeItemFilters?.[fieldType.key];
     const fieldsById = new Map(
       (fieldType.reportFieldConfig?.fields ?? []).map((field) => [field.id, field]),
@@ -388,10 +377,25 @@ function buildLineage(params: {
     for (const mapping of config?.fieldMappings ?? []) {
       const field = fieldsById.get(mapping.reportFieldId);
       if (!field || !mapping.jsonPath.trim()) continue;
-      const sourcePath = [mapping.sourceTrechoPath, mapping.jsonPath]
-        .filter((part) => part?.trim())
-        .join('.');
-      const sourceValues = collectValuesAtPath(params.original, sourcePath);
+      const sourcePath =
+        mapping.jsonPath.trim() === '$'
+          ? mapping.sourceTrechoPath?.trim() ?? ''
+          : [mapping.sourceTrechoPath, mapping.jsonPath]
+              .filter((part) => part?.trim())
+              .join('.');
+      const sourceRootPath = mapping.sourceTrechoPath?.trim() ?? '';
+      const sourceRoot = getValueAtJsonPath(
+        params.original,
+        sourceRootPath,
+      );
+      const filteredSourceRoot = filterValueForPreviewDeep(
+        sourceRoot,
+        config,
+      ).value;
+      const sourceValues = collectValuesAtPath(
+        filteredSourceRoot,
+        mapping.jsonPath.trim(),
+      );
       const previewValues = collectValuesAtPath(
         params.para[fieldType.key],
         field.key,

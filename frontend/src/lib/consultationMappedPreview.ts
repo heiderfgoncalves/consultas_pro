@@ -96,6 +96,9 @@ export function parsePreviewPartText(text: string): unknown {
 }
 
 export function collectValuesAtPath(value: unknown, path: string): unknown[] {
+  if (path.trim() === '$') {
+    return value === null || value === undefined ? [] : [value];
+  }
   const parts = path.split('.').filter(Boolean);
   if (parts.length === 0) return [];
 

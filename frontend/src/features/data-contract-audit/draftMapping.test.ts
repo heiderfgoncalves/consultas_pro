@@ -84,7 +84,7 @@ describe('buildAutomaticDraftMapping', () => {
     );
   });
 
-  it('marca como não mapeado quando não existe correspondência segura', () => {
+  it('não polui o rascunho com tipos globais sem correspondência', () => {
     const result = buildAutomaticDraftMapping({
       rawJson: JSON.stringify({ HEADER: { STATUS: '1' } }),
       productCode: '676',
@@ -95,7 +95,7 @@ describe('buildAutomaticDraftMapping', () => {
 
     expect(
       result.suggestions.find((item) => item.typeKey === 'DADOS_PESSOAIS'),
-    ).toEqual(expect.objectContaining({ confidence: 'unmapped' }));
+    ).toBeUndefined();
   });
 
   it('cria tipos provisórios para estruturas e bases inéditas', () => {
@@ -147,8 +147,20 @@ describe('buildAutomaticDraftMapping', () => {
           typeKey: 'DIVIDAS_QUOD',
           confidence: 'new',
         }),
+        expect.objectContaining({
+          typeLabel: 'Roteamento canônico de dívidas',
+          sourcePath:
+            'CREDCADASTRAL.PEND_FINANCEIRAS.OCORRENCIAS',
+          confidence: 'high',
+        }),
       ]),
     );
+    expect(
+      result.fieldTypes.find(
+        (fieldType) =>
+          fieldType.key === 'NOVO_CREDCADASTRAL_PEND_FINANCEIRAS',
+      ),
+    ).toBeUndefined();
     expect(result.suggestions).not.toEqual(
       expect.arrayContaining([
         expect.objectContaining({ typeKey: 'DIVIDAS_BASE_IV' }),
@@ -182,7 +194,30 @@ describe('buildAutomaticDraftMapping', () => {
 
     expect(
       result.suggestions.find((item) => item.typeKey === 'DIVIDAS_SERASA'),
-    ).toEqual(expect.objectContaining({ confidence: 'unmapped' }));
+    ).toBeUndefined();
+  });
+
+  it('não confunde blocos diferentes que terminam em OCORRENCIAS', () => {
+    const result = buildAutomaticDraftMapping({
+      rawJson: JSON.stringify({
+        HEADER: {
+          CONTROLE: {
+            OCORRENCIAS: [{ CODIGO: '1' }],
+          },
+        },
+      }),
+      productCode: '676',
+      providerId: 'sollos',
+      consultations: [reference],
+      fieldTypes,
+    });
+
+    expect(
+      result.suggestions.find((item) => item.typeKey === 'DIVIDAS_SERASA'),
+    ).toBeUndefined();
+    expect(result.consultation.fieldMappings).not.toContainEqual(
+      expect.objectContaining({ fieldTypeKey: 'DIVIDAS_SERASA' }),
+    );
   });
 
   it('mantém chaves distintas quando blocos aninhados repetem o nome do campo', () => {
@@ -214,6 +249,62 @@ describe('buildAutomaticDraftMapping', () => {
         'endereco_uf',
         'endereco_matriz_uf',
       ]),
+    );
+  });
+
+  it('mapeia campos encontrados somente em itens posteriores de uma lista', () => {
+    const result = buildAutomaticDraftMapping({
+      rawJson: JSON.stringify({
+        CREDCADASTRAL: {
+          ACOES: [
+            { PROCESSO: '1', VALOR: '10,00' },
+            { PROCESSO: '2', VALOR: '20,00', TRIBUNAL: 'TJSP' },
+          ],
+        },
+      }),
+      productCode: 'novo',
+      providerId: 'sollos',
+      consultations: [],
+      fieldTypes: [],
+    });
+    const actionsType = result.fieldTypes.find(
+      (fieldType) => fieldType.key === 'NOVO_CREDCADASTRAL_ACOES',
+    );
+
+    expect(actionsType?.reportFieldConfig?.fields).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ key: 'processo' }),
+        expect.objectContaining({ key: 'valor' }),
+        expect.objectContaining({ key: 'tribunal' }),
+      ]),
+    );
+    expect(result.coverage).toMatchObject({
+      totalLeafPaths: 3,
+      coveredLeafPaths: 3,
+      uncoveredLeafPaths: [],
+    });
+  });
+
+  it('preserva metadados escalares existentes na raiz do JSON', () => {
+    const result = buildAutomaticDraftMapping({
+      rawJson: JSON.stringify({ STATUS_RAIZ: '1' }),
+      productCode: 'novo',
+      providerId: 'sollos',
+      consultations: [],
+      fieldTypes: [],
+    });
+
+    expect(result.coverage).toEqual({
+      totalLeafPaths: 1,
+      coveredLeafPaths: 1,
+      uncoveredLeafPaths: [],
+      newTypeCount: 1,
+    });
+    expect(result.consultation.fieldMappings).toContainEqual(
+      expect.objectContaining({
+        jsonPath: 'STATUS_RAIZ',
+        fieldTypeKey: 'NOVO_STATUS_RAIZ',
+      }),
     );
   });
 });

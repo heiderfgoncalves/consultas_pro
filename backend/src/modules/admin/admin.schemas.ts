@@ -238,6 +238,46 @@ export const catalogSollosProductSchema = z.object({
   }),
 });
 
+const sollosSampleValidationSchema = z.object({
+  sampleNumber: z.number().int().positive(),
+  expectedStatus: z.enum(['RESTRICAO', 'NADA_CONSTA', 'CONCLUIDO']),
+  sourceFingerprint: z.string().nullable(),
+  observedLeafPathCount: z.number().int().nonnegative(),
+  coveredLeafPathCount: z.number().int().nonnegative(),
+  uncoveredLeafPaths: z.array(z.string()),
+  validatedFieldCount: z.number().int().nonnegative(),
+  validatedOccurrenceCount: z.number().int().nonnegative(),
+  invalidFieldPaths: z.array(z.string()),
+  invalidOccurrencePaths: z.array(z.string()),
+  errors: z.array(z.string()),
+  valid: z.boolean(),
+});
+
+export const upsertSollosFactoryDraftSchema = z.object({
+  providerId: z.string().min(1),
+  externalId: z.string().regex(/^\d+$/),
+  productName: z.string().min(2),
+  officialSampleCount: z.number().int().positive(),
+  attemptedSamples: z.number().int().positive(),
+  successfulSamples: z.number().int().nonnegative(),
+  failedSamples: z.number().int().nonnegative(),
+  validSamples: z.number().int().nonnegative(),
+  invalidSamples: z.number().int().nonnegative(),
+  uniquePathCount: z.number().int().positive(),
+  totalLeafPathCount: z.number().int().positive(),
+  coveredLeafPathCount: z.number().int().nonnegative(),
+  representativeResponse: z.union([
+    z.record(z.any()),
+    z.array(z.any()),
+  ]),
+  fieldTypes: z.array(z.any()).min(1),
+  fieldMappings: z.array(z.any()).min(1),
+  typeItemFilters: z.record(z.any()),
+  suggestions: z.array(z.any()),
+  structuralPaths: z.array(z.string()).min(1),
+  sampleValidations: z.array(sollosSampleValidationSchema).min(1),
+});
+
 export const previewMergeSchema = z.object({
   executionIds: z.array(z.string()).optional(),
   testLogIds: z.array(z.string()).optional(),

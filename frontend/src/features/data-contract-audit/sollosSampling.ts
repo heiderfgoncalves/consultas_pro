@@ -27,25 +27,67 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
 
-export function collectSollosStructuralPaths(
+function collectStructuralPaths(
   value: unknown,
   prefix = '',
 ): string[] {
   if (Array.isArray(value)) {
     const arrayPath = `${prefix}[]`;
     const nested = value.flatMap((item) =>
-      collectSollosStructuralPaths(item, arrayPath),
+      collectStructuralPaths(item, arrayPath),
     );
     return [arrayPath, ...nested];
   }
 
   if (isRecord(value)) {
     return Object.entries(value).flatMap(([key, child]) =>
-      collectSollosStructuralPaths(child, prefix ? `${prefix}.${key}` : key),
+      collectStructuralPaths(child, prefix ? `${prefix}.${key}` : key),
     );
   }
 
   return prefix ? [prefix] : [];
+}
+
+export function collectSollosStructuralPaths(
+  value: unknown,
+  prefix = '',
+): string[] {
+  return [...new Set(collectStructuralPaths(value, prefix))];
+}
+
+export function collectSollosLeafPaths(
+  value: unknown,
+  prefix = '',
+): string[] {
+  if (Array.isArray(value)) {
+    const arrayPath = `${prefix}[]`;
+    return [
+      ...new Set(
+        value.flatMap((item) => collectSollosLeafPaths(item, arrayPath)),
+      ),
+    ];
+  }
+  if (isRecord(value)) {
+    return [
+      ...new Set(
+        Object.entries(value).flatMap(([key, child]) =>
+          collectSollosLeafPaths(child, prefix ? `${prefix}.${key}` : key),
+        ),
+      ),
+    ];
+  }
+  return prefix ? [prefix] : [];
+}
+
+function arrayItemSignature(value: unknown): string {
+  const discriminator = isRecord(value)
+    ? String(value.INFORMANTE ?? value.PROVEDOR ?? value.BASE ?? '')
+        .trim()
+        .toLocaleUpperCase('pt-BR')
+    : '';
+  return `${discriminator}::${collectSollosStructuralPaths(value)
+    .sort()
+    .join('|')}`;
 }
 
 function mergePayloadValue(current: unknown, incoming: unknown): unknown {
@@ -53,11 +95,14 @@ function mergePayloadValue(current: unknown, incoming: unknown): unknown {
   if (incoming === undefined || incoming === null || incoming === '') return current;
 
   if (Array.isArray(current) && Array.isArray(incoming)) {
-    const serialized = new Set(current.map((item) => JSON.stringify(item)));
-    const additions = incoming.filter(
-      (item) => !serialized.has(JSON.stringify(item)),
-    );
-    return [...current, ...additions].slice(0, 25);
+    const signatures = new Set(current.map(arrayItemSignature));
+    const additions = incoming.filter((item) => {
+      const signature = arrayItemSignature(item);
+      if (signatures.has(signature)) return false;
+      signatures.add(signature);
+      return true;
+    });
+    return [...current, ...additions];
   }
 
   if (isRecord(current) && isRecord(incoming)) {

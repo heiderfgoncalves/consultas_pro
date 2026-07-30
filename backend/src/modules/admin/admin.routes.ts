@@ -35,6 +35,7 @@ import {
   testProductDraftSchema,
   testProductSchema,
   templateVariableExpressionSchema,
+  upsertSollosFactoryDraftSchema,
   updateCanonicalFieldSchema,
   updateMappingSchema,
   updateProviderOperationSchema,
@@ -62,6 +63,10 @@ import {
   testProviderProductDraft,
 } from '../providers/providers.service';
 import { catalogSollosProduct } from '../providers/catalog-sollos-product.service';
+import {
+  getSollosFactoryDraft,
+  upsertSollosFactoryDraft,
+} from '../providers/sollos-factory-draft.service';
 
 function stripPassword<T extends { passwordHash: string }>(user: T): Omit<T, 'passwordHash'> {
   const { passwordHash: _p, ...rest } = user;
@@ -1695,6 +1700,30 @@ export async function registerAdminRoutes(app: FastifyInstance) {
     async (request, reply) => {
       const payload = catalogSollosProductSchema.parse(request.body);
       return ok(reply, await catalogSollosProduct(app, payload), 201);
+    },
+  );
+
+  app.get(
+    '/admin/providers/:providerId/sollos-factory-drafts/:externalId',
+    platformAdminOnly,
+    async (request, reply) => {
+      const { providerId, externalId } = request.params as {
+        providerId: string;
+        externalId: string;
+      };
+      return ok(
+        reply,
+        await getSollosFactoryDraft(app, providerId, externalId),
+      );
+    },
+  );
+
+  app.put(
+    '/admin/providers/sollos-factory-drafts',
+    platformAdminOnly,
+    async (request, reply) => {
+      const payload = upsertSollosFactoryDraftSchema.parse(request.body);
+      return ok(reply, await upsertSollosFactoryDraft(app, payload));
     },
   );
 

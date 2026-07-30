@@ -243,6 +243,7 @@ model Provider {
   executions     ConsultationExecution[]
   operations     ProviderOperation[]
   products       ProviderProduct[]
+  sollosFactoryDrafts SollosFactoryDraft[]
   testLogs       ProviderTestLog[]
 }
 
@@ -425,6 +426,38 @@ model ProviderTestLog {
   @@index([providerId])
   @@index([productId])
   @@index([operationId])
+}
+
+model SollosFactoryDraft {
+  id                       String   @id @default(cuid())
+  providerId               String
+  externalId               String
+  productName              String
+  status                   String
+  version                  Int      @default(1)
+  officialSampleCount      Int
+  attemptedSamples         Int
+  successfulSamples        Int
+  failedSamples            Int
+  validSamples             Int
+  invalidSamples           Int
+  uniquePathCount          Int
+  totalLeafPathCount       Int
+  coveredLeafPathCount     Int
+  representativeResponse   Json
+  fieldTypes               Json
+  fieldMappings            Json
+  typeItemFilters          Json
+  suggestions              Json
+  structuralPaths          Json
+  sampleValidations        Json
+  createdAt                DateTime @default(now())
+  updatedAt                DateTime @updatedAt
+  provider                 Provider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+
+  @@unique([providerId, externalId])
+  @@index([providerId])
+  @@index([status])
 }
 
 model Template {
@@ -741,5 +774,4 @@ model CanonicalFieldFolderAssociation {
   
   folder       CanonicalFolder @relation(fields: [folderId], references: [id], onDelete: Cascade)
 }
-
 

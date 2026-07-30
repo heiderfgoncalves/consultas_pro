@@ -215,6 +215,55 @@ describe('contrato DE–PARA', () => {
     expect(report.lineage[0].status).toBe('ok');
   });
 
+  it('considera separador de milhar do Preview no campo numérico', () => {
+    const numericFieldTypes: ConsultationFieldType[] = [
+      {
+        ...fieldTypes[0],
+        reportFieldConfig: {
+          version: 1,
+          fields: [
+            {
+              id: 'field-score',
+              key: 'score',
+              label: 'Score',
+              sortOrder: 0,
+              dataType: 'numeric',
+              conditionalRules: [],
+            },
+          ],
+        },
+      },
+    ];
+    const numericConsultation: ProviderConsultation = {
+      ...consultation,
+      typeItemFilters: {
+        DADOS: {
+          version: 2,
+          groups: [],
+          dedupFieldIds: [],
+          fieldMappings: [
+            {
+              id: 'map-score',
+              reportFieldId: 'field-score',
+              reportFieldLabel: 'Score',
+              sourceTrechoPath: 'retorno',
+              jsonPath: 'score',
+            },
+          ],
+          computedFields: [],
+        },
+      },
+    };
+    const report = buildDataContractReport({
+      rawJson: '{"retorno":{"score":"1000"}}',
+      consultation: numericConsultation,
+      fieldTypes: numericFieldTypes,
+    });
+
+    expect(report.lineage[0].previewValues).toEqual(['1.000']);
+    expect(report.lineage[0].status).toBe('ok');
+  });
+
   it('sinaliza ausência de saída PARA quando não há mapeamento aplicável', () => {
     const report = buildDataContractReport({
       rawJson: '{"retorno":{"nome":"Maria"}}',
@@ -339,6 +388,7 @@ describe('contrato DE–PARA', () => {
       expect.objectContaining({
         bureau: 'serasa',
         expectedTypeKey: 'DIVIDAS_SERASA',
+        fieldCount: 4,
         status: 'ok',
       }),
     ]);
@@ -386,5 +436,146 @@ describe('contrato DE–PARA', () => {
     expect(report.para.DIVIDAS_SPC).toHaveLength(1);
     expect(report.para.DIVIDAS_BOA_VISTA).toHaveLength(1);
     expect(report.para.DIVIDAS_QUOD).toHaveLength(1);
+  });
+
+  it('mantém cada ocorrência de dívida uma única vez na base canônica', () => {
+    const report = buildDataContractReport({
+      rawJson: JSON.stringify({
+        CREDCADASTRAL: {
+          PEND_FINANCEIRAS: {
+            OCORRENCIAS: [
+              {
+                INFORMANTE: 'BASE I',
+                CREDOR: 'CREDOR A',
+                CONTRATO: '123',
+                VALOR: '10,00',
+              },
+            ],
+          },
+        },
+      }),
+      consultation: {
+        ...consultation,
+        fieldMappings: [
+          {
+            jsonPath: 'CREDCADASTRAL.PEND_FINANCEIRAS.OCORRENCIAS',
+            fieldTypeKey: 'DIVIDAS_SERASA',
+            label: 'Serasa',
+          },
+        ],
+      },
+      fieldTypes: [
+        {
+          id: 'serasa',
+          key: 'DIVIDAS_SERASA',
+          label: 'Serasa',
+          description: '',
+          color: 'red',
+          icon: 'AlertTriangle',
+          reportFieldConfig: { version: 1, fields: [] },
+        },
+      ],
+    });
+
+    expect(report.para.DIVIDAS_SERASA).toEqual([
+      {
+        INFORMANTE: 'BASE I',
+        CREDOR: 'CREDOR A',
+        CONTRATO: '123',
+        VALOR: '10,00',
+      },
+    ]);
+    expect(report.bureauAudit[0]).toEqual(
+      expect.objectContaining({ status: 'ok', fieldCount: 4 }),
+    );
+  });
+
+  it('compara a linhagem somente com as ocorrências da base filtrada', () => {
+    const fieldTypes: ConsultationFieldType[] = [
+      {
+        id: 'serasa',
+        key: 'HISTORICO_SERASA',
+        label: 'Histórico Serasa',
+        description: '',
+        color: 'red',
+        icon: 'AlertTriangle',
+        reportFieldConfig: {
+          version: 1,
+          fields: [
+            {
+              id: 'serasa-creditor',
+              key: 'credor',
+              label: 'Credor',
+              sortOrder: 0,
+              dataType: 'text',
+              conditionalRules: [],
+            },
+          ],
+        },
+      },
+    ];
+    const filteredConsultation: ProviderConsultation = {
+      ...consultation,
+      fieldMappings: [
+          {
+            jsonPath: 'CREDCADASTRAL.PEND_FINANCEIRAS.OCORRENCIAS',
+            fieldTypeKey: 'HISTORICO_SERASA',
+            label: 'Histórico Serasa',
+        },
+      ],
+      typeItemFilters: {
+        HISTORICO_SERASA: {
+          version: 2,
+          groups: [
+            {
+              id: 'serasa-group',
+              joinOperator: 'and',
+              rules: [
+                {
+                  id: 'serasa-rule',
+                  field: 'INFORMANTE',
+                  op: 'eq',
+                  value: 'BASE I',
+                },
+              ],
+            },
+          ],
+          dedupFieldIds: [],
+          fieldMappings: [
+            {
+              id: 'serasa-creditor-map',
+              reportFieldId: 'serasa-creditor',
+              reportFieldLabel: 'Credor',
+              sourceTrechoPath:
+                'CREDCADASTRAL.PEND_FINANCEIRAS.OCORRENCIAS',
+              jsonPath: 'CREDOR',
+            },
+          ],
+          computedFields: [],
+        },
+      },
+    };
+    const report = buildDataContractReport({
+      rawJson: JSON.stringify({
+        CREDCADASTRAL: {
+          PEND_FINANCEIRAS: {
+            OCORRENCIAS: [
+              { INFORMANTE: 'BASE I', CREDOR: 'CREDOR SERASA' },
+              { INFORMANTE: 'BASE III', CREDOR: 'CREDOR BOA VISTA' },
+            ],
+          },
+        },
+      }),
+      consultation: filteredConsultation,
+      fieldTypes,
+    });
+
+    expect(report.lineage[0]).toEqual(
+      expect.objectContaining({
+        sourceValues: ['CREDOR SERASA'],
+        previewValues: ['CREDOR SERASA'],
+        status: 'ok',
+      }),
+    );
   });
 });

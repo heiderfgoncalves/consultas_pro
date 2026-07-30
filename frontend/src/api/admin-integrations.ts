@@ -127,6 +127,52 @@ export interface ApiTestLog {
   provider?: { id: string; name: string } | null;
 }
 
+export interface ApiSollosFactoryDraft {
+  id: string;
+  providerId: string;
+  externalId: string;
+  productName: string;
+  status: 'READY_FOR_MANUAL_REVIEW' | 'NEEDS_ADJUSTMENT';
+  version: number;
+  officialSampleCount: number;
+  attemptedSamples: number;
+  successfulSamples: number;
+  failedSamples: number;
+  validSamples: number;
+  invalidSamples: number;
+  uniquePathCount: number;
+  totalLeafPathCount: number;
+  coveredLeafPathCount: number;
+  representativeResponse: unknown;
+  fieldTypes: ConsultationFieldType[];
+  fieldMappings: FieldMapping[];
+  typeItemFilters: ProviderConsultation['typeItemFilters'];
+  suggestions: Array<{
+    typeKey: string;
+    typeLabel: string;
+    sourcePath: string | null;
+    confidence: 'high' | 'review' | 'new' | 'unmapped';
+    reason: string;
+  }>;
+  structuralPaths: string[];
+  sampleValidations: Array<{
+    sampleNumber: number;
+    expectedStatus: 'RESTRICAO' | 'NADA_CONSTA' | 'CONCLUIDO';
+    sourceFingerprint: string | null;
+    observedLeafPathCount: number;
+    coveredLeafPathCount: number;
+    uncoveredLeafPaths: string[];
+    validatedFieldCount: number;
+    validatedOccurrenceCount: number;
+    invalidFieldPaths: string[];
+    invalidOccurrencePaths: string[];
+    errors: string[];
+    valid: boolean;
+  }>;
+  createdAt: string;
+  updatedAt: string;
+}
+
 const AUTH_MAP: Record<string, Provider['authType']> = {
   BEARER: 'bearer',
   API_KEY: 'apikey',
@@ -247,7 +293,7 @@ export function mapApiProvider(p: ApiProvider): Provider {
 
   let custom_variables: { key: string; value: string }[] = [];
   if (p.credentials && typeof p.credentials === 'object') {
-    const credsObj = p.credentials as any;
+    const credsObj = p.credentials as Record<string, unknown>;
     if (credsObj.custom_variables && typeof credsObj.custom_variables === 'object') {
       custom_variables = Object.entries(credsObj.custom_variables).map(([key, value]) => ({
         key,
@@ -898,6 +944,37 @@ export async function catalogSollosProductApi(
     token: tok(accessToken),
     body: JSON.stringify(body),
   });
+}
+
+export async function getSollosFactoryDraftApi(
+  accessToken: string | null,
+  providerId: string,
+  externalId: string,
+) {
+  return apiRequest<ApiSollosFactoryDraft | null>(
+    `/admin/providers/${encodeURIComponent(providerId)}/sollos-factory-drafts/${encodeURIComponent(externalId)}`,
+    {
+      method: 'GET',
+      token: tok(accessToken),
+    },
+  );
+}
+
+export async function upsertSollosFactoryDraftApi(
+  accessToken: string | null,
+  body: Omit<
+    ApiSollosFactoryDraft,
+    'id' | 'status' | 'version' | 'createdAt' | 'updatedAt'
+  >,
+) {
+  return apiRequest<ApiSollosFactoryDraft>(
+    '/admin/providers/sollos-factory-drafts',
+    {
+      method: 'PUT',
+      token: tok(accessToken),
+      body: JSON.stringify(body),
+    },
+  );
 }
 
 export interface CompanyApiToken {

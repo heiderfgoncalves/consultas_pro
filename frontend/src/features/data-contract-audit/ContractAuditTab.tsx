@@ -21,7 +21,10 @@ import type {
 } from '@/types/integrations';
 import {
   catalogSollosProductApi,
+  getSollosFactoryDraftApi,
   testProductDraftApi,
+  upsertSollosFactoryDraftApi,
+  type ApiSollosFactoryDraft,
 } from '@/api/admin-integrations';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -42,7 +45,10 @@ import {
   type BureauOccurrenceAudit,
   type DataContractReport,
 } from './contract';
-import { buildAutomaticDraftMapping } from './draftMapping';
+import {
+  buildAutomaticDraftMapping,
+  type AutomaticDraftMapping,
+} from './draftMapping';
 import {
   findSollosCatalogProductById,
   SOLLOS_ADAPTIVE_SAMPLING_POLICY,
@@ -51,9 +57,11 @@ import { getSollosOfficialSamples } from './sollosHomologationSamples';
 import {
   addSollosSampleExecution,
   buildRepresentativeSollosPayload,
+  collectSollosStructuralPaths,
   summarizeSollosSampling,
   type SollosSampleExecution,
 } from './sollosSampling';
+import { validateSollosSampleBatch } from './sollosBatchValidation';
 
 type ContractAuditTabProps = {
   accessToken: string | null;
@@ -488,11 +496,16 @@ export default function ContractAuditTab({
     SollosSampleExecution[]
   >([]);
   const [samplingGoal, setSamplingGoal] = useState(
-    SOLLOS_ADAPTIVE_SAMPLING_POLICY.targetSamples,
+    SOLLOS_ADAPTIVE_SAMPLING_POLICY.maximumSamples,
   );
   const [isCataloging, setIsCataloging] = useState(false);
   const [catalogingError, setCatalogingError] = useState('');
   const [catalogedProductId, setCatalogedProductId] = useState('');
+  const [storedDraft, setStoredDraft] =
+    useState<ApiSollosFactoryDraft | null>(null);
+  const [isLoadingStoredDraft, setIsLoadingStoredDraft] = useState(false);
+  const [storedDraftError, setStoredDraftError] = useState('');
+  const [isSavingDraft, setIsSavingDraft] = useState(false);
 
   const consultation =
     consultations.find((item) => item.externalId === productCode.trim()) ?? null;
@@ -533,8 +546,50 @@ export default function ContractAuditTab({
       ) ?? null,
     [providers],
   );
-  const draftMapping = (() => {
-    if (consultation || !draftRawJson.trim() || !sollosProvider) return null;
+  const storedDraftMapping = useMemo<AutomaticDraftMapping | null>(() => {
+    if (!storedDraft) return null;
+    return {
+      consultation: {
+        id: `factory-draft-${storedDraft.externalId}`,
+        providerId: storedDraft.providerId,
+        name: `${storedDraft.productName} · rascunho preparado`,
+        externalId: storedDraft.externalId,
+        endpoint: '/json/homologa.aspx',
+        method: 'POST',
+        cost: 0,
+        consultationPrice: 0,
+        fieldMappings: storedDraft.fieldMappings,
+        typeItemFilters: storedDraft.typeItemFilters ?? {},
+        sampleResponse: JSON.stringify(
+          storedDraft.representativeResponse,
+          null,
+          2,
+        ),
+        updatedAt: storedDraft.updatedAt,
+        status: 'inactive',
+      },
+      suggestions: storedDraft.suggestions,
+      fieldTypes: storedDraft.fieldTypes,
+      coverage: {
+        totalLeafPaths: storedDraft.totalLeafPathCount,
+        coveredLeafPaths: storedDraft.coveredLeafPathCount,
+        uncoveredLeafPaths:
+          storedDraft.coveredLeafPathCount === storedDraft.totalLeafPathCount
+            ? []
+            : storedDraft.sampleValidations.flatMap(
+                (sample) => sample.uncoveredLeafPaths,
+              ),
+        newTypeCount: storedDraft.suggestions.filter(
+          (suggestion) => suggestion.confidence === 'new',
+        ).length,
+      },
+    };
+  }, [storedDraft]);
+  const draftMapping = useMemo(() => {
+    if (!draftRawJson.trim() || !sollosProvider) return null;
+    if (storedDraftMapping && sampleExecutions.length === 0) {
+      return storedDraftMapping;
+    }
     void mappingRevision;
     try {
       return buildAutomaticDraftMapping({
@@ -548,9 +603,19 @@ export default function ContractAuditTab({
     } catch {
       return null;
     }
-  })();
+  }, [
+    catalogProduct?.name,
+    consultations,
+    draftRawJson,
+    fieldTypes,
+    mappingRevision,
+    productCode,
+    sampleExecutions.length,
+    sollosProvider,
+    storedDraftMapping,
+  ]);
   const effectiveConsultation =
-    consultation ?? draftMapping?.consultation ?? null;
+    draftMapping?.consultation ?? consultation ?? null;
   const effectiveFieldTypes = draftMapping?.fieldTypes ?? fieldTypes;
   const logsForConsultation = useMemo(
     () =>
@@ -588,6 +653,14 @@ export default function ContractAuditTab({
       };
     }
   }, [effectiveConsultation, effectiveFieldTypes, rawJson]);
+  const batchValidation = useMemo(() => {
+    if (!effectiveConsultation || sampleExecutions.length === 0) return null;
+    return validateSollosSampleBatch({
+      executions: sampleExecutions,
+      consultation: effectiveConsultation,
+      fieldTypes: effectiveFieldTypes,
+    });
+  }, [effectiveConsultation, effectiveFieldTypes, sampleExecutions]);
 
   const pendingSuggestionReviews =
     draftMapping?.suggestions.filter(
@@ -595,17 +668,31 @@ export default function ContractAuditTab({
         (item.confidence === 'new' || item.confidence === 'review') &&
         !reviewedSuggestions.has(item.typeKey),
     ) ?? [];
-  const samplingIsSufficient = consultation
-    ? true
-    : catalogProduct?.sampleCoverage === 'limited'
-      ? officialSamples.length > 0 &&
-        samplingSummary.attempted >= officialSamples.length &&
-        samplingSummary.succeeded > 0
-      : samplingSummary.canStopSafely;
+  const samplingIsSufficient = draftMapping
+    ? storedDraft?.status === 'READY_FOR_MANUAL_REVIEW' &&
+        sampleExecutions.length === 0
+      ? true
+      : catalogProduct?.sampleCoverage === 'limited'
+        ? officialSamples.length > 0 &&
+          samplingSummary.attempted >= officialSamples.length &&
+          samplingSummary.succeeded > 0
+        : samplingSummary.canStopSafely
+    : true;
+  const completePathCoverage =
+    (draftMapping?.coverage.totalLeafPaths ?? 0) > 0 &&
+    draftMapping?.coverage.coveredLeafPaths ===
+      draftMapping?.coverage.totalLeafPaths;
+  const completeBatchValidation = draftMapping
+    ? sampleExecutions.length > 0
+      ? batchValidation?.allValid === true
+      : storedDraft?.status === 'READY_FOR_MANUAL_REVIEW'
+    : batchValidation?.allValid ?? Boolean(result.report);
   const isReady =
     (result.report?.diagnostics.every((item) => item.status === 'ok') ?? false) &&
     pendingSuggestionReviews.length === 0 &&
-    samplingIsSufficient;
+    samplingIsSufficient &&
+    (draftMapping ? completePathCoverage : true) &&
+    completeBatchValidation;
 
   useEffect(() => {
     setManualApproval(false);
@@ -617,10 +704,57 @@ export default function ContractAuditTab({
     setReviewedSuggestions(new Set());
     setMappingRevision(0);
     setSampleExecutions([]);
-    setSamplingGoal(SOLLOS_ADAPTIVE_SAMPLING_POLICY.targetSamples);
+    setSamplingGoal(SOLLOS_ADAPTIVE_SAMPLING_POLICY.maximumSamples);
     setCatalogingError('');
     setCatalogedProductId('');
+    setStoredDraft(null);
+    setStoredDraftError('');
+    setIsSavingDraft(false);
   }, [productCode]);
+
+  useEffect(() => {
+    const externalId = productCode.replace(/\D/g, '');
+    if (!sollosProvider || !catalogProduct || !externalId) return;
+    let cancelled = false;
+    setIsLoadingStoredDraft(true);
+    setStoredDraftError('');
+
+    void getSollosFactoryDraftApi(
+      accessToken,
+      sollosProvider.id,
+      externalId,
+    )
+      .then((draft) => {
+        if (cancelled) return;
+        setStoredDraft(draft);
+        if (draft) {
+          setDraftRawJson(
+            JSON.stringify(draft.representativeResponse, null, 2),
+          );
+        }
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        setStoredDraftError(
+          error instanceof Error
+            ? error.message
+            : 'Não foi possível carregar o rascunho preparado.',
+        );
+      })
+      .finally(() => {
+        if (!cancelled) setIsLoadingStoredDraft(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    accessToken,
+    catalogProduct,
+    consultation,
+    productCode,
+    sollosProvider,
+  ]);
 
   const canContinue =
     step === 1
@@ -774,6 +908,76 @@ export default function ContractAuditTab({
     }
   }
 
+  async function saveSollosFactoryDraft() {
+    if (
+      !sollosProvider ||
+      !catalogProduct ||
+      !draftMapping ||
+      !batchValidation?.allValid ||
+      draftMapping.coverage.coveredLeafPaths !==
+        draftMapping.coverage.totalLeafPaths ||
+      !draftRawJson.trim()
+    ) {
+      setStoredDraftError(
+        'O rascunho só pode ser salvo após validar todas as amostras, caminhos e valores.',
+      );
+      return;
+    }
+
+    const mappedKeys = new Set(
+      draftMapping.consultation.fieldMappings.map(
+        (mapping) => mapping.fieldTypeKey,
+      ),
+    );
+    const structuralPaths = [
+      ...new Set(
+        sampleExecutions.flatMap((execution) =>
+          execution.success && execution.payload
+            ? collectSollosStructuralPaths(execution.payload)
+            : [],
+        ),
+      ),
+    ].sort();
+
+    setIsSavingDraft(true);
+    setStoredDraftError('');
+    try {
+      const saved = await upsertSollosFactoryDraftApi(accessToken, {
+        providerId: sollosProvider.id,
+        externalId: catalogProduct.productId,
+        productName: catalogProduct.name,
+        officialSampleCount: officialSamples.length,
+        attemptedSamples: batchValidation.attemptedSamples,
+        successfulSamples: batchValidation.successfulSamples,
+        failedSamples: batchValidation.failedSamples,
+        validSamples: batchValidation.validSamples,
+        invalidSamples: batchValidation.invalidSamples,
+        uniquePathCount: structuralPaths.length,
+        totalLeafPathCount: batchValidation.observedLeafPaths.length,
+        coveredLeafPathCount: batchValidation.coveredLeafPaths,
+        representativeResponse: JSON.parse(draftRawJson),
+        fieldTypes: draftMapping.fieldTypes.filter((fieldType) =>
+          mappedKeys.has(fieldType.key),
+        ),
+        fieldMappings: draftMapping.consultation.fieldMappings,
+        typeItemFilters:
+          draftMapping.consultation.typeItemFilters ?? {},
+        suggestions: draftMapping.suggestions,
+        structuralPaths,
+        sampleValidations: batchValidation.samples,
+      });
+      setStoredDraft(saved);
+    } catch (error) {
+      setStoredDraftError(
+        error instanceof Error
+          ? error.message
+          : 'Não foi possível salvar o rascunho técnico.',
+      );
+    } finally {
+      setIsSavingDraft(false);
+    }
+  }
+
   async function catalogApprovedProduct() {
     if (
       !manualApproval ||
@@ -847,10 +1051,21 @@ export default function ContractAuditTab({
         })),
         fieldMappings: draftMapping.consultation.fieldMappings,
         samplingEvidence: {
-          attempted: samplingSummary.attempted,
-          succeeded: samplingSummary.succeeded,
-          failed: samplingSummary.failed,
-          uniquePathCount: samplingSummary.uniquePathCount,
+          attempted:
+            batchValidation?.attemptedSamples ??
+            storedDraft?.attemptedSamples ??
+            samplingSummary.attempted,
+          succeeded:
+            batchValidation?.successfulSamples ??
+            storedDraft?.successfulSamples ??
+            samplingSummary.succeeded,
+          failed:
+            batchValidation?.failedSamples ??
+            storedDraft?.failedSamples ??
+            samplingSummary.failed,
+          uniquePathCount:
+            storedDraft?.uniquePathCount ??
+            samplingSummary.uniquePathCount,
           officialSampleCount: officialSamples.length,
         },
       });
@@ -1071,14 +1286,15 @@ export default function ContractAuditTab({
                       </p>
                     </div>
                   </div>
-                  <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-4">
+                  <div className="rounded-lg border border-border bg-muted/20 p-4">
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                       <div>
                         <p className="font-semibold">
-                          Última homologação comprovada
+                          Evidência histórica do Catálogo Mestre
                         </p>
                         <p className="mt-1 text-sm text-muted-foreground">
-                          {catalogProduct.audit.samples} amostras oficiais,{' '}
+                          Referência anterior: {catalogProduct.audit.samples}{' '}
+                          amostras oficiais,{' '}
                           {catalogProduct.audit.failedSamples} falhas,{' '}
                           {catalogProduct.audit.uniquePaths} caminhos,{' '}
                           {catalogProduct.audit.validatedFields} campos e{' '}
@@ -1087,9 +1303,7 @@ export default function ContractAuditTab({
                         </p>
                       </div>
                       <div className="text-left sm:text-right">
-                        <Badge className="bg-emerald-500/15 text-emerald-700 hover:bg-emerald-500/15 dark:text-emerald-300">
-                          Sem bloqueios
-                        </Badge>
+                        <Badge variant="outline">Referência anterior</Badge>
                         <p className="mt-1 text-xs text-muted-foreground">
                           {catalogProduct.audit.auditedAt
                             .split('-')
@@ -1098,11 +1312,62 @@ export default function ContractAuditTab({
                         </p>
                       </div>
                     </div>
-                    <p className="mt-3 border-t border-emerald-500/20 pt-3 text-xs text-emerald-800 dark:text-emerald-200">
-                      Evidência pronta para sua auditoria. Nada novo foi aprovado
-                      ou catalogado automaticamente.
+                    <p className="mt-3 border-t border-border pt-3 text-xs text-muted-foreground">
+                      A Fábrica mantém este resultado antigo somente para
+                      comparação. O rascunho integral mais recente aparece
+                      abaixo.
                     </p>
                   </div>
+                  {isLoadingStoredDraft ? (
+                    <div className="rounded-lg border border-border bg-muted/20 p-4 text-sm text-muted-foreground">
+                      Procurando um rascunho completo já preparado para este ID...
+                    </div>
+                  ) : storedDraft ? (
+                    <div
+                      className={cn(
+                        'rounded-lg border p-4',
+                        storedDraft.status === 'READY_FOR_MANUAL_REVIEW'
+                          ? 'border-primary/30 bg-primary/10'
+                          : 'border-amber-500/30 bg-amber-500/10',
+                      )}
+                    >
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                        <div>
+                          <p className="font-semibold">
+                            Rascunho completo carregado
+                          </p>
+                          <p className="mt-1 text-sm text-muted-foreground">
+                            Versão {storedDraft.version}: {' '}
+                            {storedDraft.successfulSamples} JSONs validados
+                            individualmente, {storedDraft.coveredLeafPathCount}/
+                            {storedDraft.totalLeafPathCount} caminhos com destino
+                            e {storedDraft.invalidSamples} amostras divergentes.
+                          </p>
+                        </div>
+                        <Badge
+                          className={cn(
+                            storedDraft.status === 'READY_FOR_MANUAL_REVIEW'
+                              ? 'bg-primary/15 text-primary hover:bg-primary/15'
+                              : 'bg-amber-500/15 text-amber-700 hover:bg-amber-500/15 dark:text-amber-300',
+                          )}
+                        >
+                          {storedDraft.status === 'READY_FOR_MANUAL_REVIEW'
+                            ? 'Pronto para sua auditoria'
+                            : 'Precisa de ajuste'}
+                        </Badge>
+                      </div>
+                      <p className="mt-3 border-t border-primary/20 pt-3 text-xs text-muted-foreground">
+                        Este é um rascunho da Fábrica, separado do catálogo
+                        definitivo. Você ainda precisa revisar as sugestões e
+                        aprovar manualmente.
+                      </p>
+                    </div>
+                  ) : null}
+                  {storedDraftError ? (
+                    <p className="text-sm text-red-600 dark:text-red-400">
+                      {storedDraftError}
+                    </p>
+                  ) : null}
                 </div>
               ) : null}
             </div>
@@ -1110,6 +1375,19 @@ export default function ContractAuditTab({
 
           {step === 2 ? (
             <div className="mx-auto max-w-3xl space-y-5">
+              {storedDraft && sampleExecutions.length === 0 ? (
+                <div className="rounded-lg border border-primary/30 bg-primary/10 p-4">
+                  <p className="font-semibold">
+                    Trabalho preparado anteriormente carregado
+                  </p>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    A amostra estrutural, os tipos e os mapeamentos da versão{' '}
+                    {storedDraft.version} já estão disponíveis. Você pode
+                    continuar para auditar ou executar novamente o lote oficial
+                    para atualizar as evidências.
+                  </p>
+                </div>
+              ) : null}
               {consultation ? (
                 <>
                   <div className="space-y-1.5">
@@ -1347,6 +1625,23 @@ export default function ContractAuditTab({
                     </Badge>
                   </div>
                 </div>
+                {draftMapping.coverage.uncoveredLeafPaths.length > 0 ? (
+                  <div className="rounded-lg border border-red-500/35 bg-red-500/10 p-4">
+                    <p className="font-semibold text-red-700 dark:text-red-300">
+                      {draftMapping.coverage.uncoveredLeafPaths.length} caminho(s)
+                      ainda não possuem destino no Preview
+                    </p>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      A Fábrica bloqueou o avanço seguro. Estes caminhos precisam
+                      ser incorporados ao rascunho:
+                    </p>
+                    <div className="mt-3 max-h-36 space-y-1 overflow-auto font-mono text-xs">
+                      {draftMapping.coverage.uncoveredLeafPaths.map((path) => (
+                        <p key={path}>{path}</p>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
 
                 <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                   {[
@@ -1537,6 +1832,138 @@ export default function ContractAuditTab({
                     ))}
                   </div>
                 ) : null}
+                {batchValidation ? (
+                  <div
+                    className={cn(
+                      'rounded-xl border p-4',
+                      batchValidation.allValid
+                        ? 'border-emerald-500/30 bg-emerald-500/10'
+                        : 'border-red-500/35 bg-red-500/10',
+                    )}
+                  >
+                    <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                      <div>
+                        <p className="font-semibold">
+                          Validação integral, JSON por JSON
+                        </p>
+                        <p className="mt-1 text-sm text-muted-foreground">
+                          {batchValidation.validSamples}/
+                          {batchValidation.attemptedSamples} amostras corretas,{' '}
+                          {batchValidation.coveredLeafPaths}/
+                          {batchValidation.observedLeafPaths.length} caminhos
+                          com destino, {batchValidation.validatedFieldCount}{' '}
+                          valores de campos e{' '}
+                          {batchValidation.validatedOccurrenceCount}{' '}
+                          ocorrências conferidos.
+                        </p>
+                      </div>
+                      {draftMapping ? (
+                        <Button
+                          type="button"
+                          disabled={
+                            !batchValidation.allValid ||
+                            isSavingDraft ||
+                            draftMapping.coverage.coveredLeafPaths !==
+                              draftMapping.coverage.totalLeafPaths
+                          }
+                          onClick={() => void saveSollosFactoryDraft()}
+                        >
+                          {isSavingDraft
+                            ? 'Salvando rascunho...'
+                            : storedDraft
+                              ? 'Atualizar rascunho técnico'
+                              : 'Salvar rascunho técnico'}
+                        </Button>
+                      ) : null}
+                    </div>
+                    {batchValidation.allValid ? (
+                      <p className="mt-3 text-xs text-emerald-800 dark:text-emerald-200">
+                        Todas as estruturas e todos os valores observados
+                        chegaram ao Preview. Salvar aqui não cataloga nem ativa o
+                        produto.
+                      </p>
+                    ) : (
+                      <div className="mt-3 space-y-2">
+                        {batchValidation.samples
+                          .filter((sample) => !sample.valid)
+                          .map((sample) => (
+                            <div
+                              key={sample.sampleNumber}
+                              className="rounded-md border border-red-500/25 bg-background/50 p-3 text-xs"
+                            >
+                              <p className="font-semibold">
+                                Amostra {sample.sampleNumber} bloqueada
+                              </p>
+                              {sample.errors.map((error) => (
+                                <p
+                                  key={error}
+                                  className="mt-1 text-muted-foreground"
+                                >
+                                  {error}
+                                </p>
+                              ))}
+                              {sample.invalidFieldPaths.length > 0 ? (
+                                <div className="mt-2 rounded-md bg-red-500/10 p-2 font-mono text-[11px] text-red-700 dark:text-red-300">
+                                  {sample.invalidFieldPaths
+                                    .slice(0, 8)
+                                    .map((path) => (
+                                      <p key={path}>{path}</p>
+                                    ))}
+                                  {sample.invalidFieldPaths.length > 8 ? (
+                                    <p>
+                                      + {sample.invalidFieldPaths.length - 8}{' '}
+                                      campo(s) divergente(s)
+                                    </p>
+                                  ) : null}
+                                </div>
+                              ) : null}
+                              {sample.invalidOccurrencePaths.length > 0 ? (
+                                <div className="mt-2 rounded-md bg-red-500/10 p-2 font-mono text-[11px] text-red-700 dark:text-red-300">
+                                  {sample.invalidOccurrencePaths
+                                    .slice(0, 8)
+                                    .map((path) => (
+                                      <p key={path}>{path}</p>
+                                    ))}
+                                  {sample.invalidOccurrencePaths.length > 8 ? (
+                                    <p>
+                                      +{' '}
+                                      {sample.invalidOccurrencePaths.length -
+                                        8}{' '}
+                                      ocorrência(s) divergente(s)
+                                    </p>
+                                  ) : null}
+                                </div>
+                              ) : null}
+                            </div>
+                          ))}
+                      </div>
+                    )}
+                    {storedDraftError ? (
+                      <p className="mt-3 text-sm text-red-600 dark:text-red-400">
+                        {storedDraftError}
+                      </p>
+                    ) : storedDraft &&
+                      storedDraft.status === 'READY_FOR_MANUAL_REVIEW' ? (
+                      <p className="mt-3 text-sm text-primary">
+                        Rascunho versão {storedDraft.version} guardado na
+                        Fábrica e pronto para sua auditoria manual.
+                      </p>
+                    ) : null}
+                  </div>
+                ) : storedDraft ? (
+                  <div className="rounded-xl border border-primary/30 bg-primary/10 p-4">
+                    <p className="font-semibold">
+                      Evidência integral carregada do rascunho
+                    </p>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      {storedDraft.validSamples}/
+                      {storedDraft.attemptedSamples} JSONs validados e{' '}
+                      {storedDraft.coveredLeafPathCount}/
+                      {storedDraft.totalLeafPathCount} caminhos comprovados.
+                      Reexecute o lote oficial se quiser atualizar esta versão.
+                    </p>
+                  </div>
+                ) : null}
                 <ContractSummary report={result.report} />
                 <div>
                   <h3 className="font-semibold">Prova campo por campo</h3>
@@ -1615,6 +2042,23 @@ export default function ContractAuditTab({
                       execute um lote maior antes de aprovar.
                     </p>
                   ) : null}
+                </div>
+              ) : storedDraft ? (
+                <div className="rounded-lg border border-primary/30 bg-primary/10 p-4">
+                  <p className="font-semibold">
+                    Rascunho técnico versão {storedDraft.version}
+                  </p>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    {storedDraft.successfulSamples} JSONs oficiais,{' '}
+                    {storedDraft.uniquePathCount} caminhos estruturais e{' '}
+                    {storedDraft.coveredLeafPathCount}/
+                    {storedDraft.totalLeafPathCount} caminhos de dados com
+                    destino comprovado.
+                  </p>
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    O rascunho continua separado do catálogo definitivo até sua
+                    aprovação abaixo.
+                  </p>
                 </div>
               ) : null}
 
