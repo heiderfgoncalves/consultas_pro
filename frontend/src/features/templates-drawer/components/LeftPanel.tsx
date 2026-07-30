@@ -442,7 +442,7 @@ export function LeftPanel() {
   // 2. Query de Templates de Produção
   const templatesQuery = useQuery({
     queryKey: ['production-templates-integration'],
-    queryFn: () => getTemplatesApi(accessToken),
+    queryFn: () => getTemplatesApi(accessToken, { summary: true }),
     enabled: !!accessToken,
   });
 

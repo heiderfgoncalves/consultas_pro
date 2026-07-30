@@ -5,7 +5,7 @@ import { useEffect, useState, useMemo } from "react";
 import { toast } from "sonner";
 import { useAuthStore } from "@/stores/authStore";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { patchTemplateLayoutApi, getTemplatesApi, createTemplateApi, getProviders } from "@/api/admin-integrations";
+import { patchTemplateLayoutApi, getTemplateApi, getTemplatesApi, createTemplateApi, getProviders } from "@/api/admin-integrations";
 import {
   Select,
   SelectContent,
@@ -50,8 +50,14 @@ export function TitleBar() {
   // Replicando a query de templates para usar cache do React Query
   const templatesQuery = useQuery({
     queryKey: ['production-templates-integration'],
-    queryFn: () => getTemplatesApi(accessToken),
+    queryFn: () => getTemplatesApi(accessToken, { summary: true }),
     enabled: !!accessToken,
+  });
+
+  const activeTemplateQuery = useQuery({
+    queryKey: ['production-template-layout', activeTemplateId],
+    queryFn: () => getTemplateApi(accessToken, activeTemplateId!),
+    enabled: !!accessToken && !!activeTemplateId,
   });
 
   // Query de Provedores para obter produtos e associar ao template se necessário (criação)
@@ -165,6 +171,12 @@ export function TitleBar() {
       }
 
       queryClient.invalidateQueries({ queryKey: ['production-templates-integration'] });
+      if (data.res?.id) {
+        queryClient.setQueryData(
+          ['production-template-layout', data.res.id],
+          data.res,
+        );
+      }
       markSaved();
     },
     onError: (err: any) => {
@@ -199,11 +211,11 @@ export function TitleBar() {
 
   // Sincroniza o layout do banco de dados na inicialização ou troca de template
   useEffect(() => {
-    if (!templatesQuery.data || !activeTemplateId) return;
+    if (!activeTemplateId || !activeTemplateQuery.data) return;
     if (hasSyncedFromServer || dirty) return;
 
-    const t = templatesQuery.data.find((x) => x.id === activeTemplateId);
-    if (t && t.layout) {
+    const t = activeTemplateQuery.data;
+    if (t.layout) {
       try {
         const parsed = typeof t.layout === "string" ? JSON.parse(t.layout) : t.layout;
         if (parsed && typeof parsed === "object" && Array.isArray(parsed.frames)) {
@@ -220,8 +232,22 @@ export function TitleBar() {
       } catch (e) {
         console.error("Erro ao sincronizar template do servidor:", e);
       }
+    } else {
+      newTpl();
+      setSelectedConsultaIds(t.items?.map((item) => item.providerProductId) ?? []);
+      setHasSyncedFromServer(true);
+      markSaved();
     }
-  }, [templatesQuery.data, activeTemplateId, hasSyncedFromServer, dirty, load, markSaved, setSelectedConsultaIds]);
+  }, [
+    activeTemplateId,
+    activeTemplateQuery.data,
+    dirty,
+    hasSyncedFromServer,
+    load,
+    markSaved,
+    newTpl,
+    setSelectedConsultaIds,
+  ]);
 
   const savedLabel = lastSavedAt
     ? formatRelative(now - lastSavedAt)
@@ -289,18 +315,20 @@ export function TitleBar() {
       toast.info("Você está editando um novo template em branco.");
     } else {
       setActiveTemplateId(targetId);
-      const t = templatesQuery.data?.find((x) => x.id === targetId);
-      if (t && t.layout) {
-        try {
+      setHasSyncedFromServer(false);
+      try {
+        const t = await queryClient.fetchQuery({
+          queryKey: ['production-template-layout', targetId],
+          queryFn: () => getTemplateApi(accessToken, targetId),
+        });
+
+        if (t.layout) {
           const parsed = typeof t.layout === "string" ? JSON.parse(t.layout) : t.layout;
           if (parsed && typeof parsed === "object" && Array.isArray(parsed.frames)) {
             load(parsed);
-            if (t.items) {
-              setSelectedConsultaIds(t.items.map((item: any) => item.providerProductId));
-            } else {
-              setSelectedConsultaIds([]);
-            }
+            setSelectedConsultaIds(t.items?.map((item) => item.providerProductId) ?? []);
             setHasSyncedFromServer(true);
+            markSaved();
             toast.success(`Layout do template "${t.name}" importado.`);
           } else {
             toast.warning(`O template "${t.name}" não possui um layout visual v2 válido.`);
@@ -308,21 +336,17 @@ export function TitleBar() {
             setSelectedConsultaIds([]);
             setHasSyncedFromServer(true);
           }
-        } catch {
-          toast.error("Erro ao analisar o layout JSON do template.");
-          newTpl();
-          setSelectedConsultaIds([]);
-          setHasSyncedFromServer(true);
-        }
-      } else {
-        toast.info("Este template está sem layout. Comece a desenhá-lo na tela limpa.");
-        newTpl();
-        if (t && t.items) {
-          setSelectedConsultaIds(t.items.map((item: any) => item.providerProductId));
         } else {
-          setSelectedConsultaIds([]);
+          toast.info("Este template está sem layout. Comece a desenhá-lo na tela limpa.");
+          newTpl();
+          setSelectedConsultaIds(t.items?.map((item) => item.providerProductId) ?? []);
+          setHasSyncedFromServer(true);
+          markSaved();
         }
-        setHasSyncedFromServer(true);
+      } catch (error) {
+        console.error("Erro ao carregar template do servidor:", error);
+        toast.error("Não foi possível carregar o template selecionado.");
+        return false;
       }
     }
     return true;

@@ -104,6 +104,20 @@ describe("interpolate - dedup and engine tests", () => {
     expect(interpolate("{{calc(round(VAL, DEC_NAN))}}", data)).toBe("123");
   });
 
+  it("deve proteger textos dinâmicos e resumir imagens em base64", () => {
+    const imagePayload = "A".repeat(2004);
+    expect(
+      interpolate("{{safeText NOME}}", {
+        NOME: '<img src=x onerror=alert(1)>',
+      }),
+    ).toBe("&lt;img src=x onerror=alert(1)&gt;");
+    expect(
+      interpolate("{{safeText FOTO}}", {
+        FOTO: imagePayload,
+      }),
+    ).toBe("[Imagem preservada no retorno original da consulta]");
+  });
+
   it("deve avaliar expressões CASE WHEN corretamente", () => {
     const dataScore = { SCORE_CREDITO: { score: 350 } };
     const formula = "case when $SCORE_CREDITO.score <= 200 then 'Péssimo' when $SCORE_CREDITO.score <= 400 then 'Ruim' else 'Bom' end";
@@ -173,5 +187,3 @@ describe("interpolate - dedup and engine tests", () => {
     expect(interpolate("{{ifempty('', 'Vazio')}}", data)).toBe("Vazio");
   });
 });
-
-

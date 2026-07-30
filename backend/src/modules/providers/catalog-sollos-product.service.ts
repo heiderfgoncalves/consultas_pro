@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import type { Prisma } from '@prisma/client';
 import { AppError, ConflictError, NotFoundError } from '../../core/errors';
+import { mergeReportFieldConfigs } from '../templates/sollos-template-builder.service';
 
 type CatalogSollosInput = {
   providerId: string;
@@ -122,9 +123,50 @@ export async function catalogSollosProduct(
     for (const fieldType of requestedTypes.values()) {
       const current = await tx.canonicalFieldCatalog.findUnique({
         where: { pathKey: fieldType.key },
-        select: { id: true },
+        select: {
+          id: true,
+          reportFieldConfig: true,
+          mappings: {
+            select: {
+              product: {
+                select: { providerId: true },
+              },
+            },
+          },
+        },
       });
       if (current) {
+        if (fieldType.reportFieldConfig !== undefined) {
+          const mappedProviderIds = new Set(
+            current.mappings.map((mapping) => mapping.product.providerId),
+          );
+          const belongsToSollos =
+            mappedProviderIds.size === 0 ||
+            mappedProviderIds.has(input.providerId);
+          if (!belongsToSollos) {
+            throw new AppError(
+              409,
+              'PROVIDER_CANONICAL_COLLISION',
+              `O tipo ${fieldType.key} pertence a outro provedor e não pode ser reaproveitado pela Sollos`,
+            );
+          }
+          const mergedConfig = mergeReportFieldConfigs(
+            current.reportFieldConfig,
+            fieldType.reportFieldConfig,
+          );
+          if (
+            JSON.stringify(mergedConfig) !==
+            JSON.stringify(current.reportFieldConfig)
+          ) {
+            await tx.canonicalFieldCatalog.update({
+              where: { id: current.id },
+              data: {
+                reportFieldConfig:
+                  mergedConfig as unknown as Prisma.InputJsonValue,
+              },
+            });
+          }
+        }
         canonicalIds.set(fieldType.key, current.id);
         continue;
       }

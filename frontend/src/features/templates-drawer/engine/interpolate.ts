@@ -304,6 +304,27 @@ export function toText(value: unknown): string {
   return String(value);
 }
 
+export function safeText(value: unknown): string {
+  const text = toText(value);
+  const compact = text.replace(/\s+/g, "");
+  const isEmbeddedImage = /^data:image\/[a-z0-9.+-]+;base64,/i.test(text);
+  const isLongBase64 =
+    compact.length > 2000 &&
+    compact.length % 4 === 0 &&
+    /^[a-z0-9+/]+={0,2}$/i.test(compact);
+
+  if (isEmbeddedImage || isLongBase64) {
+    return "[Imagem preservada no retorno original da consulta]";
+  }
+
+  return text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
 export const parseNumber = toNumber;
 
 function resolveMultipleArgs(argsStr: string, data: unknown): unknown[] {
@@ -616,7 +637,7 @@ function preprocessExpression(expr: string, data: unknown): string {
     const helpers = [
       "sum", "avg", "min", "max", "count", "calc", "math", "concat",
       "formatCurrency", "formatBacenCurrency", "formatCpfCnpj", "json",
-      "toNumber", "asNumber", "toPercent", "asPercent", "toCurrency", "asCurrency", "toDate", "asDate", "toText", "asText",
+      "toNumber", "asNumber", "toPercent", "asPercent", "toCurrency", "asCurrency", "toDate", "asDate", "toText", "asText", "safeText",
       "round"
     ];
     if (helpers.includes(trimmedMatch)) return match;
@@ -1145,7 +1166,7 @@ function resolveVal(
   const helpers = [
     "formatCurrency", "formatBacenCurrency", "formatCpfCnpj", "json", 
     "sum", "avg", "min", "max", "count", "calc", "math", "dedup", "concat",
-    "toNumber", "asNumber", "toPercent", "asPercent", "toCurrency", "asCurrency", "toDate", "asDate", "toText", "asText",
+    "toNumber", "asNumber", "toPercent", "asPercent", "toCurrency", "asCurrency", "toDate", "asDate", "toText", "asText", "safeText",
     "round"
   ];
   
@@ -1342,6 +1363,13 @@ function resolveVal(
     if (firstWord === "toText" || firstWord === "asText") {
       const val = resolveExpression(argsStr, data);
       const res = toText(val);
+      opts.logs?.push({ expression, reason: "ok", resolved: res });
+      return res;
+    }
+
+    if (firstWord === "safeText") {
+      const val = resolveExpression(argsStr, data);
+      const res = safeText(val);
       opts.logs?.push({ expression, reason: "ok", resolved: res });
       return res;
     }

@@ -444,6 +444,7 @@ export interface ApiTemplate {
   updatedAt: string;
   userId?: string | null;
   companyId?: string | null;
+  canEdit?: boolean;
   user?: {
     id: string;
     fullName: string | null;
@@ -456,8 +457,25 @@ export interface ApiTemplate {
   } | null;
 }
 
-export async function getTemplatesApi(accessToken: string | null) {
-  return apiRequest<ApiTemplate[]>('/templates', { method: 'GET', token: tok(accessToken) });
+export async function getTemplatesApi(
+  accessToken: string | null,
+  options?: { summary?: boolean },
+) {
+  const query = options?.summary ? '?summary=true' : '';
+  return apiRequest<ApiTemplate[]>(`/templates${query}`, {
+    method: 'GET',
+    token: tok(accessToken),
+  });
+}
+
+export async function getTemplateApi(
+  accessToken: string | null,
+  templateId: string,
+) {
+  return apiRequest<ApiTemplate>(`/templates/${encodeURIComponent(templateId)}`, {
+    method: 'GET',
+    token: tok(accessToken),
+  });
 }
 
 export async function createTemplateApi(
