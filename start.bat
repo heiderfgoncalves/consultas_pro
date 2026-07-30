@@ -27,12 +27,25 @@ if not exist "frontend\node_modules\.bin\vite.cmd" (
   exit /b 1
 )
 
-powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "$busy = @(Get-NetTCPConnection -State Listen -ErrorAction SilentlyContinue | Where-Object { $_.LocalPort -in 3333,8080 }); if ($busy.Count -gt 0) { $busy | Select-Object LocalAddress,LocalPort,OwningProcess | Format-Table -AutoSize; exit 1 }"
-if errorlevel 1 (
-  echo [ERRO] A porta 3333 ou 8080 ja esta em uso. Nada foi iniciado.
+echo [INFO] Encerrando instancias anteriores do ambiente local...
+powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference='SilentlyContinue'; $root='%~dp0'.TrimEnd('\'); $self=@(); $c=Get-CimInstance Win32_Process -Filter ('ProcessId='+$PID); $d=0; while ($c -and $d -lt 8) { $self+=[int]$c.ProcessId; $pp=[int]$c.ParentProcessId; if ($pp -le 0) { break }; $c=Get-CimInstance Win32_Process -Filter ('ProcessId='+$pp); $d++ }; $killed=@(); foreach ($conn in @(Get-NetTCPConnection -State Listen | Where-Object { $_.LocalPort -eq 3333 -or $_.LocalPort -eq 8080 })) { $port=[int]$conn.LocalPort; $oid=[int]$conn.OwningProcess; $own=Get-CimInstance Win32_Process -Filter ('ProcessId='+$oid); if (-not $own) { continue }; $cl=[string]$own.CommandLine; $mine=$false; if ($own.Name -eq 'node.exe') { if ($port -eq 3333 -and $cl -match 'server\.local\.js') { $mine=$true }; if ($port -eq 8080 -and $cl -match 'vite' -and ($cl -like ('*'+$root+'*') -or $cl -match '--port\s+8080')) { $mine=$true } }; if (-not $mine) { Write-Host ('[ERRO] Porta '+$port+' ocupada por um processo que nao e do Consultas PRO.'); Write-Host ('       Nome : '+$own.Name); Write-Host ('       PID  : '+$oid); Write-Host ('       Exe  : '+$own.ExecutablePath); Write-Host ('       Cmd  : '+$cl); exit 2 }; $tgt=$oid; $cur=$own; $d=0; while ($d -lt 6) { $d++; $pp=[int]$cur.ParentProcessId; if ($pp -le 0 -or $self -contains $pp) { break }; $par=Get-CimInstance Win32_Process -Filter ('ProcessId='+$pp); if (-not $par) { break }; if ($par.Name -ne 'cmd.exe' -and $par.Name -ne 'node.exe') { break }; $pcl=[string]$par.CommandLine; if ($pcl -match 'server\.local\.js' -or $pcl -match 'run\s+dev' -or $pcl -match 'vite' -or $pcl -like ('*'+$root+'*')) { $tgt=$pp; $cur=$par } else { break } }; if ($self -contains $tgt) { continue }; if ($killed -notcontains $tgt) { Write-Host ('[INFO] Encerrando instancia anterior: PID '+$tgt+' (porta '+$port+').'); $null = taskkill.exe /PID $tgt /T /F 2>&1; $killed+=$tgt } }; $dl=(Get-Date).AddSeconds(15); while ((Get-Date) -lt $dl) { if (@(Get-NetTCPConnection -State Listen | Where-Object { $_.LocalPort -eq 3333 -or $_.LocalPort -eq 8080 }).Count -eq 0) { exit 0 }; Start-Sleep -Milliseconds 500 }; exit 3"
+if errorlevel 3 (
+  echo [ERRO] As portas 3333/8080 nao ficaram livres a tempo.
+  echo Feche manualmente as janelas do ambiente local e tente de novo.
   pause
   exit /b 1
 )
+if errorlevel 2 (
+  echo [ERRO] Nada foi encerrado e nada foi iniciado. Veja os detalhes acima.
+  pause
+  exit /b 1
+)
+if errorlevel 1 (
+  echo [ERRO] Falha inesperada ao liberar as portas 3333 e 8080.
+  pause
+  exit /b 1
+)
+echo [OK] Portas 3333 e 8080 livres.
 
 echo [INFO] Compilando o bootstrap local do backend...
 pushd "backend"
