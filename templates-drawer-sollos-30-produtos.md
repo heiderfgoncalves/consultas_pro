@@ -63,7 +63,10 @@ Criar um relatório individual e fiel para cada produto homologado na Fábrica d
 - 29 templates novos salvos como privados e prontos para revisão manual.
 - 1 template existente (produto 1079) preservado sem sobrescrita.
 - 9 a 48 tipos e 271 a 786 campos organizados por produto.
-- 10 a 81 páginas por relatório, conforme a estrutura específica de cada produto.
+- 2 a 7 páginas por relatório, agrupadas por assunto e pela experiência do cliente final.
+- O produto 753, que antes gerava 17 páginas técnicas, foi compactado para 6 páginas de negócio.
+- Logo oficial, cabeçalho, cores, cartões, tabelas e rodapé seguem a matriz protegida do produto 1079.
+- Os campos necessários ao cliente ficam no relatório; a estrutura técnica completa permanece no inventário de auditoria.
 - Textos dinâmicos protegidos contra injeção de HTML.
-- Imagens em base64 preservadas no retorno original e representadas por uma mensagem legível no relatório.
+- A logo oficial incorporada é reaproveitada diretamente do template global 1079.
 - Lista do Templates Drawer carregada sem transferir antecipadamente os layouts completos.

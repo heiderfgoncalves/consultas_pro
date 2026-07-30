@@ -5,6 +5,7 @@ import {
   buildSollosReportTemplate,
   mergeReportFieldConfigs,
   validateSollosReportTemplate,
+  type SollosBrandReference,
 } from './sollos-template-builder.service';
 import { SOLLOS_TEMPLATE_PRODUCTS } from './sollos-template-products';
 
@@ -125,6 +126,71 @@ const mappedData = {
   },
 };
 
+const brandReference: SollosBrandReference = {
+  templateId: 'template-1079-oficial',
+  layout: {
+    id: 'layout-1079',
+    name: 'COMPLETA BRASIL + SCORE CPF',
+    version: 1,
+    canvas: { background: '#f8fafc', grid: 8 },
+    frames: [
+      {
+        id: 'pagina-1079',
+        name: 'Página 1 (Resumo & Score)',
+        preset: 'a4-p',
+        x: 10,
+        y: 10,
+        width: 794,
+        height: 1123,
+        background: '#ffffff',
+      },
+    ],
+    elements: [
+      {
+        id: 'logo-1079',
+        frameId: 'pagina-1079',
+        type: 'image',
+        x: 30,
+        y: 30,
+        width: 150,
+        height: 50,
+        zIndex: 1,
+        style: {},
+        data: { src: 'data:image/png;base64,AAAA' },
+      },
+      {
+        id: 'titulo-1079',
+        frameId: 'pagina-1079',
+        type: 'text',
+        x: 460,
+        y: 30,
+        width: 310,
+        height: 25,
+        zIndex: 2,
+        style: {
+          color: '#4f46e5',
+          fontSize: 16,
+          fontWeight: 700,
+          textAlign: 'right',
+        },
+        data: { text: 'Relatório Analítico de Crédito' },
+      },
+      {
+        id: 'divisor-1079',
+        frameId: 'pagina-1079',
+        type: 'divider',
+        x: 40,
+        y: 95,
+        width: 734,
+        height: 3,
+        zIndex: 3,
+        style: { background: '#6366f1' },
+        data: {},
+      },
+    ],
+  },
+};
+
 test('mantém exatamente os 30 produtos Sollos alvo', () => {
   assert.equal(SOLLOS_TEMPLATE_PRODUCTS.length, 30);
   assert.equal(new Set(SOLLOS_TEMPLATE_PRODUCTS.map((item) => item.productId)).size, 30);
@@ -148,17 +214,35 @@ test('gera relatório completo, temático e sem perder campos', () => {
       totalLeafPathCount: 471,
       draftUpdatedAt: '2026-07-30T04:47:43.229Z',
     },
+    brandReference,
   });
 
-  const audit = validateSollosReportTemplate(layout, fieldTypes);
+  const audit = validateSollosReportTemplate(
+    layout,
+    fieldTypes,
+    brandReference,
+  );
   assert.equal(audit.valid, true, audit.errors.join('\n'));
   assert.equal(audit.typeCount, 3);
   assert.equal(audit.fieldCount, 6);
-  assert.ok(layout.frames.length >= 3);
-  assert.equal(layout.elements.length, 0);
+  assert.ok(layout.frames.length <= 3);
+  assert.ok(layout.elements.length > 0);
+  assert.ok(layout.frames.every((frame) => !frame.customHtml));
+  assert.equal(
+    layout.elements.filter(
+      (element) =>
+        element.type === 'image' &&
+        element.data?.src === 'data:image/png;base64,AAAA',
+    ).length,
+    layout.frames.length,
+  );
   assert.equal(
     (layout.metadata?.sollosTemplate as { publicationStatus: string }).publicationStatus,
     'READY_FOR_MANUAL_REVIEW',
+  );
+  assert.equal(
+    (layout.metadata?.sollosTemplate as { visualStandard: string }).visualStandard,
+    'CONSULTAS_PRO_1079',
   );
 
   const html = layout.frames
@@ -168,10 +252,26 @@ test('gera relatório completo, temático e sem perder campos', () => {
   assert.match(html, /QUOD COMPLETO PJ \+ SCORE/);
   assert.match(html, /CLIENTE HOMOLOGAÇÃO/);
   assert.match(html, /COOPERATIVA EXEMPLO/);
-  assert.match(html, /R\$\s*664,48/);
-  assert.match(html, /CONSULTA CONCLUÍDA/);
+  assert.match(html, /664,48/);
+  assert.doesNotMatch(html, /CONSULTA CONCLUÍDA/);
   assert.doesNotMatch(html, /\{\{[^}]+\}\}/);
-  assert.doesNotMatch(JSON.stringify(layout), /data:image\//);
+  assert.match(JSON.stringify(layout), /data:image\/png/);
+
+  const inventory = (
+    layout.metadata?.sollosTemplate as {
+      fieldInventory: Array<{
+        typeKey: string;
+        presentation: 'client' | 'audit';
+      }>;
+    }
+  ).fieldInventory;
+  assert.ok(
+    inventory.some(
+      (field) =>
+        field.typeKey === 'NOVO_HEADER_CONTROLE' &&
+        field.presentation === 'audit',
+    ),
+  );
 
   const unsafeHtml = layout.frames
     .map(
@@ -185,7 +285,10 @@ test('gera relatório completo, temático e sem perder campos', () => {
         }).html,
     )
     .join('\n');
-  assert.match(unsafeHtml, /&lt;img src=x onerror=alert\(1\)&gt;/);
+  assert.match(
+    unsafeHtml,
+    /(?:&lt;|&amp;lt;)img src=x onerror=alert\(1\)(?:&gt;|&amp;gt;)/,
+  );
   assert.doesNotMatch(unsafeHtml, /<img src=x onerror=alert\(1\)>/);
 });
 

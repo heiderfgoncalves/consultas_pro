@@ -1,7 +1,9 @@
 import 'dotenv/config';
+import { createHash } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
 import { Prisma, PrismaClient } from '@prisma/client';
 import { renderTemplateToHtml } from '../src/lib/template-engine/renderTemplateToHtml';
+import type { ReportTemplate } from '../src/lib/template-engine/template';
 import {
   buildTypeKeyedData,
   normalizeTypeItemFilterConfig,
@@ -13,6 +15,7 @@ import { catalogSollosProduct } from '../src/modules/providers/catalog-sollos-pr
 import {
   buildSollosReportTemplate,
   validateSollosReportTemplate,
+  type SollosBrandReference,
   type SollosReportFieldConfig,
   type SollosReportFieldType,
 } from '../src/modules/templates/sollos-template-builder.service';
@@ -281,6 +284,25 @@ function isGeneratedTemplateLayout(layout: unknown): boolean {
   );
 }
 
+function readReferenceLayout(value: unknown): ReportTemplate {
+  const layout = asRecord(value);
+  if (
+    !Array.isArray(layout.frames) ||
+    !Array.isArray(layout.elements) ||
+    layout.frames.length === 0 ||
+    layout.elements.length === 0
+  ) {
+    throw new Error(
+      'O template visual do 1079 não possui páginas e componentes reutilizáveis.',
+    );
+  }
+  return value as ReportTemplate;
+}
+
+function layoutFingerprint(value: unknown): string {
+  return createHash('sha256').update(JSON.stringify(value)).digest('hex');
+}
+
 function assertDraftReady(draft: {
   externalId: string;
   status: string;
@@ -334,6 +356,24 @@ async function main() {
   if (referenceProduct.endpointPath.toLowerCase() !== '/json/homologa.aspx') {
     throw new Error('O produto 1079 não aponta para a homologação Sollos.');
   }
+
+  const referenceTemplate = await prisma.template.findFirst({
+    where: {
+      visibility: 'GLOBAL',
+      items: { some: { providerProductId: referenceProduct.id } },
+      layout: { not: Prisma.DbNull },
+    },
+    select: { id: true, layout: true },
+    orderBy: { createdAt: 'asc' },
+  });
+  if (!referenceTemplate) {
+    throw new Error('O template visual global do 1079 não foi encontrado.');
+  }
+  const brandReference: SollosBrandReference = {
+    templateId: referenceTemplate.id,
+    layout: readReferenceLayout(referenceTemplate.layout),
+  };
+  const referenceFingerprint = layoutFingerprint(referenceTemplate.layout);
 
   const admin = await prisma.user.findFirst({
     where: { role: 'PLATFORM_ADMIN' },
@@ -453,8 +493,13 @@ async function main() {
         totalLeafPathCount: draft.totalLeafPathCount,
         draftUpdatedAt: draft.updatedAt.toISOString(),
       },
+      brandReference,
     });
-    const audit = validateSollosReportTemplate(layout, reportFieldTypes);
+    const audit = validateSollosReportTemplate(
+      layout,
+      reportFieldTypes,
+      brandReference,
+    );
     if (!audit.valid) {
       throw new Error(
         `Template ${spec.productId} inválido:\n${audit.errors.join('\n')}`,
@@ -475,16 +520,6 @@ async function main() {
     audited += 1;
 
     if (spec.preserveExistingTemplate) {
-      const referenceTemplate = await prisma.template.findFirst({
-        where: {
-          items: { some: { providerProductId: referenceProduct.id } },
-          layout: { not: Prisma.DbNull },
-        },
-        select: { id: true },
-      });
-      if (!referenceTemplate) {
-        throw new Error('O template visual existente do 1079 não foi encontrado.');
-      }
       preserved += 1;
       console.log(
         `[${spec.productId}] preservado · ${audit.typeCount} tipos · ${audit.fieldCount} campos no rascunho`,
@@ -604,6 +639,19 @@ async function main() {
     console.log(
       `[${spec.productId}] ${existingTemplate ? 'existente' : 'pronto'} · ` +
         `${audit.typeCount} tipos · ${audit.fieldCount} campos · ${audit.frameCount} páginas`,
+    );
+  }
+
+  const protectedReference = await prisma.template.findUnique({
+    where: { id: referenceTemplate.id },
+    select: { layout: true },
+  });
+  if (
+    !protectedReference ||
+    layoutFingerprint(protectedReference.layout) !== referenceFingerprint
+  ) {
+    throw new Error(
+      'A proteção falhou: o template visual 1079 foi alterado durante a operação.',
     );
   }
 
