@@ -4033,6 +4033,9 @@ export default function IntegrationsPage() {
               consultations={consultations}
               fieldTypes={fieldTypes}
               testLogs={testLog}
+              onCataloged={() => {
+                invalidateAll();
+              }}
             />
           )}
         </TabsContent>

@@ -835,6 +835,8 @@ export async function testProductDraftApi(
     bodyTemplate?: unknown;
     queryTemplate?: Record<string, unknown>;
     headersTemplate?: Record<string, unknown>;
+    homologationOnly?: boolean;
+    persistLog?: boolean;
   },
 ) {
   const req: Record<string, unknown> = {
@@ -852,6 +854,49 @@ export async function testProductDraftApi(
     method: 'POST',
     token: tok(accessToken),
     body: JSON.stringify(req),
+  });
+}
+
+export async function catalogSollosProductApi(
+  accessToken: string | null,
+  body: {
+    providerId: string;
+    manualApproval: true;
+    product: {
+      name: string;
+      externalId: string;
+      endpointPath: string;
+      method: 'POST';
+      bodyTemplate: unknown;
+      sampleResponse: unknown;
+      typeItemFilters?: unknown;
+    };
+    fieldTypes: Array<{
+      key: string;
+      label: string;
+      description?: string;
+      uiItemFilters?: unknown;
+      reportFieldConfig?: unknown;
+    }>;
+    fieldMappings: Array<{
+      fieldTypeKey: string;
+      jsonPath: string;
+      uiStartLine?: number;
+      uiEndLine?: number;
+    }>;
+    samplingEvidence: {
+      attempted: number;
+      succeeded: number;
+      failed: number;
+      uniquePathCount: number;
+      officialSampleCount: number;
+    };
+  },
+) {
+  return apiRequest<ApiProduct>('/admin/providers/products/catalog-sollos', {
+    method: 'POST',
+    token: tok(accessToken),
+    body: JSON.stringify(body),
   });
 }
 

@@ -14,6 +14,7 @@ import { slugify } from '../../lib/slug';
 import {
   createAdminCompanySchema,
   createAdminUserSchema,
+  catalogSollosProductSchema,
   createCanonicalFieldSchema,
   createCompanyInviteSchema,
   createConsultationTypeSchema,
@@ -60,6 +61,7 @@ import {
   testProviderProduct,
   testProviderProductDraft,
 } from '../providers/providers.service';
+import { catalogSollosProduct } from '../providers/catalog-sollos-product.service';
 
 function stripPassword<T extends { passwordHash: string }>(user: T): Omit<T, 'passwordHash'> {
   const { passwordHash: _p, ...rest } = user;
@@ -1686,6 +1688,15 @@ export async function registerAdminRoutes(app: FastifyInstance) {
       persistLog: payload.persistLog,
     }));
   });
+
+  app.post(
+    '/admin/providers/products/catalog-sollos',
+    platformAdminOnly,
+    async (request, reply) => {
+      const payload = catalogSollosProductSchema.parse(request.body);
+      return ok(reply, await catalogSollosProduct(app, payload), 201);
+    },
+  );
 
   app.post('/admin/providers/products/:productId/test', masterOrPartnerOnly, async (request, reply) => {
     const params = request.params as { productId: string };

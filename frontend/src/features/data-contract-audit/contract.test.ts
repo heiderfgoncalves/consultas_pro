@@ -193,7 +193,7 @@ describe('contrato DE–PARA', () => {
     ).toBe('data_contract');
   });
 
-  it('bloqueia BASE I quando a ocorrência é enviada ao SPC', () => {
+  it('corrige automaticamente uma BASE I que o rascunho enviaria ao SPC', () => {
     const debtFields: ConsultationFieldType[] = [
       {
         id: 'serasa',
@@ -290,11 +290,52 @@ describe('contrato DE–PARA', () => {
       expect.objectContaining({
         bureau: 'serasa',
         expectedTypeKey: 'DIVIDAS_SERASA',
-        status: 'missing-target',
+        status: 'ok',
       }),
     ]);
     expect(
       report.diagnostics.find((item) => item.stage === 'comparison')?.status,
-    ).toBe('error');
+    ).toBe('ok');
+  });
+
+  it('separa todas as bases Sollos e usa o provedor do bloco como fallback', () => {
+    const allDebtFields = ['SERASA', 'SPC', 'BOA_VISTA', 'QUOD'].map(
+      (suffix, index): ConsultationFieldType => ({
+        id: `debt-${index}`,
+        key: `DIVIDAS_${suffix}`,
+        label: suffix,
+        description: '',
+        color: 'red',
+        icon: 'AlertTriangle',
+        reportFieldConfig: { version: 1, fields: [] },
+      }),
+    );
+    const report = buildDataContractReport({
+      rawJson: JSON.stringify({
+        CREDCADASTRAL: {
+          PEND_FINANCEIRAS: {
+            OCORRENCIAS: [
+              { INFORMANTE: 'BASE I', CREDOR: 'A', CONTRATO: '1', VALOR: '10,00' },
+              { INFORMANTE: 'BASE II', CREDOR: 'B', CONTRATO: '2', VALOR: '20,00' },
+              { INFORMANTE: 'BASE III', CREDOR: 'C', CONTRATO: '3', VALOR: '30,00' },
+              { INFORMANTE: 'BASE IV', CREDOR: 'D', CONTRATO: '4', VALOR: '40,00' },
+            ],
+          },
+          PEND_REFIN: {
+            PROVEDORES: [{ PROVEDOR: 'BASE I' }],
+            OCORRENCIAS: [{ CREDOR: 'E', CONTRATO: '5', VALOR: '50,00' }],
+          },
+        },
+      }),
+      consultation: { ...consultation, fieldMappings: [] },
+      fieldTypes: allDebtFields,
+    });
+
+    expect(report.bureauAudit).toHaveLength(5);
+    expect(report.bureauAudit.every((item) => item.status === 'ok')).toBe(true);
+    expect(report.para.DIVIDAS_SERASA).toHaveLength(2);
+    expect(report.para.DIVIDAS_SPC).toHaveLength(1);
+    expect(report.para.DIVIDAS_BOA_VISTA).toHaveLength(1);
+    expect(report.para.DIVIDAS_QUOD).toHaveLength(1);
   });
 });

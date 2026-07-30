@@ -19,7 +19,10 @@ import type {
   ProviderConsultation,
   TestLogEntry,
 } from '@/types/integrations';
-import { testProductDraftApi } from '@/api/admin-integrations';
+import {
+  catalogSollosProductApi,
+  testProductDraftApi,
+} from '@/api/admin-integrations';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -40,6 +43,17 @@ import {
   type DataContractReport,
 } from './contract';
 import { buildAutomaticDraftMapping } from './draftMapping';
+import {
+  findSollosCatalogProductById,
+  SOLLOS_ADAPTIVE_SAMPLING_POLICY,
+} from './sollosCatalog';
+import { getSollosOfficialSamples } from './sollosHomologationSamples';
+import {
+  addSollosSampleExecution,
+  buildRepresentativeSollosPayload,
+  summarizeSollosSampling,
+  type SollosSampleExecution,
+} from './sollosSampling';
 
 type ContractAuditTabProps = {
   accessToken: string | null;
@@ -47,6 +61,7 @@ type ContractAuditTabProps = {
   consultations: ProviderConsultation[];
   fieldTypes: ConsultationFieldType[];
   testLogs: TestLogEntry[];
+  onCataloged?: () => void | Promise<void>;
 };
 
 const SOLLOS_HOMOLOGATION_URL =
@@ -91,6 +106,7 @@ const BUREAU_LABELS = {
   serasa: 'Serasa · Base I',
   spc: 'SPC Brasil · Base II',
   'boa-vista': 'Boa Vista/SCPC · Base III',
+  quod: 'QUOD · Base IV',
   unknown: 'Base desconhecida',
 } as const;
 
@@ -187,7 +203,13 @@ function ContractSummary({ report }: { report: DataContractReport }) {
   );
 }
 
-function BureauAudit({ items }: { items: BureauOccurrenceAudit[] }) {
+function BureauAudit({
+  items,
+  onReprocess,
+}: {
+  items: BureauOccurrenceAudit[];
+  onReprocess?: () => void;
+}) {
   if (items.length === 0) {
     return (
       <EmptyGuidance
@@ -197,13 +219,50 @@ function BureauAudit({ items }: { items: BureauOccurrenceAudit[] }) {
     );
   }
 
+  const blockedItems = items.filter((item) => item.status !== 'ok');
+
   return (
     <div className="space-y-3">
-      <div className="grid gap-3 sm:grid-cols-3">
+      {blockedItems.length > 0 ? (
+        <div className="rounded-xl border border-red-500/35 bg-red-500/10 p-4">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <p className="font-semibold text-red-700 dark:text-red-300">
+                A Fábrica precisa corrigir {blockedItems.length}{' '}
+                {blockedItems.length === 1 ? 'mapeamento' : 'mapeamentos'}
+              </p>
+              <p className="mt-1 text-sm text-red-700/90 dark:text-red-300/90">
+                Você não precisa editar o JSON. A base foi reconhecida, mas a
+                dívida ainda não apareceu no bloco correto do Preview.
+              </p>
+              <p className="mt-2 text-xs text-muted-foreground">
+                Clique no botão ao lado. Enquanto algum cartão permanecer
+                vermelho, não catalogue este produto. Se continuar vermelho
+                após o reprocessamento, volte à etapa 2 e gere outra amostra;
+                a Fábrica manterá o produto bloqueado até conseguir provar os
+                dados.
+              </p>
+            </div>
+            {onReprocess ? (
+              <Button
+                type="button"
+                variant="destructive"
+                className="shrink-0"
+                onClick={onReprocess}
+              >
+                Reprocessar correção automática
+              </Button>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
+
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         {[
           ['BASE I', 'Serasa', 'DIVIDAS_SERASA'],
           ['BASE II', 'SPC Brasil', 'DIVIDAS_SPC'],
           ['BASE III', 'Boa Vista / SCPC', 'DIVIDAS_BOA_VISTA'],
+          ['BASE IV', 'QUOD', 'DIVIDAS_QUOD'],
         ].map(([base, bureau, target]) => (
           <div key={base} className="rounded-lg border border-border bg-muted/20 p-4">
             <Badge variant="outline">{base}</Badge>
@@ -265,6 +324,25 @@ function BureauAudit({ items }: { items: BureauOccurrenceAudit[] }) {
             >
               {item.message}
             </p>
+            {item.status !== 'ok' ? (
+              <div className="rounded-md border border-red-500/25 bg-background/60 p-3 text-xs lg:col-span-3">
+                <p className="font-semibold">O que aconteceu?</p>
+                <p className="mt-1 text-muted-foreground">
+                  A dívida foi reconhecida como{' '}
+                  <strong>{BUREAU_LABELS[item.bureau]}</strong> e deveria aparecer
+                  em{' '}
+                  <code className="font-mono">
+                    {item.expectedTypeKey ?? 'um novo destino ainda não definido'}
+                  </code>
+                  , mas seus valores não chegaram ao Preview.
+                </p>
+                <p className="mt-2 font-semibold">O que você deve fazer?</p>
+                <p className="mt-1 text-muted-foreground">
+                  Clique em “Reprocessar correção automática” acima. Você não
+                  deve editar caminhos ou JSON manualmente.
+                </p>
+              </div>
+            ) : null}
           </div>
         ))}
       </div>
@@ -390,6 +468,7 @@ export default function ContractAuditTab({
   consultations,
   fieldTypes,
   testLogs,
+  onCataloged,
 }: ContractAuditTabProps) {
   const [step, setStep] = useState(1);
   const [productCode, setProductCode] = useState(
@@ -401,9 +480,52 @@ export default function ContractAuditTab({
   const [draftRawJson, setDraftRawJson] = useState('');
   const [isRunningHomologation, setIsRunningHomologation] = useState(false);
   const [homologationError, setHomologationError] = useState('');
+  const [reviewedSuggestions, setReviewedSuggestions] = useState<Set<string>>(
+    () => new Set(),
+  );
+  const [mappingRevision, setMappingRevision] = useState(0);
+  const [sampleExecutions, setSampleExecutions] = useState<
+    SollosSampleExecution[]
+  >([]);
+  const [samplingGoal, setSamplingGoal] = useState(
+    SOLLOS_ADAPTIVE_SAMPLING_POLICY.targetSamples,
+  );
+  const [isCataloging, setIsCataloging] = useState(false);
+  const [catalogingError, setCatalogingError] = useState('');
+  const [catalogedProductId, setCatalogedProductId] = useState('');
 
   const consultation =
     consultations.find((item) => item.externalId === productCode.trim()) ?? null;
+  const catalogProduct = findSollosCatalogProductById(productCode);
+  const officialSamples = useMemo(
+    () => getSollosOfficialSamples(productCode),
+    [productCode],
+  );
+  const samplingSummary = useMemo(
+    () =>
+      summarizeSollosSampling(
+        sampleExecutions,
+        Math.min(
+          SOLLOS_ADAPTIVE_SAMPLING_POLICY.minimumSamples,
+          officialSamples.length,
+        ),
+        SOLLOS_ADAPTIVE_SAMPLING_POLICY.consecutiveStableSamplesToStop,
+      ),
+    [officialSamples.length, sampleExecutions],
+  );
+  const samplingGoals = useMemo(
+    () =>
+      [
+        ...new Set(
+          [
+            SOLLOS_ADAPTIVE_SAMPLING_POLICY.minimumSamples,
+            SOLLOS_ADAPTIVE_SAMPLING_POLICY.targetSamples,
+            SOLLOS_ADAPTIVE_SAMPLING_POLICY.maximumSamples,
+          ].map((goal) => Math.min(goal, officialSamples.length)),
+        ),
+      ].filter((goal) => goal > 0),
+    [officialSamples.length],
+  );
   const sollosProvider = useMemo(
     () =>
       providers.find((provider) =>
@@ -411,12 +533,14 @@ export default function ContractAuditTab({
       ) ?? null,
     [providers],
   );
-  const draftMapping = useMemo(() => {
+  const draftMapping = (() => {
     if (consultation || !draftRawJson.trim() || !sollosProvider) return null;
+    void mappingRevision;
     try {
       return buildAutomaticDraftMapping({
         rawJson: draftRawJson,
         productCode: productCode.trim(),
+        productName: catalogProduct?.name,
         providerId: sollosProvider.id,
         consultations,
         fieldTypes,
@@ -424,14 +548,7 @@ export default function ContractAuditTab({
     } catch {
       return null;
     }
-  }, [
-    consultation,
-    consultations,
-    draftRawJson,
-    fieldTypes,
-    productCode,
-    sollosProvider,
-  ]);
+  })();
   const effectiveConsultation =
     consultation ?? draftMapping?.consultation ?? null;
   const effectiveFieldTypes = draftMapping?.fieldTypes ?? fieldTypes;
@@ -472,8 +589,23 @@ export default function ContractAuditTab({
     }
   }, [effectiveConsultation, effectiveFieldTypes, rawJson]);
 
+  const pendingSuggestionReviews =
+    draftMapping?.suggestions.filter(
+      (item) =>
+        (item.confidence === 'new' || item.confidence === 'review') &&
+        !reviewedSuggestions.has(item.typeKey),
+    ) ?? [];
+  const samplingIsSufficient = consultation
+    ? true
+    : catalogProduct?.sampleCoverage === 'limited'
+      ? officialSamples.length > 0 &&
+        samplingSummary.attempted >= officialSamples.length &&
+        samplingSummary.succeeded > 0
+      : samplingSummary.canStopSafely;
   const isReady =
-    result.report?.diagnostics.every((item) => item.status === 'ok') ?? false;
+    (result.report?.diagnostics.every((item) => item.status === 'ok') ?? false) &&
+    pendingSuggestionReviews.length === 0 &&
+    samplingIsSufficient;
 
   useEffect(() => {
     setManualApproval(false);
@@ -482,6 +614,12 @@ export default function ContractAuditTab({
   useEffect(() => {
     setDraftRawJson('');
     setHomologationError('');
+    setReviewedSuggestions(new Set());
+    setMappingRevision(0);
+    setSampleExecutions([]);
+    setSamplingGoal(SOLLOS_ADAPTIVE_SAMPLING_POLICY.targetSamples);
+    setCatalogingError('');
+    setCatalogedProductId('');
   }, [productCode]);
 
   const canContinue =
@@ -495,6 +633,55 @@ export default function ContractAuditTab({
     setStep(Math.min(6, Math.max(1, nextStep)));
   }
 
+  function reprocessAutomaticMapping() {
+    setReviewedSuggestions(new Set());
+    setMappingRevision((current) => current + 1);
+  }
+
+  async function executeSollosHomologation(document: string) {
+    const reference = consultations.find(
+      (item) =>
+        item.providerId === sollosProvider?.id && item.bodyTemplateJson?.trim(),
+    );
+
+    if (!sollosProvider || !reference?.bodyTemplateJson) {
+      throw new Error(
+        'Não encontrei a configuração segura da Sollos para montar esta consulta.',
+      );
+    }
+
+    const bodyTemplate = buildSollosHomologationBody(
+      reference.bodyTemplateJson,
+      productCode.trim(),
+      document,
+    );
+    const response = await testProductDraftApi(accessToken, {
+      providerId: sollosProvider.id,
+      endpointPath: SOLLOS_HOMOLOGATION_URL,
+      method: 'POST',
+      context: {
+        document,
+        documento: document,
+        is_cpf: document.length === 11,
+        is_cnpj: document.length === 14,
+      },
+      bodyTemplate,
+      homologationOnly: true,
+      persistLog: false,
+    });
+
+    if (
+      response.response.statusCode < 200 ||
+      response.response.statusCode >= 300
+    ) {
+      throw new Error(
+        `A Sollos respondeu com status ${response.response.statusCode}.`,
+      );
+    }
+
+    return response.response.payload;
+  }
+
   async function runSollosHomologation() {
     const document = testDocument.replace(/\D/g, '');
     if (document.length !== 11 && document.length !== 14) {
@@ -502,51 +689,21 @@ export default function ContractAuditTab({
       return;
     }
 
-    const reference = consultations.find(
-      (item) =>
-        item.providerId === sollosProvider?.id && item.bodyTemplateJson?.trim(),
-    );
-
-    if (!sollosProvider || !reference?.bodyTemplateJson) {
-      setHomologationError(
-        'Não encontrei a configuração segura da Sollos para montar esta consulta.',
-      );
-      return;
-    }
-
     setIsRunningHomologation(true);
     setHomologationError('');
     try {
-      const bodyTemplate = buildSollosHomologationBody(
-        reference.bodyTemplateJson,
-        productCode.trim(),
-        document,
-      );
-      const response = await testProductDraftApi(accessToken, {
-        providerId: sollosProvider.id,
-        endpointPath: SOLLOS_HOMOLOGATION_URL,
-        method: 'POST',
-        context: {
+      const payload = await executeSollosHomologation(document);
+      setDraftRawJson(JSON.stringify(payload, null, 2));
+      setSampleExecutions([
+        {
           document,
-          documento: document,
-          is_cpf: document.length === 11,
-          is_cnpj: document.length === 14,
+          expectedStatus: 'CONCLUIDO',
+          success: true,
+          payload,
+          discoveredPathCount: 0,
+          newPathCount: 0,
         },
-        bodyTemplate,
-        homologationOnly: true,
-        persistLog: false,
-      });
-
-      if (
-        response.response.statusCode < 200 ||
-        response.response.statusCode >= 300
-      ) {
-        throw new Error(
-          `A Sollos respondeu com status ${response.response.statusCode}.`,
-        );
-      }
-
-      setDraftRawJson(JSON.stringify(response.response.payload, null, 2));
+      ]);
     } catch (error) {
       setHomologationError(
         error instanceof Error
@@ -555,6 +712,158 @@ export default function ContractAuditTab({
       );
     } finally {
       setIsRunningHomologation(false);
+    }
+  }
+
+  async function runSollosOfficialBatch() {
+    if (!catalogProduct || officialSamples.length === 0) {
+      setHomologationError(
+        'Este ID ainda não possui documentos oficiais na lista de homologação.',
+      );
+      return;
+    }
+
+    setIsRunningHomologation(true);
+    setHomologationError('');
+    setDraftRawJson('');
+    let executions: SollosSampleExecution[] = [];
+    const goal = Math.min(
+      samplingGoal,
+      SOLLOS_ADAPTIVE_SAMPLING_POLICY.maximumSamples,
+      officialSamples.length,
+    );
+
+    try {
+      for (const sample of officialSamples.slice(0, goal)) {
+        try {
+          const payload = await executeSollosHomologation(sample.document);
+          executions = addSollosSampleExecution(executions, sample, {
+            success: true,
+            payload,
+          });
+        } catch (error) {
+          executions = addSollosSampleExecution(executions, sample, {
+            success: false,
+            error:
+              error instanceof Error ? error.message : 'Falha na homologação.',
+          });
+        }
+        setSampleExecutions(executions);
+      }
+
+      const payloads = executions.flatMap((execution) =>
+        execution.success && execution.payload ? [execution.payload] : [],
+      );
+      if (payloads.length === 0) {
+        throw new Error(
+          'Nenhuma amostra oficial retornou um JSON válido. Confira a conexão da Sollos.',
+        );
+      }
+
+      setDraftRawJson(
+        JSON.stringify(buildRepresentativeSollosPayload(payloads), null, 2),
+      );
+    } catch (error) {
+      setHomologationError(
+        error instanceof Error
+          ? error.message
+          : 'Não foi possível concluir o lote de homologação.',
+      );
+    } finally {
+      setIsRunningHomologation(false);
+    }
+  }
+
+  async function catalogApprovedProduct() {
+    if (
+      !manualApproval ||
+      !isReady ||
+      !draftMapping ||
+      !sollosProvider ||
+      !catalogProduct
+    ) {
+      setCatalogingError(
+        'Conclua as validações e confirme a aprovação antes de catalogar.',
+      );
+      return;
+    }
+
+    const reference = consultations.find(
+      (item) =>
+        item.providerId === sollosProvider.id && item.bodyTemplateJson?.trim(),
+    );
+    if (!reference?.bodyTemplateJson) {
+      setCatalogingError(
+        'A configuração segura de requisição da Sollos não foi localizada.',
+      );
+      return;
+    }
+
+    let bodyTemplate: unknown;
+    try {
+      bodyTemplate = JSON.parse(
+        reference.bodyTemplateJson.replace(
+          /:\s*`([\s\S]*?)`(?=\s*[,}])/g,
+          (_match, value: string) => `: ${JSON.stringify(value)}`,
+        ),
+      );
+    } catch {
+      setCatalogingError(
+        'A configuração segura de requisição da Sollos está inválida.',
+      );
+      return;
+    }
+
+    const mappedKeys = new Set(
+      draftMapping.consultation.fieldMappings.map(
+        (mapping) => mapping.fieldTypeKey,
+      ),
+    );
+    const mappedTypes = draftMapping.fieldTypes.filter((fieldType) =>
+      mappedKeys.has(fieldType.key),
+    );
+
+    setIsCataloging(true);
+    setCatalogingError('');
+    try {
+      const created = await catalogSollosProductApi(accessToken, {
+        providerId: sollosProvider.id,
+        manualApproval: true,
+        product: {
+          name: catalogProduct.name,
+          externalId: catalogProduct.productId,
+          endpointPath: SOLLOS_HOMOLOGATION_URL,
+          method: 'POST',
+          bodyTemplate,
+          sampleResponse: JSON.parse(draftRawJson),
+          typeItemFilters: draftMapping.consultation.typeItemFilters,
+        },
+        fieldTypes: mappedTypes.map((fieldType) => ({
+          key: fieldType.key,
+          label: fieldType.label,
+          description: fieldType.description,
+          uiItemFilters: fieldType.typeItemFilters,
+          reportFieldConfig: fieldType.reportFieldConfig,
+        })),
+        fieldMappings: draftMapping.consultation.fieldMappings,
+        samplingEvidence: {
+          attempted: samplingSummary.attempted,
+          succeeded: samplingSummary.succeeded,
+          failed: samplingSummary.failed,
+          uniquePathCount: samplingSummary.uniquePathCount,
+          officialSampleCount: officialSamples.length,
+        },
+      });
+      setCatalogedProductId(created.id);
+      await onCataloged?.();
+    } catch (error) {
+      setCatalogingError(
+        error instanceof Error
+          ? error.message
+          : 'Não foi possível catalogar o produto.',
+      );
+    } finally {
+      setIsCataloging(false);
     }
   }
 
@@ -720,9 +1029,48 @@ export default function ContractAuditTab({
                 <p className="mt-1 text-sm text-muted-foreground">
                   {consultation
                     ? 'Vamos reutilizar o cadastro e conferir novamente todo o contrato.'
-                    : 'Na próxima etapa, informe um documento de teste da homologação para obter a primeira amostra.'}
+                    : catalogProduct
+                      ? `${catalogProduct.name} já está no Catálogo Mestre com status “${catalogProduct.status}”. Na próxima etapa, a Fábrica continuará a preparação pela homologação.`
+                      : 'Este ID ainda não foi comprovado no Catálogo Mestre. Na próxima etapa, a homologação será usada para identificá-lo sem salvar nada automaticamente.'}
                 </p>
               </div>
+              {catalogProduct ? (
+                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                  <div className="rounded-lg border border-border bg-muted/20 p-3">
+                    <p className="text-xs text-muted-foreground">Produto esperado</p>
+                    <p className="mt-1 font-semibold">{catalogProduct.name}</p>
+                  </div>
+                  <div className="rounded-lg border border-border bg-muted/20 p-3">
+                    <p className="text-xs text-muted-foreground">Pessoa</p>
+                    <p className="mt-1 font-semibold">{catalogProduct.personType}</p>
+                  </div>
+                  <div className="rounded-lg border border-border bg-muted/20 p-3">
+                    <p className="text-xs text-muted-foreground">
+                      Plano de amostragem
+                    </p>
+                    <p className="mt-1 font-semibold">
+                      {catalogProduct.officialSampleCount} oficiais disponíveis
+                    </p>
+                  </div>
+                  <div
+                    className={cn(
+                      'rounded-lg border p-3',
+                      catalogProduct.sampleCoverage === 'sufficient'
+                        ? 'border-emerald-500/25 bg-emerald-500/5'
+                        : 'border-amber-500/30 bg-amber-500/10',
+                    )}
+                  >
+                    <p className="text-xs text-muted-foreground">
+                      Cobertura documental
+                    </p>
+                    <p className="mt-1 font-semibold">
+                      {catalogProduct.sampleCoverage === 'sufficient'
+                        ? 'Amostragem suficiente'
+                        : 'Amostragem oficial limitada'}
+                    </p>
+                  </div>
+                </div>
+              ) : null}
             </div>
           ) : null}
 
@@ -769,8 +1117,121 @@ export default function ContractAuditTab({
                   </div>
                 </>
               ) : null}
+              {!rawJson && catalogProduct && officialSamples.length > 0 ? (
+                <div className="space-y-4 rounded-xl border border-primary/25 bg-primary/5 p-4">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div>
+                      <p className="font-semibold">
+                        Homologação automática recomendada
+                      </p>
+                      <p className="mt-1 text-sm text-muted-foreground">
+                        A Fábrica executa documentos oficiais variados, mede
+                        novos caminhos e monta uma amostra consolidada para o
+                        mapeamento.
+                      </p>
+                    </div>
+                    <Badge variant="outline">
+                      {officialSamples.length} documentos oficiais
+                    </Badge>
+                  </div>
+
+                  {catalogProduct.sampleCoverage === 'limited' ? (
+                    <div className="rounded-md border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-800 dark:text-amber-200">
+                      A Sollos publicou somente {officialSamples.length}{' '}
+                      documentos para este produto. A Fábrica executará todos,
+                      mas manterá a limitação visível na revisão final.
+                    </div>
+                  ) : null}
+
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+                    <div className="w-full space-y-1.5 sm:max-w-[15rem]">
+                      <Label>Quantidade de amostras</Label>
+                      <Select
+                        value={String(
+                          Math.min(samplingGoal, officialSamples.length),
+                        )}
+                        onValueChange={(value) =>
+                          setSamplingGoal(Number(value))
+                        }
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {samplingGoals.map((goal) => (
+                            <SelectItem key={goal} value={String(goal)}>
+                              {goal} {goal === 1 ? 'amostra' : 'amostras'}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <Button
+                      type="button"
+                      onClick={() => void runSollosOfficialBatch()}
+                      disabled={isRunningHomologation}
+                      className="w-full sm:w-auto"
+                    >
+                      {isRunningHomologation
+                        ? `Executando ${samplingSummary.attempted}/${Math.min(
+                            samplingGoal,
+                            officialSamples.length,
+                          )}...`
+                        : 'Executar lote oficial'}
+                    </Button>
+                  </div>
+
+                  {sampleExecutions.length > 0 ? (
+                    <div className="space-y-3">
+                      <div className="h-2 overflow-hidden rounded-full bg-muted">
+                        <div
+                          className="h-full bg-primary transition-all"
+                          style={{
+                            width: `${Math.min(
+                              100,
+                              (samplingSummary.attempted /
+                                Math.min(
+                                  samplingGoal,
+                                  officialSamples.length,
+                                )) *
+                                100,
+                            )}%`,
+                          }}
+                        />
+                      </div>
+                      <div className="grid gap-2 text-center text-xs sm:grid-cols-4">
+                        <div className="rounded-md border border-border bg-background/70 p-2">
+                          <strong>{samplingSummary.succeeded}</strong>
+                          <span className="ml-1 text-muted-foreground">
+                            válidas
+                          </span>
+                        </div>
+                        <div className="rounded-md border border-border bg-background/70 p-2">
+                          <strong>{samplingSummary.failed}</strong>
+                          <span className="ml-1 text-muted-foreground">
+                            falhas
+                          </span>
+                        </div>
+                        <div className="rounded-md border border-border bg-background/70 p-2">
+                          <strong>{samplingSummary.uniquePathCount}</strong>
+                          <span className="ml-1 text-muted-foreground">
+                            caminhos
+                          </span>
+                        </div>
+                        <div className="rounded-md border border-border bg-background/70 p-2">
+                          <strong>{samplingSummary.stableTailCount}</strong>
+                          <span className="ml-1 text-muted-foreground">
+                            estáveis
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
               {!rawJson ? (
                 <div className="space-y-3 rounded-lg border border-border p-4">
+                  <p className="font-semibold">Ou execute uma amostra manual</p>
                   <div className="space-y-1.5">
                     <Label htmlFor="homolog-document">
                       CPF ou CNPJ de teste da Sollos
@@ -852,6 +1313,46 @@ export default function ContractAuditTab({
                   </div>
                 </div>
 
+                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                  {[
+                    [
+                      'Verde',
+                      'Reaproveitado',
+                      'Nenhuma ação: veio de um template Sollos já aprovado.',
+                      'border-emerald-500/30 bg-emerald-500/10',
+                    ],
+                    [
+                      'Roxo',
+                      'Novo tipo',
+                      'Revise o caminho e clique em Aprovar sugestão.',
+                      'border-violet-500/30 bg-violet-500/10',
+                    ],
+                    [
+                      'Amarelo',
+                      'Previsto sem dados',
+                      'Confirme que o recurso deve permanecer previsto.',
+                      'border-amber-500/30 bg-amber-500/10',
+                    ],
+                    [
+                      'Vermelho',
+                      'Bloqueio real',
+                      'A ocorrência não chegou ao Preview; não avance sem corrigir.',
+                      'border-red-500/30 bg-red-500/10',
+                    ],
+                  ].map(([color, title, description, className]) => (
+                    <div
+                      key={color}
+                      className={cn('rounded-lg border p-3', className)}
+                    >
+                      <p className="text-xs font-semibold uppercase">{color}</p>
+                      <p className="mt-1 font-semibold">{title}</p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {description}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+
                 <div className="overflow-hidden rounded-lg border border-border">
                   <div className="grid grid-cols-[minmax(12rem,0.8fr)_minmax(16rem,1.4fr)_minmax(10rem,0.8fr)] gap-3 border-b border-border bg-muted/30 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                     <span>Tipo de destino</span>
@@ -893,6 +1394,36 @@ export default function ContractAuditTab({
                           <p className="mt-1 text-xs text-muted-foreground">
                             {suggestion.reason}
                           </p>
+                          {suggestion.confidence === 'new' ||
+                          suggestion.confidence === 'review' ? (
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant={
+                                reviewedSuggestions.has(suggestion.typeKey)
+                                  ? 'outline'
+                                  : 'default'
+                              }
+                              className="mt-2 h-7 text-xs"
+                              onClick={() =>
+                                setReviewedSuggestions((current) => {
+                                  const next = new Set(current);
+                                  if (next.has(suggestion.typeKey)) {
+                                    next.delete(suggestion.typeKey);
+                                  } else {
+                                    next.add(suggestion.typeKey);
+                                  }
+                                  return next;
+                                })
+                              }
+                            >
+                              {reviewedSuggestions.has(suggestion.typeKey)
+                                ? 'Confirmado'
+                                : suggestion.confidence === 'new'
+                                  ? 'Aprovar sugestão'
+                                  : 'Manter como previsto'}
+                            </Button>
+                          ) : null}
                         </div>
                       </div>
                     ))}
@@ -900,11 +1431,17 @@ export default function ContractAuditTab({
                 </div>
 
                 {result.report ? (
-                  <BureauAudit items={result.report.bureauAudit} />
+                  <BureauAudit
+                    items={result.report.bureauAudit}
+                    onReprocess={reprocessAutomaticMapping}
+                  />
                 ) : null}
               </div>
             ) : result.report ? (
-              <BureauAudit items={result.report.bureauAudit} />
+              <BureauAudit
+                items={result.report.bureauAudit}
+                onReprocess={reprocessAutomaticMapping}
+              />
             ) : (
               <EmptyGuidance
                 title="Primeiro precisamos de uma amostra"
@@ -947,6 +1484,24 @@ export default function ContractAuditTab({
           {step === 5 ? (
             result.report ? (
               <div className="space-y-6">
+                {sampleExecutions.length > 0 ? (
+                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                    {[
+                      ['Amostras válidas', samplingSummary.succeeded],
+                      ['Falhas isoladas', samplingSummary.failed],
+                      ['Caminhos únicos', samplingSummary.uniquePathCount],
+                      ['Amostras estáveis', samplingSummary.stableTailCount],
+                    ].map(([label, value]) => (
+                      <div
+                        key={label}
+                        className="rounded-lg border border-border bg-muted/20 p-3"
+                      >
+                        <p className="text-xs text-muted-foreground">{label}</p>
+                        <p className="mt-1 text-xl font-semibold">{value}</p>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
                 <ContractSummary report={result.report} />
                 <div>
                   <h3 className="font-semibold">Prova campo por campo</h3>
@@ -997,6 +1552,37 @@ export default function ContractAuditTab({
 
               {result.report ? <ContractSummary report={result.report} /> : null}
 
+              {sampleExecutions.length > 0 ? (
+                <div
+                  className={cn(
+                    'rounded-lg border p-4',
+                    samplingSummary.canStopSafely ||
+                      catalogProduct?.sampleCoverage === 'limited'
+                      ? 'border-emerald-500/25 bg-emerald-500/5'
+                      : 'border-amber-500/30 bg-amber-500/10',
+                  )}
+                >
+                  <p className="font-semibold">Resumo da amostragem</p>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    {samplingSummary.succeeded} JSONs válidos,{' '}
+                    {samplingSummary.uniquePathCount} caminhos estruturais e{' '}
+                    {samplingSummary.stableTailCount} amostras finais sem novos
+                    caminhos.
+                  </p>
+                  {catalogProduct?.sampleCoverage === 'limited' ? (
+                    <p className="mt-2 text-xs text-amber-700 dark:text-amber-300">
+                      Cobertura limitada pela própria lista oficial: foram
+                      executados todos os documentos disponíveis.
+                    </p>
+                  ) : !samplingSummary.canStopSafely ? (
+                    <p className="mt-2 text-xs text-amber-700 dark:text-amber-300">
+                      A estrutura ainda não estabilizou. Volte à etapa 2 e
+                      execute um lote maior antes de aprovar.
+                    </p>
+                  ) : null}
+                </div>
+              ) : null}
+
               <label
                 className={cn(
                   'flex items-start gap-3 rounded-lg border border-border p-4',
@@ -1019,15 +1605,37 @@ export default function ContractAuditTab({
               </label>
 
               <div className="flex flex-col gap-2 sm:items-end">
-                <Button disabled>
-                  {isReady && manualApproval
-                    ? 'Gravação segura ainda não conectada'
-                    : 'Catalogar produto manualmente'}
+                <Button
+                  type="button"
+                  disabled={
+                    !isReady ||
+                    !manualApproval ||
+                    isCataloging ||
+                    Boolean(catalogedProductId) ||
+                    !draftMapping
+                  }
+                  onClick={() => void catalogApprovedProduct()}
+                >
+                  {catalogedProductId
+                    ? 'Produto catalogado com segurança'
+                    : isCataloging
+                      ? 'Catalogando...'
+                      : 'Catalogar produto manualmente'}
                 </Button>
                 <p className="text-xs text-muted-foreground">
-                  A gravação definitiva será conectada somente após validarmos
-                  esta esteira com um produto novo de homologação.
+                  O produto nasce inativo e só é gravado junto com seus tipos e
+                  mapeamentos depois desta confirmação.
                 </p>
+                {catalogingError ? (
+                  <p className="text-sm text-red-600 dark:text-red-400">
+                    {catalogingError}
+                  </p>
+                ) : null}
+                {catalogedProductId ? (
+                  <p className="text-sm text-emerald-600 dark:text-emerald-400">
+                    Gravação concluída sem ativar cobranças ou produção.
+                  </p>
+                ) : null}
               </div>
             </div>
           ) : null}

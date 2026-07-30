@@ -15,6 +15,13 @@ Catalogar os produtos Sollos por ID, reproduzindo seus dados com fidelidade ante
   - BASE I → Serasa → `DIVIDAS_SERASA`
   - BASE II → SPC Brasil → `DIVIDAS_SPC`
   - BASE III → Boa Vista/SCPC → `DIVIDAS_BOA_VISTA`
+  - BASE IV → QUOD → `DIVIDAS_QUOD`
+- [x] Catálogo Mestre com os 30 produtos solicitados e seus IDs oficiais.
+- [x] Documentos oficiais de homologação organizados por produto, com limite real informado quando a Sollos oferece menos de dez.
+- [x] Lote adaptativo de 10, 20 ou 30 amostras, executado em sequência e somente na homologação.
+- [x] Consolidação estrutural das amostras e separação automática das quatro bases de dívidas.
+- [x] Descoberta de estruturas inéditas como tipos provisórios, sempre sujeita à revisão humana.
+- [x] Gravação final transacional, com produto inicialmente inativo e rollback integral em caso de falha.
 - [x] Bloqueio para base desconhecida, ocorrência ausente ou enviada ao destino errado.
 - [x] Distinção entre divergência real e tipo que não se aplica à amostra.
 - [x] Resumo final com confirmação humana nunca marcada automaticamente.
@@ -22,11 +29,8 @@ Catalogar os produtos Sollos por ID, reproduzindo seus dados com fidelidade ante
 
 ## Próximo checkpoint
 
-- [ ] Conectar a execução gratuita de um produto novo ao endpoint de homologação.
-- [ ] Gerar uma proposta inicial de tipos, filtros e campos para produto ainda desconhecido.
-- [ ] Permitir refinar a proposta dentro da esteira.
-- [ ] Conectar o botão final à gravação transacional do produto e de seus mapeamentos.
-- [ ] Exigir nova leitura/validação após qualquer alteração antes de permitir salvar.
+- [ ] Auditar e aprovar manualmente cada produto pela própria Fábrica.
+- [ ] Desenhar os relatórios aprovados na Templates Drawer, sem alterar seus contratos de dados.
 
 ## Critérios de segurança
 

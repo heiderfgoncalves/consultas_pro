@@ -203,7 +203,12 @@ function cloneFilterConfig(
   const cloned = JSON.parse(JSON.stringify(config)) as TypeItemFilterConfig;
   cloned.fieldMappings = cloned.fieldMappings.map((mapping) => ({
     ...mapping,
-    sourceTrechoPath: sourcePath,
+    sourceTrechoPath:
+      mapping.sourceTrechoPath &&
+      normalize(pathTail(mapping.sourceTrechoPath)) === 'OCORRENCIAS' &&
+      normalize(pathTail(sourcePath)) !== 'OCORRENCIAS'
+        ? `${sourcePath}.OCORRENCIAS`
+        : sourcePath,
   }));
   return cloned;
 }
@@ -211,6 +216,7 @@ function cloneFilterConfig(
 export function buildAutomaticDraftMapping(params: {
   rawJson: string;
   productCode: string;
+  productName?: string;
   providerId: string;
   consultations: ProviderConsultation[];
   fieldTypes: ConsultationFieldType[];
@@ -315,6 +321,12 @@ export function buildAutomaticDraftMapping(params: {
         item !== null && typeof item === 'object' && !Array.isArray(item),
     );
     if (records.length === 0) continue;
+    const looksLikeDebtOccurrence = records.some((record) =>
+      ['VALOR', 'VALOR_DIVIDA', 'CREDOR', 'CONTRATO', 'DATA_VENCIMENTO'].some(
+        (field) => record[field] !== undefined,
+      ),
+    );
+    if (!looksLikeDebtOccurrence) continue;
     const values = [
       ...new Set(
         records
@@ -327,16 +339,19 @@ export function buildAutomaticDraftMapping(params: {
 
     for (const value of values) {
       const normalizedValue = normalize(value);
+      const debtTypeKey = ['BASE_IV', 'BASE_4', 'QUOD'].includes(normalizedValue)
+        ? 'DIVIDAS_QUOD'
+        : `DIVIDAS_${normalizedValue}`;
       if (
         knownDiscriminators.has(normalizedValue.replace(/_/g, ' ')) ||
-        seenDiscriminatorTypes.has(normalizedValue)
+        seenDiscriminatorTypes.has(debtTypeKey)
       ) {
         continue;
       }
       const cleanPath = node.path.replace(/\[\*\]$/g, '');
       const provisional = provisionalTypeForBlock(
         { ...node, path: cleanPath },
-        `DIVIDAS_${normalizedValue}`,
+        debtTypeKey,
       );
       provisional.config.groups = [
         {
@@ -372,7 +387,7 @@ export function buildAutomaticDraftMapping(params: {
       });
       discriminatorPaths.add(cleanPath);
       claimedPaths.add(cleanPath);
-      seenDiscriminatorTypes.add(normalizedValue);
+      seenDiscriminatorTypes.add(debtTypeKey);
     }
   }
 
@@ -468,7 +483,9 @@ export function buildAutomaticDraftMapping(params: {
     consultation: {
       id: `draft-${params.productCode}`,
       providerId: params.providerId,
-      name: `Produto Sollos ${params.productCode} · rascunho`,
+      name: params.productName
+        ? `${params.productName} · rascunho`
+        : `Produto Sollos ${params.productCode} · rascunho`,
       externalId: params.productCode,
       endpoint: '/json/homologa.aspx',
       method: 'POST',

@@ -198,6 +198,46 @@ export const testProductDraftSchema = z.object({
   persistLog: z.boolean().optional().default(true),
 });
 
+export const catalogSollosProductSchema = z.object({
+  providerId: z.string().min(1),
+  manualApproval: z.literal(true),
+  product: z.object({
+    name: z.string().min(2),
+    externalId: z.string().regex(/^\d+$/),
+    endpointPath: z.string().min(1),
+    method: z.literal('POST'),
+    bodyTemplate: z.any(),
+    sampleResponse: z.any(),
+    typeItemFilters: z.any().optional(),
+  }),
+  fieldTypes: z.array(
+    z.object({
+      key: z.string().min(1),
+      label: z.string().min(1),
+      description: z.string().optional(),
+      uiItemFilters: z.any().optional(),
+      reportFieldConfig: z.any().optional(),
+    }),
+  ),
+  fieldMappings: z
+    .array(
+      z.object({
+        fieldTypeKey: z.string().min(1),
+        jsonPath: z.string().min(1),
+        uiStartLine: z.number().int().nonnegative().optional(),
+        uiEndLine: z.number().int().nonnegative().optional(),
+      }),
+    )
+    .min(1),
+  samplingEvidence: z.object({
+    attempted: z.number().int().nonnegative(),
+    succeeded: z.number().int().nonnegative(),
+    failed: z.number().int().nonnegative(),
+    uniquePathCount: z.number().int().nonnegative(),
+    officialSampleCount: z.number().int().nonnegative(),
+  }),
+});
+
 export const previewMergeSchema = z.object({
   executionIds: z.array(z.string()).optional(),
   testLogIds: z.array(z.string()).optional(),

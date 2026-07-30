@@ -7,7 +7,12 @@ import { buildTypeKeyedDataForDrawer } from '@/lib/buildTypeKeyedDataForDrawer';
 import { collectValuesAtPath } from '@/lib/consultationMappedPreview';
 
 export type ContractStageName = 'original' | 'de' | 'para' | 'editor';
-export type CreditBureau = 'serasa' | 'spc' | 'boa-vista' | 'unknown';
+export type CreditBureau =
+  | 'serasa'
+  | 'spc'
+  | 'boa-vista'
+  | 'quod'
+  | 'unknown';
 
 export type ContractDiagnostic = {
   stage: ContractStageName | 'comparison';
@@ -79,12 +84,16 @@ const BUREAU_BY_LABEL: Record<string, Exclude<CreditBureau, 'unknown'>> = {
   'BASE 3': 'boa-vista',
   'BOA VISTA': 'boa-vista',
   SCPC: 'boa-vista',
+  'BASE IV': 'quod',
+  'BASE 4': 'quod',
+  QUOD: 'quod',
 };
 
 const TYPE_KEY_BY_BUREAU: Record<Exclude<CreditBureau, 'unknown'>, string> = {
   serasa: 'DIVIDAS_SERASA',
   spc: 'DIVIDAS_SPC',
   'boa-vista': 'DIVIDAS_BOA_VISTA',
+  quod: 'DIVIDAS_QUOD',
 };
 
 function sortJson(value: unknown): unknown {
@@ -299,6 +308,54 @@ function buildBureauAudit(
   });
 }
 
+function routeDebtOccurrencesToCanonicalTypes(
+  original: unknown,
+  para: Record<string, unknown>,
+) {
+  const routed = new Map<string, Record<string, unknown>[]>();
+
+  for (const block of collectDebtBlocks(original)) {
+    const providers = Array.isArray(block.value.PROVEDORES)
+      ? block.value.PROVEDORES
+      : [];
+    const providerFallback =
+      asRecord(providers[0])?.PROVEDOR ?? block.value.PROVEDOR ?? '';
+    const occurrences = Array.isArray(block.value.OCORRENCIAS)
+      ? block.value.OCORRENCIAS
+      : [];
+
+    for (const rawOccurrence of occurrences) {
+      const occurrence = asRecord(rawOccurrence);
+      if (!occurrence) continue;
+      const bureau = classifyBureau(
+        occurrence.INFORMANTE ??
+          occurrence.PROVEDOR ??
+          occurrence.BASE ??
+          providerFallback,
+      );
+      if (bureau === 'unknown') continue;
+      const typeKey = TYPE_KEY_BY_BUREAU[bureau];
+      const current = routed.get(typeKey) ?? [];
+      current.push(JSON.parse(JSON.stringify(occurrence)) as Record<string, unknown>);
+      routed.set(typeKey, current);
+    }
+  }
+
+  for (const [typeKey, occurrences] of routed) {
+    const current = Array.isArray(para[typeKey]) ? para[typeKey] : [];
+    const seen = new Set(current.map((item) => JSON.stringify(item)));
+    para[typeKey] = [
+      ...current,
+      ...occurrences.filter((item) => {
+        const fingerprint = JSON.stringify(item);
+        if (seen.has(fingerprint)) return false;
+        seen.add(fingerprint);
+        return true;
+      }),
+    ];
+  }
+}
+
 function buildLineage(params: {
   original: unknown;
   para: Record<string, unknown>;
@@ -414,6 +471,8 @@ export function buildParaPayload(params: {
     });
     para[fieldType.key] = value ?? [];
   }
+
+  routeDebtOccurrencesToCanonicalTypes(parseContractSource(rawJson), para);
 
   return para;
 }

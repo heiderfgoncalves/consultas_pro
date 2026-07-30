@@ -108,7 +108,7 @@ describe('buildAutomaticDraftMapping', () => {
           PEND_FINANCEIRAS: {
             OCORRENCIAS: [
               {
-                INFORMANTE: 'QUOD',
+                INFORMANTE: 'BASE IV',
                 CREDOR: 'EMPRESA',
                 VALOR: '10,00',
               },
@@ -147,6 +147,11 @@ describe('buildAutomaticDraftMapping', () => {
           typeKey: 'DIVIDAS_QUOD',
           confidence: 'new',
         }),
+      ]),
+    );
+    expect(result.suggestions).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ typeKey: 'DIVIDAS_BASE_IV' }),
       ]),
     );
   });
