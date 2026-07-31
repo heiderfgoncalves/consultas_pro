@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import type { Prisma } from '@prisma/client';
 import { AppError, NotFoundError } from '../../core/errors';
+import { assertFactoryProviderAllowed } from './factory-provider-policy';
 
 type SollosSampleValidationEvidence = {
   valid: boolean;
@@ -32,12 +33,7 @@ export type SollosFactoryDraftInput = {
   sampleValidations: SollosSampleValidationEvidence[];
 };
 
-function isSollosProvider(provider: { name: string; slug: string }) {
-  return (
-    provider.slug.toLowerCase() === 'sollos' ||
-    provider.name.toLowerCase().includes('sollos')
-  );
-}
+/** Provedores habilitados vem da politica compartilhada da Fabrica. */
 
 function assertEvidenceConsistency(input: SollosFactoryDraftInput) {
   if (
@@ -122,14 +118,8 @@ export async function upsertSollosFactoryDraft(
     where: { id: input.providerId },
     select: { id: true, name: true, slug: true },
   });
-  if (!provider) throw new NotFoundError('Provedor Sollos não encontrado');
-  if (!isSollosProvider(provider)) {
-    throw new AppError(
-      400,
-      'SOLLOS_PROVIDER_REQUIRED',
-      'A Fábrica aceita rascunhos automáticos somente do provedor Sollos.',
-    );
-  }
+  if (!provider) throw new NotFoundError('Provedor não encontrado');
+  assertFactoryProviderAllowed(provider);
 
   assertEvidenceConsistency(input);
   const status =

@@ -42,3 +42,10 @@ backend/src/scratch_check.ts
 docs/database/*.dump
 docs/Consultas PRO*
 
+
+# Relatorios PDF de referencia: contem PII de terceiros (CPF, e-mail, telefone).
+# Uso local para conferencia visual; nunca versionar.
+pronampe/
+
+# Export da Fabrica Sollos: 20 MB e contem ChaveAcesso do provedor.
+backend/prisma/sollos-factory-export.json

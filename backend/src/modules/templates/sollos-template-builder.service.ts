@@ -52,6 +52,11 @@ type SollosTemplateBuildInput = {
   mappedData: Record<string, unknown>;
   samplingEvidence: SollosSamplingEvidence;
   brandReference: SollosBrandReference;
+  /**
+   * Prefixo de identidade do provedor nos ids de frame/template.
+   * Omitido = 'sollos', preservando byte a byte os 30 templates ja gerados.
+   */
+  providerSlug?: string;
 };
 
 type ReportCategory =
@@ -501,9 +506,13 @@ function extractBrandTokens(reference: SollosBrandReference): BrandTokens {
   };
 }
 
-function createFrame(index: number, name: string): ReportTemplate['frames'][number] {
+function createFrame(
+  index: number,
+  name: string,
+  slug = 'sollos',
+): ReportTemplate['frames'][number] {
   return {
-    id: `sollos-page-${index + 1}`,
+    id: `${slug}-page-${index + 1}`,
     name,
     preset: 'a4-p',
     x: PAGE_X,
@@ -725,23 +734,51 @@ function addIdentity(
   input: SollosTemplateBuildInput,
   presentation: PresentedFieldType[],
 ): void {
-  const identity = presentation.find(
-    (item) => normalizeForMatch(item.fieldType.key) === 'DADOS_PESSOAIS',
-  );
-  const nameField = identity?.fields.find((field) =>
-    /NOME|RAZAO_SOCIAL/.test(normalizeForMatch(`${field.key} ${field.label}`)),
-  );
-  const documentField = identity?.fields.find((field) =>
-    /DOCUMENTO|CPF|CNPJ/.test(normalizeForMatch(`${field.key} ${field.label}`)),
-  );
-  const identityScope: BindingScope = identity?.isCollection
-    ? 'collection-root'
-    : 'object';
-  const nameValue = nameField && identity
-    ? fieldValueMarkup(nameField, identity.fieldType.key, identityScope)
+  const NAME_PATTERN = /NOME|RAZAO_SOCIAL/;
+  const DOCUMENT_PATTERN = /DOCUMENTO|CPF|CNPJ/;
+
+  /**
+   * Localiza nome e documento para o cabecalho. `DADOS_PESSOAIS` tem
+   * prioridade — e o tipo canonico da Sollos, e mantem os 30 relatorios
+   * existentes byte a byte. Sem ele, varre os demais tipos de identificacao,
+   * o que permite a produtos PJ de outros provedores preencher o cabecalho.
+   */
+  function locate(pattern: RegExp) {
+    const preferred = presentation.find(
+      (item) => normalizeForMatch(item.fieldType.key) === 'DADOS_PESSOAIS',
+    );
+    const preferredField = preferred?.fields.find((field) =>
+      pattern.test(normalizeForMatch(`${field.key} ${field.label}`)),
+    );
+    if (preferred && preferredField) {
+      return { owner: preferred, field: preferredField };
+    }
+    for (const item of presentation) {
+      if (!/IDENTIFICA|CADASTR|EMPRESA/.test(normalizeForMatch(item.fieldType.key))) {
+        continue;
+      }
+      const field = item.fields.find((candidate) =>
+        pattern.test(normalizeForMatch(`${candidate.key} ${candidate.label}`)),
+      );
+      if (field) return { owner: item, field };
+    }
+    return null;
+  }
+
+  const nameHit = locate(NAME_PATTERN);
+  const documentHit = locate(DOCUMENT_PATTERN);
+  const scopeOf = (owner: PresentedFieldType): BindingScope =>
+    owner.isCollection ? 'collection-root' : 'object';
+
+  const nameValue = nameHit
+    ? fieldValueMarkup(nameHit.field, nameHit.owner.fieldType.key, scopeOf(nameHit.owner))
     : '{{safeText cliente.nome}}';
-  const documentValue = documentField && identity
-    ? fieldValueMarkup(documentField, identity.fieldType.key, identityScope)
+  const documentValue = documentHit
+    ? fieldValueMarkup(
+        documentHit.field,
+        documentHit.owner.fieldType.key,
+        scopeOf(documentHit.owner),
+      )
     : '{{formatCpfCnpj cliente.documento}}';
 
   pushElement(elements, frame, {
@@ -1194,6 +1231,7 @@ export function buildSollosReportTemplate(
   input: SollosTemplateBuildInput,
 ): ReportTemplate {
   const brand = extractBrandTokens(input.brandReference);
+  const slug = input.providerSlug ?? 'sollos';
   const presentation = buildPresentation(input);
   const inventory = buildInventory(presentation);
   const frames: ReportTemplate['frames'] = [];
@@ -1206,6 +1244,7 @@ export function buildSollosReportTemplate(
     )
       ? 'Página 1 (Resumo & Score)'
       : 'Página 1 (Resumo Executivo)',
+    slug,
   );
   frames.push(summaryFrame);
   addHeader(elements, summaryFrame, brand, 1);
@@ -1222,6 +1261,7 @@ export function buildSollosReportTemplate(
     const frame = createFrame(
       pageIndex + 1,
       `Página ${pageIndex + 2} (${categoryName})`,
+      slug,
     );
     frames.push(frame);
     addHeader(elements, frame, brand, pageIndex + 2);
@@ -1233,7 +1273,7 @@ export function buildSollosReportTemplate(
   });
 
   return {
-    id: `sollos-template-${input.productId}`,
+    id: `${slug}-template-${input.productId}`,
     name: input.productName,
     version: 2,
     canvas: { background: '#f1f5f9', grid: 10 },

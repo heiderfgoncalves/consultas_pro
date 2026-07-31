@@ -2,6 +2,10 @@ import type { FastifyInstance } from 'fastify';
 import type { Prisma } from '@prisma/client';
 import { AppError, ConflictError, NotFoundError } from '../../core/errors';
 import { mergeReportFieldConfigs } from '../templates/sollos-template-builder.service';
+import {
+  assertFactoryEndpointAllowed,
+  assertFactoryProviderAllowed,
+} from './factory-provider-policy';
 
 type CatalogSollosInput = {
   providerId: string;
@@ -37,31 +41,11 @@ type CatalogSollosInput = {
   };
 };
 
-function isSollosProvider(provider: { name: string; slug: string }) {
-  return (
-    provider.slug.toLowerCase() === 'sollos' ||
-    provider.name.toLowerCase().includes('sollos')
-  );
-}
-
-function assertHomologationEndpoint(
-  baseUrl: string,
-  endpointPath: string,
-) {
-  const target = new URL(endpointPath, baseUrl);
-  const safe =
-    target.protocol === 'https:' &&
-    target.hostname === 'api.sollosconsultas.com.br' &&
-    target.pathname.toLowerCase() === '/json/homologa.aspx';
-
-  if (!safe) {
-    throw new AppError(
-      400,
-      'HOMOLOGATION_ENDPOINT_REQUIRED',
-      'A Fábrica de Templates permite catalogar somente a homologação da Sollos',
-    );
-  }
-}
+/**
+ * A trava de destino agora vem da politica por provedor. A regra da Sollos
+ * (https + api.sollosconsultas.com.br + /json/homologa.aspx) e preservada
+ * integralmente em FACTORY_PROVIDER_POLICIES.
+ */
 
 export async function catalogSollosProduct(
   app: FastifyInstance,
@@ -70,15 +54,13 @@ export async function catalogSollosProduct(
   const provider = await app.prisma.provider.findUnique({
     where: { id: input.providerId },
   });
-  if (!provider) throw new NotFoundError('Provedor Sollos não encontrado');
-  if (!isSollosProvider(provider)) {
-    throw new AppError(
-      400,
-      'SOLLOS_PROVIDER_REQUIRED',
-      'O catálogo oficial só pode ser aplicado ao provedor Sollos',
-    );
-  }
-  assertHomologationEndpoint(provider.baseUrl, input.product.endpointPath);
+  if (!provider) throw new NotFoundError('Provedor não encontrado');
+  const policy = assertFactoryProviderAllowed(provider);
+  assertFactoryEndpointAllowed(
+    policy,
+    provider.baseUrl,
+    input.product.endpointPath,
+  );
   if (
     input.product.bodyTemplate === undefined ||
     input.product.sampleResponse === undefined
@@ -200,9 +182,10 @@ export async function catalogSollosProduct(
       data: {
         providerId: input.providerId,
         name: input.product.name,
-        code: `sollos-${input.product.externalId}`,
+        code: `${policy.slug}-${input.product.externalId}`,
+        // Destino ja validado contra a allowlist do provedor.
         externalId: input.product.externalId,
-        endpointPath: '/json/homologa.aspx',
+        endpointPath: input.product.endpointPath,
         method: 'POST',
         cost: 0,
         consultationPrice: 0,

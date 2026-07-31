@@ -1,0 +1,459 @@
+{
+  "schemaVersion": 1,
+  "provider": {
+    "slug": "brasil-cred",
+    "name": "Brasil Cred",
+    "baseUrl": "https://sets.brasilcred.com.br/functions/v1/api-gateway/api/v1",
+    "authType": "BEARER"
+  },
+  "product": {
+    "code": "RADAR_PRONAMPE_PJ",
+    "externalId": "radar-pronampe-pj",
+    "name": "Radar PRONAMPE (CNPJ)",
+    "endpointPath": "/consult/radar-pronampe",
+    "method": "POST",
+    "personType": "PJ",
+    "async": true
+  },
+  "contract": {
+    "name": "RadarPronampeResult",
+    "note": "Schema neutro whitelist-only entregue pela API publica. NAO confundir com o dump interno em logs/radar_pronampe_brasilconsultas.json (522 caminhos), que nunca chega por API.",
+    "leafPathCount": 34,
+    "optionalPaths": [
+      "score.value",
+      "score.range_min",
+      "score.range_max",
+      "score.risk_level",
+      "credit_portfolio.total_brl",
+      "credit_portfolio.overdue_brl",
+      "payment_capacity.monthly_capacity_brl",
+      "payment_capacity.estimated_spend_brl"
+    ]
+  },
+  "capture": {
+    "method": "GET /consultations/{id}",
+    "cost": "R$ 0,00",
+    "capturedAt": "2026-07-31",
+    "sampleCount": 7
+  },
+  "samples": [
+    {
+      "document": "04.160.179/0001-03",
+      "status": "partial",
+      "capturedAt": "2026-07-18T02:16:48.013467+00:00",
+      "referencePdf": "relatorio-04_160_179_0001-03.pdf",
+      "response": {
+        "consultation_id": "b2e5a589-b795-4325-831c-4936a44df9a4",
+        "product": "financial_radar_pronampe",
+        "product_name": "Radar PRONAMPE (CNPJ)",
+        "status": "partial",
+        "document": "04.160.179/0001-03",
+        "queried_at": "2026-07-18T02:16:48.013467+00:00",
+        "result": {
+          "found": true
+        },
+        "data_source": "credit_bureau",
+        "score": {
+          "value": 594,
+          "range_min": 0,
+          "range_max": 1000,
+          "risk_level": "medium"
+        },
+        "credit_recommendation": {
+          "recommended_limit_brl": 4583,
+          "sale_recommendation": "Negocie a prazo; Ofereça boas condições de parcelamento e ações de fidelização, retenção e promoção",
+          "risk_level": "low"
+        },
+        "credit_portfolio": {
+          "total_brl": 18300,
+          "active_contracts": 2,
+          "overdue_brl": 0,
+          "risk_level": "Risco Baixíssimo"
+        },
+        "federal_debts": {
+          "has_debt": false,
+          "count": 0
+        },
+        "company": {
+          "size": "03",
+          "main_activity_code": "1092900",
+          "registration_status": "2",
+          "opening_date": "2000-11-17",
+          "share_capital_brl": 10000,
+          "simples_optant": true,
+          "mei_optant": false
+        },
+        "clearance_certificate": {
+          "issued": false,
+          "status": "not_issued"
+        },
+        "payment_capacity": {
+          "monthly_capacity_brl": 30857,
+          "estimated_spend_brl": 689065
+        },
+        "partners": [
+          {
+            "document_masked": "***.353.004-**",
+            "has_restrictions": false
+          }
+        ]
+      }
+    },
+    {
+      "document": "40.467.883/0001-69",
+      "status": "success",
+      "capturedAt": "2026-07-18T02:13:41.777636+00:00",
+      "referencePdf": "relatorio-40_467_883_0001-69.pdf",
+      "response": {
+        "consultation_id": "d5bf6ea1-3601-4c05-b73c-0755ca03195c",
+        "product": "financial_radar_pronampe",
+        "product_name": "Radar PRONAMPE (CNPJ)",
+        "status": "success",
+        "document": "40.467.883/0001-69",
+        "queried_at": "2026-07-18T02:13:41.777636+00:00",
+        "result": {
+          "found": true
+        },
+        "data_source": "credit_bureau",
+        "score": {
+          "value": 703,
+          "range_min": 0,
+          "range_max": 1000,
+          "risk_level": "low"
+        },
+        "credit_recommendation": {
+          "recommended_limit_brl": 917,
+          "sale_recommendation": "Negocie a prazo; Ofereça boas condições de parcelamento e ações de fidelização, retenção e promoção",
+          "risk_level": "low"
+        },
+        "credit_portfolio": {
+          "total_brl": 85555,
+          "active_contracts": 7,
+          "overdue_brl": 0,
+          "risk_level": "Risco Alto"
+        },
+        "federal_debts": {
+          "has_debt": false,
+          "count": 0
+        },
+        "company": {
+          "size": "01",
+          "main_activity_code": "4120400",
+          "registration_status": "2",
+          "opening_date": "2021-01-19",
+          "share_capital_brl": 100000,
+          "simples_optant": true,
+          "mei_optant": false
+        },
+        "clearance_certificate": {
+          "issued": true,
+          "status": "issued"
+        },
+        "payment_capacity": {
+          "monthly_capacity_brl": 45393,
+          "estimated_spend_brl": 330000
+        },
+        "partners": [
+          {
+            "document_masked": "***.989.949-**",
+            "has_restrictions": false
+          }
+        ]
+      }
+    },
+    {
+      "document": "02.818.085/0001-45",
+      "status": "partial",
+      "capturedAt": "2026-07-24T20:39:54.212132+00:00",
+      "referencePdf": null,
+      "response": {
+        "consultation_id": "b4bfc874-ae41-484c-ba0d-8df6af0ead20",
+        "product": "financial_radar_pronampe",
+        "product_name": "Radar PRONAMPE (CNPJ)",
+        "status": "partial",
+        "document": "02.818.085/0001-45",
+        "queried_at": "2026-07-24T20:39:54.212132+00:00",
+        "result": {
+          "found": true
+        },
+        "data_source": "credit_bureau",
+        "credit_recommendation": {
+          "recommended_limit_brl": 0,
+          "sale_recommendation": "Informações insuficientes",
+          "risk_level": "very_high"
+        },
+        "credit_portfolio": {
+          "total_brl": 49016,
+          "active_contracts": 6,
+          "overdue_brl": 0,
+          "risk_level": "Risco Alto"
+        },
+        "federal_debts": {
+          "has_debt": true,
+          "count": 9
+        },
+        "company": {
+          "size": "01",
+          "main_activity_code": "4530703",
+          "registration_status": "2",
+          "opening_date": "1998-10-27",
+          "share_capital_brl": 100000,
+          "simples_optant": false,
+          "mei_optant": false
+        },
+        "clearance_certificate": {
+          "issued": false,
+          "status": "not_issued"
+        },
+        "partners": [
+          {
+            "document_masked": "***.709.189-**",
+            "has_restrictions": false
+          }
+        ]
+      }
+    },
+    {
+      "document": "32.962.688/0001-87",
+      "status": "success",
+      "capturedAt": "2026-07-18T01:54:20.542269+00:00",
+      "referencePdf": "relatorio-32_962_688_0001-87.pdf",
+      "response": {
+        "consultation_id": "90d8aff1-e890-4e93-9021-4ec57f7ed095",
+        "product": "financial_radar_pronampe",
+        "product_name": "Radar PRONAMPE (CNPJ)",
+        "status": "success",
+        "document": "32.962.688/0001-87",
+        "queried_at": "2026-07-18T01:54:20.542269+00:00",
+        "result": {
+          "found": true
+        },
+        "data_source": "credit_bureau",
+        "score": {
+          "value": 365,
+          "range_min": 0,
+          "range_max": 1000,
+          "risk_level": "high"
+        },
+        "credit_recommendation": {
+          "recommended_limit_brl": 2917,
+          "sale_recommendation": "Negocie a prazo",
+          "risk_level": "medium"
+        },
+        "credit_portfolio": {
+          "total_brl": 33562,
+          "active_contracts": 3,
+          "overdue_brl": 0,
+          "risk_level": "Risco Alto"
+        },
+        "federal_debts": {
+          "has_debt": false,
+          "count": 0
+        },
+        "company": {
+          "size": "01",
+          "main_activity_code": "1352900",
+          "registration_status": "2",
+          "opening_date": "2019-03-07",
+          "share_capital_brl": 600000,
+          "simples_optant": true,
+          "mei_optant": false
+        },
+        "clearance_certificate": {
+          "issued": true,
+          "status": "issued"
+        },
+        "payment_capacity": {
+          "monthly_capacity_brl": 603,
+          "estimated_spend_brl": 816072
+        },
+        "partners": [
+          {
+            "document_masked": "***.590.602-**",
+            "has_restrictions": false
+          }
+        ]
+      }
+    },
+    {
+      "document": "34.138.627/0001-25",
+      "status": "partial",
+      "capturedAt": "2026-07-18T02:01:37.131311+00:00",
+      "referencePdf": "relatorio-34_138_627_0001-25.pdf",
+      "response": {
+        "consultation_id": "4ae7d8e4-f9ff-4f22-be07-2ad719fe8823",
+        "product": "financial_radar_pronampe",
+        "product_name": "Radar PRONAMPE (CNPJ)",
+        "status": "partial",
+        "document": "34.138.627/0001-25",
+        "queried_at": "2026-07-18T02:01:37.131311+00:00",
+        "result": {
+          "found": true
+        },
+        "data_source": "credit_bureau",
+        "score": {
+          "value": 631,
+          "range_min": 0,
+          "range_max": 1000,
+          "risk_level": "low"
+        },
+        "credit_recommendation": {
+          "recommended_limit_brl": 1250,
+          "sale_recommendation": "Negocie a prazo; Ofereça boas condições de parcelamento e ações de fidelização, retenção e promoção",
+          "risk_level": "low"
+        },
+        "credit_portfolio": {
+          "total_brl": 8930,
+          "active_contracts": 1,
+          "overdue_brl": 0,
+          "risk_level": "Risco Alto"
+        },
+        "federal_debts": {
+          "has_debt": false,
+          "count": 0
+        },
+        "company": {
+          "size": "01",
+          "main_activity_code": "4929902",
+          "registration_status": "2",
+          "opening_date": "2019-07-07",
+          "share_capital_brl": 100,
+          "simples_optant": true,
+          "mei_optant": true
+        },
+        "clearance_certificate": {
+          "issued": true,
+          "status": "issued"
+        },
+        "partners": [
+          {
+            "document_masked": "***.092.218-**",
+            "has_restrictions": false
+          }
+        ]
+      }
+    },
+    {
+      "document": "57.878.905/0001-86",
+      "status": "partial",
+      "capturedAt": "2026-07-18T02:04:07.520813+00:00",
+      "referencePdf": "relatorio-57_878_905_0001-86.pdf",
+      "response": {
+        "consultation_id": "bc2c3857-f880-489a-a902-2982af81e4e2",
+        "product": "financial_radar_pronampe",
+        "product_name": "Radar PRONAMPE (CNPJ)",
+        "status": "partial",
+        "document": "57.878.905/0001-86",
+        "queried_at": "2026-07-18T02:04:07.520813+00:00",
+        "result": {
+          "found": true
+        },
+        "data_source": "credit_bureau",
+        "score": {
+          "value": 295,
+          "range_min": 0,
+          "range_max": 1000,
+          "risk_level": "high"
+        },
+        "credit_recommendation": {
+          "recommended_limit_brl": 1125,
+          "sale_recommendation": "Negocie a prazo",
+          "risk_level": "medium"
+        },
+        "credit_portfolio": {
+          "total_brl": 13737,
+          "active_contracts": 1,
+          "overdue_brl": 13737,
+          "risk_level": "Risco Alto"
+        },
+        "federal_debts": {
+          "has_debt": false,
+          "count": 0
+        },
+        "company": {
+          "size": "01",
+          "main_activity_code": "4520007",
+          "registration_status": "2",
+          "opening_date": "2024-10-29",
+          "share_capital_brl": 1000,
+          "simples_optant": true,
+          "mei_optant": false
+        },
+        "clearance_certificate": {
+          "issued": false,
+          "status": "not_issued"
+        },
+        "payment_capacity": {
+          "monthly_capacity_brl": 603,
+          "estimated_spend_brl": 740991
+        },
+        "partners": [
+          {
+            "document_masked": "***.733.118-**",
+            "has_restrictions": true
+          }
+        ]
+      }
+    },
+    {
+      "document": "58.936.468/0001-72",
+      "status": "success",
+      "capturedAt": "2026-07-18T02:09:59.062735+00:00",
+      "referencePdf": "relatorio-58_936_468_0001-72.pdf",
+      "response": {
+        "consultation_id": "5f7a54b6-b730-414e-9bc7-5254eb0a7df7",
+        "product": "financial_radar_pronampe",
+        "product_name": "Radar PRONAMPE (CNPJ)",
+        "status": "success",
+        "document": "58.936.468/0001-72",
+        "queried_at": "2026-07-18T02:09:59.062735+00:00",
+        "result": {
+          "found": true
+        },
+        "data_source": "credit_bureau",
+        "score": {
+          "value": 508,
+          "range_min": 0,
+          "range_max": 1000,
+          "risk_level": "medium"
+        },
+        "credit_recommendation": {
+          "recommended_limit_brl": 1333,
+          "sale_recommendation": "Negocie a prazo; Ofereça boas condições de parcelamento e ações de fidelização, retenção e promoção",
+          "risk_level": "low"
+        },
+        "credit_portfolio": {
+          "active_contracts": 0,
+          "risk_level": "Risco Altíssimo"
+        },
+        "federal_debts": {
+          "has_debt": false,
+          "count": 0
+        },
+        "company": {
+          "size": "01",
+          "main_activity_code": "3299003",
+          "registration_status": "2",
+          "opening_date": "2025-01-17",
+          "share_capital_brl": 120000,
+          "simples_optant": true,
+          "mei_optant": false
+        },
+        "clearance_certificate": {
+          "issued": true,
+          "status": "issued"
+        },
+        "payment_capacity": {
+          "monthly_capacity_brl": 4753,
+          "estimated_spend_brl": 480000
+        },
+        "partners": [
+          {
+            "document_masked": "***.318.972-**",
+            "has_restrictions": false
+          }
+        ]
+      }
+    }
+  ]
+}

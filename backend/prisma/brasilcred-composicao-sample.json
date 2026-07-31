@@ -1,0 +1,64 @@
+{
+  "schemaVersion": 1,
+  "note": "Amostra da consulta composta para o CNPJ 32.962.688/0001-87. O bloco radar-pronampe vem de consulta real (GET /consultations/90d8aff1). Os blocos do Diagnostico Financeiro Avancado foram montados com os valores reais impressos no PDF oficial do painel Brasil Cred (relatorio-32_962_688_0001-87.pdf), seguindo o schema publicado do endpoint /consult/diagnostico/pj. Servem para validar o layout e a conferencia; devem ser substituidos por resposta real da API assim que o produto for contratado.",
+  "document": "32.962.688/0001-87",
+  "referencePdf": "pronampe/relatorio-32_962_688_0001-87.pdf",
+  "products": {
+    "radar-pronampe": {
+      "source": "consulta real",
+      "consultationId": "90d8aff1-e890-4e93-9021-4ec57f7ed095"
+    },
+    "diagnostico-pj": {
+      "source": "valores reais extraidos do PDF oficial",
+      "endpoint": "/consult/diagnostico/pj",
+      "validated": false
+    }
+  },
+  "diagnosticoResponse": {
+    "consultation_id": "diagnostico-pendente",
+    "product": "credit_report_complete_company",
+    "product_name": "Diagnóstico Financeiro Avançado (CNPJ)",
+    "status": "success",
+    "document": "32962688000187",
+    "queried_at": "2026-07-24T20:39:54.212Z",
+    "data_source": "credit_bureau",
+    "subject": {
+      "name": "L P TAPECARIA LTDA ME",
+      "document": "32962688000187",
+      "address": { "city": "MANICORE", "state": "AM", "zip": "69280-000" }
+    },
+    "rating": {
+      "grade": "B",
+      "score": 152,
+      "risk_level": "Moderado-baixo",
+      "description": "Bom",
+      "summary": "O CNPJ passa nos gates essenciais e não há hard stops objetivos na consulta. A decisão bancária fica menos confortável pela ausência de validação de caixa e faturamento fiscal.",
+      "factors": [
+        { "factor": "credit_score", "value": "399 pts", "impact": "negativo" },
+        { "factor": "alt_score", "value": "582 pts", "impact": "neutro" },
+        { "factor": "central_bank_debt", "value": "3 contrato(s) ativos", "impact": "neutro" },
+        { "factor": "negative_records", "value": "0 registro(s)", "impact": "positivo" },
+        { "factor": "protests", "value": "0 protesto(s)", "impact": "positivo" },
+        { "factor": "bounced_checks", "value": "0 registro(s)", "impact": "positivo" }
+      ]
+    },
+    "negative_records": {
+      "total_count": 0,
+      "total_amount_brl": 0,
+      "items": []
+    },
+    "credit_portfolio": {
+      "total_brl": 28562,
+      "active_contracts": 3,
+      "overdue_brl": 0,
+      "loss_brl": 0,
+      "risk_level": "Risco Alto"
+    },
+    "income": {
+      "estimated_brl": 355644.29,
+      "social_class": "C1",
+      "salary_range": "R$ 270.000 até R$ 360.000"
+    },
+    "inquiries": { "total": 5 }
+  }
+}
