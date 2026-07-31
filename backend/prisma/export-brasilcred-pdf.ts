@@ -54,6 +54,9 @@ async function main() {
   const pending = pages.join('').match(/\{\{[^}]+\}\}/g);
   if (pending) throw new Error(`Expressao nao resolvida: ${pending[0]}`);
 
+  // Os icones saem do motor como `<i data-lucide="...">`; sem a biblioteca
+  // carregada eles nao viram SVG e o relatorio imprime caixas vazias. Mesma
+  // versao e mesmo CSS de dimensionamento usados pelo Preview do app.
   const html = `<!doctype html><meta charset="utf-8">
 <style>
   @page { size: 794px 1123px; margin: 0; }
@@ -61,8 +64,12 @@ async function main() {
   .sheet { width: 794px; height: 1123px; position: relative; overflow: hidden;
            page-break-after: always; break-after: page; }
   .sheet:last-child { page-break-after: auto; break-after: auto; }
+  i[data-lucide] { display: flex; align-items: center; justify-content: center; }
+  i[data-lucide] svg, svg.lucide { width: 100%; height: 100%; }
 </style>
-${pages.map((page) => `<div class="sheet">${page}</div>`).join('\n')}`;
+${pages.map((page) => `<div class="sheet">${page}</div>`).join('\n')}
+<script src="https://cdn.jsdelivr.net/npm/lucide@0.462.0/dist/umd/lucide.min.js"></script>
+<script>if (typeof lucide !== 'undefined') { lucide.createIcons(); }</script>`;
 
   const browser = await puppeteer.launch({
     headless: true,
@@ -71,7 +78,11 @@ ${pages.map((page) => `<div class="sheet">${page}</div>`).join('\n')}`;
   try {
     const page = await browser.newPage();
     await page.setViewport({ width: 794, height: 1123 });
-    await page.setContent(html, { waitUntil: 'load' });
+    await page.setContent(html, { waitUntil: 'networkidle0' as never, timeout: 120000 });
+    // Converte os `<i data-lucide>` em SVG antes de imprimir.
+    await page.evaluate(
+      `(function(){ if (typeof lucide !== 'undefined') lucide.createIcons(); })()`,
+    );
     const pdf = await page.pdf({
       width: '794px',
       height: '1123px',

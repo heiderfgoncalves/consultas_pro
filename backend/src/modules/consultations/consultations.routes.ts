@@ -236,6 +236,35 @@ export async function registerConsultationRoutes(app: FastifyInstance) {
   app.get('/reports/:id', getPdfHandler);
   app.get('/consultations/:id/pdf', getPdfHandler);
 
+  /**
+   * PDF original do Radar PRONAMPE, servido por link interno nosso.
+   *
+   * A fonte e o portal Brasil Cred, mas o cliente baixa pela nossa API sem
+   * conhecer a origem. O `portalId` e o id da consulta no portal; a autenticacao
+   * e a captura ficam encapsuladas no servico do provedor.
+   */
+  app.get('/consultations/pronampe/:portalId/pdf', {
+    preHandler: [authenticate],
+  }, async (request, reply) => {
+    const { portalId } = request.params as { portalId: string };
+    if (!/^[0-9a-f-]{16,}$/i.test(portalId)) {
+      return reply.code(400).send({ ok: false, error: { code: 'INVALID_ID', message: 'Identificador de consulta invalido' } });
+    }
+    const { capturePortalPdf } = await import('../providers/brasilcred-portal.service');
+    try {
+      const pdf = await capturePortalPdf(portalId);
+      return reply
+        .header('Content-Type', 'application/pdf')
+        .header('Content-Disposition', `inline; filename="radar-pronampe-${portalId}.pdf"`)
+        .send(pdf);
+    } catch (error: any) {
+      request.log.error(error, 'Falha ao capturar PDF do portal Brasil Cred');
+      return reply
+        .code(error?.statusCode ?? 502)
+        .send({ ok: false, error: { code: error?.code ?? 'PORTAL_PDF_FAILED', message: 'Nao foi possivel obter o relatorio do provedor' } });
+    }
+  });
+
   app.get('/catalog/canonical-fields', {
     preHandler: [authenticate, requireEndpointAccess('api.consultations.list')],
   }, async (_request, reply) => {

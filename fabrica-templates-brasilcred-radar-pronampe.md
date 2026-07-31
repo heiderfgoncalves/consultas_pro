@@ -57,6 +57,51 @@ Herdada dos relatórios oficiais do painel Brasil Cred — veredicto primeiro, e
 8. Cadastro na Receita Federal
 9. Quadro societário
 
+## Entrega do PDF original (portal Brasil Cred)
+
+Decisão do time: para o Radar PRONAMPE, o cliente recebe o **PDF original do
+provedor**, servido por um link interno nosso — a fonte é o portal Brasil Cred,
+mas o cliente baixa pela nossa API sem conhecer a origem.
+
+Fluxo implementado em `brasilcred-portal.service.ts`:
+
+1. Login no portal com as credenciais do `.env` (`USER`, `PASSWORWD`).
+2. A SPA autentica via Supabase e grava a sessão (Bearer Token, ~1h).
+3. `fetchPortalConsultation` busca o payload completo (`GET /rest/v1/consultations`)
+   — **499 caminhos**, contra os 34 da API pública.
+4. `capturePortalPdf` abre a página `/consultas/resultado/:id/print` autenticada
+   e captura o PDF renderizado (~1,5 MB, relatório completo).
+5. Rota `GET /consultations/pronampe/:portalId/pdf` serve o PDF por link interno.
+
+Redundância: o JSON completo é persistido com o CPF de sócio **mascarado**
+(`maskSensitive`), garantindo a fonte de dados caso o provedor deixe de
+disponibilizar o documento.
+
+**Cautelas registradas:**
+
+- O login é feito pela própria UI do portal (preenche e-mail/senha). Reproduzir
+  a sessão do Supabase à mão se mostrou frágil; o login pela tela sobrevive a
+  mudanças internas do provedor.
+- O **PDF** capturado é a imagem da página deles e **ainda contém CPF completo**
+  de sócio. O mascaramento vale para o JSON que guardamos, não para o PDF
+  renderizado — se a política exigir, o mascaramento no PDF é etapa à parte.
+- Não é a interface contratada (`bc_live_*`), e sim o backend do portal. Se a
+  Brasil Cred alterar o Supabase, o RLS ou a anon key, este caminho para sem
+  aviso. Toda falha degrada com erro claro, sem derrubar a consulta.
+
+## Templates no padrão 1079 (matriz)
+
+Os 29 relatórios Sollos e o Radar PRONAMPE foram recompostos pelo
+`consultas-pro-1079-composer.ts`, que lê a matriz 1079 do banco em tempo de
+execução e reaproveita seus componentes — cabeçalho, bloco de identidade,
+cartões com barra lateral, cabeçalhos de seção, tabelas e a **seção de score
+inteira** (medidor em arco SVG, pontuação colorida por faixa, legenda). As
+seções variam conforme o contrato de dados de cada produto; o acabamento é
+idêntico. O produto **1079 nunca é regravado** — é somente lido como matriz.
+
+Ajustes mínimos de texto: `Serasa Score` → `Score de crédito`, `seu CPF` →
+`o documento consultado`. Estilo, estrutura e fórmulas permanecem intactos.
+
 ## Pendências conhecidas
 
 - [ ] **Integração assíncrona.** O produto responde `202` e exige polling em `GET /consultations/{id}`. O backend não implementa `Idempotency-Key` (obrigatório desde 2026-04-27), tratamento de `202` nem polling — nenhuma chamada a `POST /consult/*` funciona hoje.
