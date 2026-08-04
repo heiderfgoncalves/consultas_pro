@@ -13,6 +13,10 @@ import {
   buildTypeKeyedData,
   parseTypeItemFiltersRecord,
 } from '../src/modules/providers/canonical-builder.service';
+import {
+  pivotValue,
+  PIVOT_ROWS_PREFIX,
+} from '../src/modules/templates/pivot-parallel-arrays';
 
 /**
  * Regenera os relatorios Sollos no padrao 1079, usando o compositor da matriz.
@@ -49,6 +53,10 @@ function fieldsOf(config: unknown): FieldSpec[] {
 const norm = (value: string) =>
   value.normalize('NFD').replace(/\p{M}/gu, '').toUpperCase();
 
+/** Remove prefixos tecnicos de catalogacao ("Novo · ") do titulo da secao. */
+const cleanTitle = (label: string) =>
+  label.replace(/^\s*novo\s*[·:.\-]\s*/i, '').trim() || label;
+
 const isMoney = (field: FieldSpec) =>
   /CURRENCY|MONEY/.test(norm(field.dataType ?? '')) ||
   /VALOR|TOTAL|LIMITE|SALDO|DIVIDA/.test(norm(field.label));
@@ -56,6 +64,33 @@ const isMoney = (field: FieldSpec) =>
 const isScoreType = (key: string) => /SCORE|RATING|PONTU/.test(norm(key));
 const isDebtType = (key: string) =>
   /DIVIDA|PENDENCIA|PROTEST|CHEQUE|ACAO|RESTRI|OCORRENCIA|NEGATIV/.test(norm(key));
+
+/**
+ * Tipos que sao envelope tecnico do provedor, nao conteudo de cliente:
+ * cabecalhos de retorno, controle, protocolo, metadados de requisicao. Ficam
+ * fora do corpo do relatorio, como o gerador original ja fazia.
+ */
+const isTechnicalType = (key: string) =>
+  /(^|_)(HEADER|CONTROLE|PROTOCOLO?L?|REQUISICAO|DADOS_RETORNADOS|INFORMACOES_RETORNO|TEMPO_RESPOSTA|RETORNO)($|_)/.test(
+    norm(key),
+  );
+
+/**
+ * Campos que nunca vao ao cliente: chaves de acesso, hashes, versoes, dados de
+ * teste/homologacao e rotulos genericos sem significado de negocio.
+ */
+const TECHNICAL_FIELD = /(BASE64|HTML|JSON|RAW|HASH|TOKEN|ENDPOINT|WEBHOOK|CHAVE|VERSAO|PROTOCOL|TERMINAL|CLIENTE|SOLICITANTE|CODIGO_RETORNO|STATUS_RETORNO|TESTE|DEBUG|TIMESTAMP)/;
+const GENERIC_LABEL = /^(TESTE|TESTE ?2|FONTE|STATUS|FINAL|INTERVALO|CODIGO|VERSAO|TERMINAL|N\/D|-)$/;
+
+const isTechnicalField = (field: FieldSpec) => {
+  const label = norm(field.label);
+  const key = norm(field.key);
+  return (
+    TECHNICAL_FIELD.test(label) ||
+    TECHNICAL_FIELD.test(key) ||
+    GENERIC_LABEL.test(label.trim())
+  );
+};
 
 function expr(typeKey: string, field: FieldSpec, collection: boolean): string {
   const path = collection
@@ -157,7 +192,12 @@ async function main() {
     let scoreExpression: string | null = null;
 
     for (const tipo of tipos) {
-      const fields = fieldsOf(tipo.reportFieldConfig);
+      // Envelope tecnico do provedor nao vira secao de cliente.
+      if (isTechnicalType(tipo.pathKey)) continue;
+
+      const fields = fieldsOf(tipo.reportFieldConfig).filter(
+        (field) => !isTechnicalField(field),
+      );
       if (fields.length === 0) continue;
       const collection = Array.isArray(mapped[tipo.pathKey]);
 
@@ -174,22 +214,22 @@ async function main() {
         sections.push({
           kind: 'table',
           table: {
-            title: tipo.label.toUpperCase().slice(0, 34),
+            title: cleanTitle(tipo.label).toUpperCase(),
             icon: 'AlertTriangle',
             arrayPath: `$${tipo.pathKey}`,
             emptyMessage: 'Nenhuma ocorrência localizada nesta consulta.',
-            columns: fields.slice(0, 5).map((field) => ({
-              label: field.label.slice(0, 22),
+            // Ate 6 colunas; o HTML fluido acomoda a largura.
+            columns: fields.slice(0, 6).map((field) => ({
+              label: field.label,
               path: field.key,
               ...(isMoney(field) ? { format: 'currency' } : {}),
             })),
           },
         });
-        // O primeiro valor monetario do bloco vira indicador do topo.
         const money = fields.find(isMoney);
         if (money && kpis.length < 3) {
           kpis.push({
-            label: tipo.label.slice(0, 26),
+            label: cleanTitle(tipo.label),
             value: `{{sum($${tipo.pathKey}[*].${money.key})}}`,
             hint: 'Soma dos apontamentos',
           });
@@ -197,12 +237,60 @@ async function main() {
         continue;
       }
 
+      // Tipos com campos-array paralelos (SCR, historico, e-mails) viram tabela,
+      // nunca JSON cru num cartao. Cada grupo de comprimento e uma tabela propria,
+      // para nao misturar as 5 faixas de atraso com os 60 meses de historico.
+      const pivot = collection ? null : pivotValue(mapped[tipo.pathKey]);
+      if (pivot && pivot.groups.length > 0) {
+        const byKey = new Map(fields.map((f) => [f.key, f.label]));
+        // Escalares com valor viram cartoes acima das tabelas.
+        const scalarFields = fields.filter((f) => pivot.scalars.includes(f.key));
+        if (scalarFields.length > 0) {
+          sections.push({
+            kind: 'fields',
+            title: cleanTitle(tipo.label).toUpperCase(),
+            icon: 'FileText',
+            items: scalarFields.map((field) => ({
+              label: field.label,
+              value: expr(tipo.pathKey, field, false),
+            })),
+          });
+        }
+        const multiGroup = pivot.groups.length > 1;
+        for (const group of pivot.groups) {
+          const cols = group.fields
+            .filter((k) => byKey.has(k))
+            .map((k) => ({ label: byKey.get(k)!, key: k }));
+          if (cols.length === 0) continue;
+          // Fatia em blocos de ate 5 colunas para caber na largura A4.
+          for (let i = 0; i < cols.length; i += 5) {
+            const slice = cols.slice(i, i + 5);
+            const parts: string[] = [];
+            if (multiGroup) parts.push(`${group.length} registros`);
+            if (cols.length > 5) parts.push(`${Math.floor(i / 5) + 1}`);
+            const suffix = parts.length ? ` (${parts.join(' · ')})` : '';
+            sections.push({
+              kind: 'table',
+              table: {
+                title: cleanTitle(tipo.label).toUpperCase() + suffix,
+                icon: 'FileText',
+                arrayPath: `$${tipo.pathKey}${PIVOT_ROWS_PREFIX}${group.index}`,
+                emptyMessage: 'Sem registros nesta consulta.',
+                columns: slice.map((c) => ({ label: c.label, path: c.key })),
+              },
+            });
+          }
+        }
+        continue;
+      }
+
       sections.push({
         kind: 'fields',
-        title: tipo.label.toUpperCase().slice(0, 34),
+        title: cleanTitle(tipo.label).toUpperCase(),
         icon: 'FileText',
-        items: fields.slice(0, 9).map((field) => ({
-          label: field.label.slice(0, 26),
+        // Sem corte de rotulo/valor: o grid HTML quebra o texto.
+        items: fields.map((field) => ({
+          label: field.label,
           value: expr(tipo.pathKey, field, collection),
         })),
       });
@@ -216,15 +304,18 @@ async function main() {
         items: kpis,
       });
     }
-    // Score sempre logo apos o resumo, como na matriz.
-    sections.splice(kpis.length > 0 ? 1 : 0, 0, {
-      kind: 'score-block',
-      scoreExpression: scoreExpression ?? '$SCORE_CREDITO[0].score',
-      emptyState: !scoreExpression,
-    });
-    if (!scoreExpression) vazios += 1;
+    // Score entra logo apos o resumo, como na matriz — mas so quando o produto
+    // realmente apura score. Produto sem score nao ganha uma secao vazia.
+    if (scoreExpression) {
+      sections.splice(kpis.length > 0 ? 1 : 0, 0, {
+        kind: 'score-block',
+        scoreExpression,
+      });
+    } else {
+      vazios += 1;
+    }
 
-    if (sections.length <= 1) {
+    if (sections.length < 1) {
       falhas.push(`${spec.productId}: sem tipos utilizaveis`);
       continue;
     }

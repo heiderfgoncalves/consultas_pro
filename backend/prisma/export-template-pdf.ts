@@ -70,12 +70,73 @@ async function main() {
     }
   }
 
-  const pages = layout.frames.map(
-    (frame) => renderTemplateToHtml(layout, frame.id, data).html,
-  );
-  const pending = pages.join('').match(/\{\{[^}]+\}\}/g);
+  const meta = (layout.metadata as any)?.consultasProTemplate ?? {};
+  const flowing = meta.flowing === true;
 
-  const html = `<!doctype html><meta charset="utf-8">
+  // Arrays paralelos viram linhas de tabela (`${tipo}__rows`) para o motor
+  // renderizar como tabela, nunca JSON cru.
+  const { applyPivotToData } = await import(
+    '../src/modules/templates/pivot-parallel-arrays'
+  );
+  const renderData = applyPivotToData(data);
+
+  const rendered = layout.frames.map(
+    (frame) => renderTemplateToHtml(layout, frame.id, renderData).html,
+  );
+  const pending = rendered.join('').match(/\{\{[^}]+\}\}/g);
+
+  const browser = await puppeteer.launch({
+    headless: true,
+    args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
+  });
+  try {
+    const page = await browser.newPage();
+    await page.setViewport({ width: 794, height: 1123, deviceScaleFactor: 2 });
+
+    if (flowing) {
+      // Documento em fluxo: o conteudo empilha e o proprio motor pagina em A4,
+      // sem altura fixa que corte. Cabecalho e rodape repetem via header/footer
+      // do puppeteer.
+      const body = rendered.join('\n');
+      const html = `<!doctype html><html><head><meta charset="utf-8">
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400..800&family=Inter:wght@400..700&display=swap" rel="stylesheet">
+</head><body>${body}</body></html>`;
+      await page.setContent(html, { waitUntil: 'networkidle0' as never, timeout: 120000 });
+
+      const logo = String(meta.brandLogo ?? '');
+      const title = String(meta.brandTitle ?? 'Relatório Analítico de Crédito');
+      const accent = String(meta.brandAccent ?? '#6366f1');
+      const headerTemplate = `<div style="width:100%;font-size:9px;padding:6px 30px 0;
+        display:flex;align-items:center;justify-content:space-between;
+        border-bottom:2px solid ${accent};margin:0 12px;">
+        <img src="${logo}" style="height:30px;object-fit:contain"/>
+        <div style="text-align:right"><div style="font-size:11px;font-weight:700;color:${accent}">${title}</div>
+        <div style="font-size:7px;color:#64748b">Consultas PRO</div></div></div>`;
+      const footerTemplate = `<div style="width:100%;font-size:7px;color:#94a3b8;padding:0 42px;
+        display:flex;justify-content:space-between">
+        <span>Consultas PRO — Relatório de Crédito</span>
+        <span>Página <span class="pageNumber"></span> de <span class="totalPages"></span></span></div>`;
+
+      const pdf = await page.pdf({
+        width: '794px',
+        format: undefined,
+        printBackground: true,
+        displayHeaderFooter: true,
+        headerTemplate,
+        footerTemplate,
+        margin: { top: '70px', bottom: '40px', left: '0px', right: '0px' },
+      });
+      fs.writeFileSync(output, pdf);
+      console.log(
+        `[${externalId}] ${product.name.slice(0, 32).padEnd(32)} ` +
+          `fluido | ${(fs.statSync(output).size / 1024).toFixed(0)} KB` +
+          (pending ? ` | PENDENTE: ${pending[0].slice(0, 30)}` : ''),
+      );
+      return;
+    }
+
+    // Caminho legado: frames de altura fixa (templates ainda nao migrados).
+    const html = `<!doctype html><meta charset="utf-8">
 <style>
   @page { size: 794px 1123px; margin: 0; }
   html, body { margin: 0; padding: 0; background: #fff; }
@@ -85,35 +146,17 @@ async function main() {
   i[data-lucide] { display: flex; align-items: center; justify-content: center; }
   i[data-lucide] svg, svg.lucide { width: 100%; height: 100%; }
 </style>
-${pages.map((page) => `<div class="sheet">${page}</div>`).join('\n')}
+${rendered.map((p) => `<div class="sheet">${p}</div>`).join('\n')}
 <script src="https://cdn.jsdelivr.net/npm/lucide@0.462.0/dist/umd/lucide.min.js"></script>`;
-
-  const browser = await puppeteer.launch({
-    headless: true,
-    args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
-  });
-  try {
-    const page = await browser.newPage();
-    await page.setViewport({ width: 794, height: 1123, deviceScaleFactor: 2 });
-    // `networkidle0` garante que a biblioteca de icones chegou antes de
-    // converter os `<i data-lucide>` em SVG.
     await page.setContent(html, { waitUntil: 'networkidle0' as never, timeout: 120000 });
-    const icons = await page.evaluate(`
-      (function () {
-        if (typeof lucide === 'undefined') return 0;
-        lucide.createIcons();
-        return document.querySelectorAll('i[data-lucide] svg, svg.lucide').length;
-      })()
-    `);
-    const pdf = await page.pdf({
-      width: '794px',
-      height: '1123px',
-      printBackground: true,
-    });
+    await page.evaluate(
+      `(function(){ if (typeof lucide !== 'undefined') lucide.createIcons(); })()`,
+    );
+    const pdf = await page.pdf({ width: '794px', height: '1123px', printBackground: true });
     fs.writeFileSync(output, pdf);
     console.log(
       `[${externalId}] ${product.name.slice(0, 32).padEnd(32)} ` +
-        `${pages.length}p | icones: ${icons} | ${(fs.statSync(output).size / 1024).toFixed(0)} KB` +
+        `${rendered.length}p | ${(fs.statSync(output).size / 1024).toFixed(0)} KB` +
         (pending ? ` | PENDENTE: ${pending[0].slice(0, 30)}` : ''),
     );
   } finally {
